@@ -131,6 +131,7 @@ builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
 builder.Services.AddScoped<IAuthorizationHandler, UamPermissionHandler>();
+builder.Services.AddScoped<IDeploymentCheckService, DeploymentCheckService>();
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();
 builder.Services.AddHostedService<ReplayFlowProcessingService>();
 builder.Services.AddHostedService<JvCalculationProcessingService>();

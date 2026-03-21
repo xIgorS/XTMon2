@@ -1,0 +1,171 @@
+@page "/system-diagnostics"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "UamRestricted")]
+
+<PageTitle>System Diagnostics</PageTitle>
+
+<div class="space-y-5">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+            <p class="section-label">Deployment verification</p>
+            <h1 class="text-2xl font-bold text-heading mt-1">System Diagnostics</h1>
+            <p class="muted mt-1">Checks all database connections and stored procedure signatures.</p>
+        </div>
+        <button class="primary-button-filled" @onclick="RunCheckAsync" disabled="@isRunning">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1 0 12.728 12.728M5.636 5.636a9 9 0 1 1 12.728 12.728M5.636 5.636 12 12m0 0 6.364-6.364" />
+            </svg>
+            @(isRunning ? "Running checks..." : (report is null ? "Run Diagnostics" : "Re-run Diagnostics"))
+        </button>
+    </div>
+
+    @if (isRunning)
+    {
+        <div class="surface">
+            <p class="muted">Connecting to all databases and verifying stored procedures...</p>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(runError))
+    {
+        <div class="surface !border-rose-500/30">
+            <p class="text-sm font-semibold text-error">Diagnostics failed to run.</p>
+            <p class="mt-2 text-sm text-error/80">@runError</p>
+        </div>
+    }
+    else if (report is null)
+    {
+        <div class="surface">
+            <p class="muted">Click <strong>Run Diagnostics</strong> to verify all database connections and stored procedures.</p>
+        </div>
+    }
+    else
+    {
+        @* Summary banner *@
+        <div class="surface @(report.AllPassed ? "!border-emerald-500/40" : "!border-rose-500/40")">
+            <div class="flex items-center gap-3">
+                @if (report.AllPassed)
+                {
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-emerald-500 shrink-0">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                    <div>
+                        <p class="text-sm font-semibold text-emerald-500">All checks passed</p>
+                        <p class="muted text-xs mt-0.5">@report.Databases.Count databases · @report.Databases.SelectMany(d => d.StoredProcedures).Count() stored procedures — all OK</p>
+                    </div>
+                }
+                else
+                {
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-error shrink-0">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                    </svg>
+                    <div>
+                        <p class="text-sm font-semibold text-error">@report.IssueCount @(report.IssueCount == 1 ? "issue" : "issues") found</p>
+                        <p class="muted text-xs mt-0.5">@report.Databases.Count databases · @report.Databases.SelectMany(d => d.StoredProcedures).Count() stored procedures checked</p>
+                    </div>
+                }
+                <p class="muted text-xs ml-auto shrink-0">@report.GeneratedAt.ToString("dd-MM-yyyy HH:mm:ss")</p>
+            </div>
+        </div>
+
+        @* Per-database cards *@
+        <div class="space-y-4">
+            @foreach (var db in report.Databases)
+            {
+                var dbOk = db.Connected && db.StoredProcedures.All(sp => sp.Exists && sp.Error is null);
+                <div class="surface">
+                    @* Database header *@
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div class="flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 icon-accent shrink-0">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                            </svg>
+                            <div>
+                                <h3 class="text-base font-bold text-heading">@db.ConnectionStringName</h3>
+                                @if (db.Connected && db.DatabaseName is not null)
+                                {
+                                    <p class="muted text-xs">@db.ServerName · @db.DatabaseName · @FormatDuration(db.Duration)</p>
+                                }
+                                else if (!db.Connected)
+                                {
+                                    <p class="text-xs text-error/80 mt-0.5">@db.ConnectionError</p>
+                                }
+                            </div>
+                        </div>
+                        <span class="pill @(db.Connected ? (dbOk ? "text-emerald-500" : "text-amber-500") : "text-error") text-xs shrink-0">
+                            @if (!db.Connected)
+                            {
+                                <text>Connection failed</text>
+                            }
+                            else if (dbOk)
+                            {
+                                <text>OK</text>
+                            }
+                            else
+                            {
+                                var spIssues = db.StoredProcedures.Count(sp => !sp.Exists || sp.Error is not null);
+                                <text>@spIssues @(spIssues == 1 ? "issue" : "issues")</text>
+                            }
+                        </span>
+                    </div>
+
+                    @* Stored procedures table *@
+                    @if (db.Connected && db.StoredProcedures.Count > 0)
+                    {
+                        <div class="db-grid__wrap mt-4">
+                            <table class="db-grid">
+                                <thead>
+                                    <tr>
+                                        <th class="db-grid__head db-grid__cell--text">Stored Procedure</th>
+                                        <th class="db-grid__head db-grid__cell--status">Status</th>
+                                        <th class="db-grid__head db-grid__cell--text">Parameters</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var sp in db.StoredProcedures)
+                                    {
+                                        var spOk = sp.Exists && sp.Error is null;
+                                        <tr class="db-grid__row">
+                                            <td class="db-grid__cell db-grid__cell--text font-mono text-xs">@sp.FullName</td>
+                                            <td class="db-grid__cell db-grid__cell--status">
+                                                @if (sp.Error is not null)
+                                                {
+                                                    <span class="alert-badge alert-critical" title="@sp.Error">Error</span>
+                                                }
+                                                else if (sp.Exists)
+                                                {
+                                                    <span class="alert-badge alert-ok">Found</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="alert-badge alert-critical">Missing</span>
+                                                }
+                                            </td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">
+                                                @if (sp.Parameters.Count == 0 && sp.Exists)
+                                                {
+                                                    <span class="muted">no parameters</span>
+                                                }
+                                                else if (sp.Parameters.Count > 0)
+                                                {
+                                                    <span class="font-mono">@FormatParameters(sp.Parameters)</span>
+                                                }
+                                                else if (sp.Error is not null)
+                                                {
+                                                    <span class="text-error/70 text-xs">@sp.Error</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else if (!db.Connected)
+                    {
+                        <p class="muted mt-3 text-sm">Stored procedure checks skipped — connection failed.</p>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>

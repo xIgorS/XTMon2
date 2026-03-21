@@ -3,7 +3,9 @@
     "allow": [
       "Bash(dotnet test:*)",
       "Bash(dotnet list:*)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(grep -E \"\\\\.cs$\")",
+      "Bash(dotnet build:*)"
     ]
   }
 }
