@@ -8,6 +8,17 @@ A central monitoring and recovery dashboard for SQL Server processing. Provides 
 - **IIS deployment:** [.NET 10 **Hosting Bundle**](https://dotnet.microsoft.com/download/dotnet/10.0) — installs `AspNetCoreModuleV2` into IIS; the SDK or Runtime alone is **not** sufficient
 - SQL Server access (connection strings configured in `appsettings.json`)
 - Windows Authentication (Negotiate/NTLM)
+- **Running tests:** no extra prerequisites — tests run without a live database or browser
+
+## Running Tests
+
+```powershell
+dotnet test XTMon.Tests/XTMon.Tests.csproj
+```
+
+The test project (`XTMon.Tests/`) contains 137 xUnit unit tests covering pure logic helpers, the in-memory processing queue, background service orchestration, and the UAM authorization handler. No SQL Server connection or browser is needed.
+
+See the [Testing](#testing) section for coverage details.
 
 ## Running Locally
 
@@ -360,6 +371,39 @@ ORDER BY l.[TimeStamp] DESC;
 | `appsettings.Development.json` | Development overrides (loaded only in Development mode) |
 | `Properties/launchSettings.json` | Launch profiles for local development |
 | `web.config` | IIS integration and environment variable (auto-generated on publish) |
+
+## Testing
+
+The `XTMon.Tests` project is a self-contained xUnit test suite. It does not require a live SQL Server, IIS, or a browser to run.
+
+```powershell
+dotnet test XTMon.Tests/XTMon.Tests.csproj
+```
+
+### What Is Covered
+
+| Area | Tests | Notes |
+|------|------:|-------|
+| `SqlDataHelper` — type coercions, `ParseQuery`, SQL error classification | 27 | SQL exceptions constructed via reflection |
+| `ReplayFlowsHelper` — flow set normalisation, all 12+ status strings, formatting | 39 | Pure logic, no dependencies |
+| `JvCalculationHelper` — stale detection, UTC conversion, header labels, JSON | 24 | Pure logic, no dependencies |
+| `ReplayFlowProcessingQueue` — enqueue/dequeue, cancellation, drop-on-full | 5 | In-memory channel only |
+| `ReplayFlowProcessingService` — item processing, transient error resilience | 3 | Mocked `IReplayFlowRepository` |
+| `JvCalculationProcessingService` — CheckOnly vs FixAndCheck routing, failure handling, heartbeat ordering | 6 | Mocked `IJvCalculationRepository` |
+| `UamPermissionHandler` — authorized / denied / unauthenticated / repository exception | 5 | Mocked `IUamAuthorizationRepository` |
+
+### What Is Not Covered (and Why)
+
+| Layer | Reason |
+|-------|--------|
+| Blazor `.razor` markup | Requires a browser — no Playwright/Selenium |
+| Repository SQL calls | Sealed ADO.NET types (`SqlConnection`, `SqlCommand`) require a real SQL Server |
+| `StoredProcedureLogSink` | Tightly coupled to a live database |
+| Windows Authentication | Requires OS-level setup |
+
+### NuGet Packages (must be in internal feed)
+
+`Microsoft.NET.Test.Sdk` · `xunit` · `xunit.runner.visualstudio` · `Moq` · `coverlet.collector` · `Microsoft.Extensions.Logging.Abstractions` · `Microsoft.Extensions.Options` · `Microsoft.AspNetCore.Authorization`
 
 ## Launch Profiles (Local Development)
 

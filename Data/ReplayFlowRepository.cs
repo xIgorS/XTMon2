@@ -6,7 +6,7 @@ using XTMon.Options;
 
 namespace XTMon.Data;
 
-public sealed class ReplayFlowRepository
+public sealed class ReplayFlowRepository : IReplayFlowRepository
 {
     private readonly SqlConnectionFactory _connectionFactory;
     private readonly ReplayFlowsOptions _replayOptions;

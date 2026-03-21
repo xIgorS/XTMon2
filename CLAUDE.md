@@ -26,17 +26,38 @@ npm run build:css    # one-time build
 npm run watch:css    # watch mode during development
 ```
 
-There are no automated tests in this project.
+```bash
+# Run unit tests
+dotnet test XTMon.Tests/XTMon.Tests.csproj
+```
 
 ## Architecture
 
 The app follows a layered architecture:
 
 - **Components/Pages/** — Blazor Server pages (routable, interactive server render mode)
-- **Data/** — Repositories (SQL Server access) and background services (`IHostedService`)
+- **Data/** — Repository interfaces, concrete repositories (SQL Server/ADO.NET), background services (`IHostedService`), and internal helper classes
 - **Options/** — Strongly-typed `IOptions<T>` config classes bound from `appsettings.json`
 - **Models/** — DTOs returned by repositories
 - **Security/** — Custom `IAuthorizationHandler` for UAM role checks
+- **XTMon.Tests/** — xUnit unit test project (no live DB or browser required)
+
+### Repository Interfaces
+
+Each repository has a corresponding interface in `Data/`:
+- `IReplayFlowRepository` — implemented by `ReplayFlowRepository`
+- `IJvCalculationRepository` — implemented by `JvCalculationRepository`
+- `IUamAuthorizationRepository` — implemented by `UamAuthorizationRepository`
+
+Interfaces are registered in DI (`Program.cs`) as `AddScoped<IInterface, Concrete>()`. Background services and the authorization handler depend on the interfaces, not the concrete classes, enabling unit testing with mocks.
+
+### Internal Helper Classes
+
+Pure-logic methods extracted from Blazor code-behind files into testable `internal static` classes in `Data/`:
+- `ReplayFlowsHelper` — `TryNormalizeReplayFlowSet`, `GetStatusKind`, `FormatDate`, `FormatNumber`, `FormatDuration`, plus the `ReplayStatusKind` enum
+- `JvCalculationHelper` — `IsStaleRunningJob`, `ToUtc`, `ToHeaderLabel`, `GetColumnAlignmentClass`, `DeserializeMonitoringTable`
+
+The test project accesses these via `[assembly: InternalsVisibleTo("XTMon.Tests")]` declared in `XTMon.csproj`.
 
 ### Key Data Flow Patterns
 
@@ -79,6 +100,30 @@ Structured log event IDs are defined in `Data/AppLogEvents.cs` (range 3000–400
 - `appsettings.json` — base config: connection strings, stored procedure names, timeouts
 - `appsettings.Development.json` — dev overrides (UAM bypass)
 - `Properties/launchSettings.json` — `https` (dev, port 7009) and `https-prod` (prod, port 7010)
+
+## Testing
+
+The `XTMon.Tests` project contains xUnit unit tests that run without a live SQL Server or browser.
+
+**What is tested:**
+| Area | File | Coverage |
+|------|------|----------|
+| `SqlDataHelper` | `Helpers/SqlDataHelperTests.cs` | All 8 methods; SQL error number classification via reflection-built `SqlException` |
+| `ReplayFlowsHelper` | `Helpers/ReplayFlowsHelperTests.cs` | Replay flow set normalization, all 12+ status string mappings, date/number/duration formatting |
+| `JvCalculationHelper` | `Helpers/JvCalculationHelperTests.cs` | Stale detection, UTC conversion, camelCase header labels, column alignment, JSON deserialization |
+| `ReplayFlowProcessingQueue` | `Queue/ReplayFlowProcessingQueueTests.cs` | Enqueue/dequeue, cancellation, drop-on-full (capacity 10) |
+| `ReplayFlowProcessingService` | `Services/ReplayFlowProcessingServiceTests.cs` | Item processing, error resilience (service continues after exception) |
+| `JvCalculationProcessingService` | `Services/JvCalculationProcessingServiceTests.cs` | CheckOnly vs FixAndCheck routing, failure marking, stale expiry, heartbeat ordering |
+| `UamPermissionHandler` | `Security/UamPermissionHandlerTests.cs` | Authorized/unauthorized/unauthenticated users, repository exception handling |
+
+**What is not tested (and why):**
+- Blazor `.razor` markup — requires a browser (no Playwright)
+- Repository SQL calls — sealed ADO.NET types require a real SQL Server
+- `StoredProcedureLogSink` — tightly coupled to live SQL
+- Windows Authentication — requires OS-level setup
+
+**NuGet packages** (must be available in internal feed):
+`Microsoft.NET.Test.Sdk`, `xunit`, `xunit.runner.visualstudio`, `Moq`, `coverlet.collector`, `Microsoft.Extensions.Logging.Abstractions`, `Microsoft.Extensions.Options`, `Microsoft.AspNetCore.Authorization`
 
 ## IIS Deployment Note
 

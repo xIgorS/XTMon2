@@ -8,7 +8,7 @@ using XTMon.Options;
 
 namespace XTMon.Data;
 
-public sealed class JvCalculationRepository
+public sealed class JvCalculationRepository : IJvCalculationRepository
 {
     private const int SlowOperationThresholdMilliseconds = 5_000;
 

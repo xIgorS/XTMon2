@@ -5,7 +5,7 @@ using XTMon.Options;
 
 namespace XTMon.Data;
 
-public sealed class UamAuthorizationRepository
+public sealed class UamAuthorizationRepository : IUamAuthorizationRepository
 {
     private readonly SqlConnectionFactory _connectionFactory;
     private readonly UamAuthorizationOptions _options;

@@ -127,9 +127,9 @@ builder.Services
     .ValidateOnStart();
 builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddScoped<MonitoringRepository>();
-builder.Services.AddScoped<JvCalculationRepository>();
-builder.Services.AddScoped<ReplayFlowRepository>();
-builder.Services.AddScoped<UamAuthorizationRepository>();
+builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
+builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
+builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
 builder.Services.AddScoped<IAuthorizationHandler, UamPermissionHandler>();
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();
 builder.Services.AddHostedService<ReplayFlowProcessingService>();

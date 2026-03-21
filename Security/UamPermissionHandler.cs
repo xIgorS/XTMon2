@@ -4,8 +4,8 @@ using XTMon.Data;
 namespace XTMon.Security;
 
 public sealed class UamPermissionHandler(
-    UamAuthorizationRepository repository,
-    ILogger<UamPermissionHandler> logger) 
+    IUamAuthorizationRepository repository,
+    ILogger<UamPermissionHandler> logger)
     : AuthorizationHandler<RequiresUamPermissionRequirement>
 {
     protected override async Task HandleRequirementAsync(

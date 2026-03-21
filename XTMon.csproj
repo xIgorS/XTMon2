@@ -8,6 +8,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="XTMon.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Exclude the test project from the main project's compilation glob -->
+    <Compile Remove="XTMon.Tests\**" />
+    <Content Remove="XTMon.Tests\**" />
+    <EmbeddedResource Remove="XTMon.Tests\**" />
+    <None Remove="XTMon.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.5" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.0" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />

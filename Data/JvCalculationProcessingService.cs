@@ -35,7 +35,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
                 JvJobRecord? job;
                 using (var scope = _scopeFactory.CreateScope())
                 {
-                    var repository = scope.ServiceProvider.GetRequiredService<JvCalculationRepository>();
+                    var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
 
                     var staleTimeout = TimeSpan.FromSeconds(_jvCalculationOptions.JobRunningStaleTimeoutSeconds);
                     var expiredCount = await repository.ExpireStaleRunningJobsAsync(staleTimeout, StaleRunningJobErrorMessage, stoppingToken);
@@ -74,7 +74,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var repository = scope.ServiceProvider.GetRequiredService<JvCalculationRepository>();
+            var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
 
             _logger.LogInformation("Processing JV job {JobId}, request {RequestType}, pnl date {PnlDate}.", job.JobId, job.RequestType, job.PnlDate);
 
@@ -105,7 +105,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
             try
             {
                 using var scope = _scopeFactory.CreateScope();
-                var repository = scope.ServiceProvider.GetRequiredService<JvCalculationRepository>();
+                var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
                 await repository.MarkJvJobFailedAsync(job.JobId, ex.Message, CancellationToken.None);
             }
             catch (Exception markFailedException)

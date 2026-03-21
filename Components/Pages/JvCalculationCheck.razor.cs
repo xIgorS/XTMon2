@@ -4,8 +4,6 @@ using Microsoft.JSInterop;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Globalization;
-using System.Text.Json;
-using System.Text;
 using XTMon.Data;
 using XTMon.Models;
 using XTMon.Options;
@@ -23,7 +21,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     private const string CheckErrorMessage = "Unable to run JV calculation check right now. Please try again.";
 
     [Inject]
-    private JvCalculationRepository Repository { get; set; } = default!;
+    private IJvCalculationRepository Repository { get; set; } = default!;
 
     [Inject]
     private IOptions<JvCalculationOptions> JvOptions { get; set; } = default!;
@@ -299,24 +297,8 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
             return false;
         }
 
-        var lastActivityUtc = ToUtc(job.LastHeartbeatAt ?? job.StartedAt ?? job.EnqueuedAt);
-        var elapsed = DateTime.UtcNow - lastActivityUtc;
-        return elapsed >= JobRunningStaleTimeout;
-    }
-
-    private static DateTime ToUtc(DateTime value)
-    {
-        if (value.Kind == DateTimeKind.Utc)
-        {
-            return value;
-        }
-
-        if (value.Kind == DateTimeKind.Local)
-        {
-            return value.ToUniversalTime();
-        }
-
-        return DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        var lastActivityUtc = JvCalculationHelper.ToUtc(job.LastHeartbeatAt ?? job.StartedAt ?? job.EnqueuedAt);
+        return JvCalculationHelper.IsStaleRunningJob(lastActivityUtc, JobRunningStaleTimeout);
     }
 
     private void ApplyJob(JvJobRecord job)
@@ -361,24 +343,8 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         showJobStatusDetails = !showJobStatusDetails;
     }
 
-    private static MonitoringTableResult? DeserializeMonitoringTable(string? columnsJson, string? rowsJson)
-    {
-        if (string.IsNullOrWhiteSpace(columnsJson) || string.IsNullOrWhiteSpace(rowsJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            var columns = JsonSerializer.Deserialize<List<string>>(columnsJson) ?? new List<string>();
-            var rows = JsonSerializer.Deserialize<List<List<string?>>>(rowsJson) ?? new List<List<string?>>();
-            return new MonitoringTableResult(columns, rows.Cast<IReadOnlyList<string?>>().ToList());
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    private static MonitoringTableResult? DeserializeMonitoringTable(string? columnsJson, string? rowsJson) =>
+        JvCalculationHelper.DeserializeMonitoringTable(columnsJson, rowsJson);
 
     private void StopPolling()
     {
@@ -482,54 +448,11 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         return columns;
     }
 
-    private static string ToHeaderLabel(string? columnName)
-    {
-        if (string.IsNullOrWhiteSpace(columnName))
-        {
-            return string.Empty;
-        }
+    private static string ToHeaderLabel(string? columnName) =>
+        JvCalculationHelper.ToHeaderLabel(columnName);
 
-        var builder = new StringBuilder(columnName.Length + 4);
-        for (var i = 0; i < columnName.Length; i++)
-        {
-            var current = columnName[i];
-            if (i > 0)
-            {
-                var previous = columnName[i - 1];
-                var next = i + 1 < columnName.Length ? columnName[i + 1] : '\0';
-                var boundary = char.IsUpper(current) &&
-                               (char.IsLower(previous) || (char.IsUpper(previous) && char.IsLower(next)));
-
-                if (boundary)
-                {
-                    builder.Append(' ');
-                }
-            }
-
-            builder.Append(current);
-        }
-
-        return builder.ToString();
-    }
-
-    private static string GetColumnAlignmentClass(string columnName)
-    {
-        if (columnName.Contains("Date", StringComparison.OrdinalIgnoreCase) ||
-            columnName.Contains("Time", StringComparison.OrdinalIgnoreCase) ||
-            columnName.Contains("Status", StringComparison.OrdinalIgnoreCase))
-        {
-            return "db-grid__cell--text";
-        }
-
-        if (columnName.Contains("Id", StringComparison.OrdinalIgnoreCase) ||
-            columnName.Contains("Amount", StringComparison.OrdinalIgnoreCase) ||
-            columnName.Contains("Code", StringComparison.OrdinalIgnoreCase))
-        {
-            return "db-grid__cell--num";
-        }
-
-        return "db-grid__cell--text";
-    }
+    private static string GetColumnAlignmentClass(string columnName) =>
+        JvCalculationHelper.GetColumnAlignmentClass(columnName);
 
     private static string FormatCellValue(string? value)
     {

@@ -28,7 +28,7 @@ public sealed class ReplayFlowProcessingService : BackgroundService
                 {
                     _logger.LogInformation("Processing replay flows...");
                     using var scope = _scopeFactory.CreateScope();
-                    var repository = scope.ServiceProvider.GetRequiredService<ReplayFlowRepository>();
+                    var repository = scope.ServiceProvider.GetRequiredService<IReplayFlowRepository>();
                     await repository.ProcessReplayFlowsAsync(stoppingToken);
                     _logger.LogInformation("Replay flows processing completed.");
                 }
