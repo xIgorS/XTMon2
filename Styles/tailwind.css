@@ -1,0 +1,372 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+
+  /* Prevent Blazor enhanced-nav from showing a focus ring on non-interactive elements */
+  h1[tabindex],
+  h2[tabindex],
+  h3[tabindex],
+  div[tabindex],
+  main[tabindex] {
+    outline: none;
+  }
+
+  :root {
+    color-scheme: light;
+    --bg-body: #f8fafc;
+    --bg-sidebar: #ffffff;
+    --bg-surface: #ffffff;
+    --bg-surface-hover: #f1f5f9;
+    --bg-grid-head: #f8fafc;
+    --border-subtle: #e2e8f0;
+    --border-medium: #cbd5e1;
+
+    --text-heading: #0f172a;
+    --text-body: #475569;
+    --text-muted: #64748b;
+    --text-subtle: #94a3b8;
+
+    --accent-text: #0d9488;
+    --accent-icon: #14b8a6;
+    --accent-label: #0f766e;
+
+    --pill-bg: #f1f5f9;
+    --pill-ring: #e2e8f0;
+    --pill-text: #64748b;
+
+    --grid-text: #475569;
+    --grid-head-text: #64748b;
+    --grid-stripe: rgba(0, 0, 0, 0.02);
+    --grid-hover: rgba(0, 0, 0, 0.04);
+
+    --nav-text: #64748b;
+    --nav-text-hover: #0f172a;
+    --nav-hover-bg: rgba(0, 0, 0, 0.04);
+
+    --btn-outline-text: #0d9488;
+    --btn-outline-border: rgba(13, 148, 136, 0.3);
+    --btn-outline-bg: rgba(13, 148, 136, 0.06);
+    --btn-outline-hover-bg: rgba(13, 148, 136, 0.12);
+    --btn-outline-hover-border: rgba(13, 148, 136, 0.5);
+
+    --input-bg: #ffffff;
+    --input-border: #e2e8f0;
+    --input-text: #334155;
+    --input-option-bg: #ffffff;
+
+    --logo-icon-bg: rgba(13, 148, 136, 0.15);
+
+    --success-text: #059669;
+    --error-text: #e11d48;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --bg-body: #0c1222;
+    --bg-sidebar: #0f1830;
+    --bg-surface: #131d35;
+    --bg-surface-hover: #182642;
+    --bg-grid-head: #0f1830;
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-medium: rgba(255, 255, 255, 0.08);
+
+    --text-heading: #f1f5f9;
+    --text-body: #94a3b8;
+    --text-muted: #64748b;
+    --text-subtle: #475569;
+
+    --accent-text: #2dd4bf;
+    --accent-icon: #2dd4bf;
+    --accent-label: #5eead4;
+
+    --pill-bg: rgba(255, 255, 255, 0.04);
+    --pill-ring: rgba(255, 255, 255, 0.06);
+    --pill-text: #94a3b8;
+
+    --grid-text: #cbd5e1;
+    --grid-head-text: #64748b;
+    --grid-stripe: rgba(255, 255, 255, 0.015);
+    --grid-hover: rgba(255, 255, 255, 0.04);
+
+    --nav-text: #94a3b8;
+    --nav-text-hover: #e2e8f0;
+    --nav-hover-bg: rgba(255, 255, 255, 0.04);
+
+    --btn-outline-text: #2dd4bf;
+    --btn-outline-border: rgba(45, 212, 191, 0.3);
+    --btn-outline-bg: rgba(13, 148, 136, 0.1);
+    --btn-outline-hover-bg: rgba(13, 148, 136, 0.2);
+    --btn-outline-hover-border: rgba(45, 212, 191, 0.5);
+
+    --input-bg: rgba(255, 255, 255, 0.04);
+    --input-border: rgba(255, 255, 255, 0.1);
+    --input-text: #e2e8f0;
+    --input-option-bg: #131d35;
+
+    --logo-icon-bg: rgba(13, 148, 136, 0.2);
+
+    --success-text: #34d399;
+    --error-text: #fb7185;
+  }
+
+  body {
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--bg-body);
+    color: var(--text-body);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text-heading);
+  }
+}
+
+@layer components {
+  .app-shell {
+    @apply flex min-h-screen w-full;
+  }
+
+  .sidebar-card {
+    @apply flex flex-col p-5 min-h-screen sticky top-0 self-start;
+    width: 15rem;
+    min-width: 15rem;
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors;
+    color: var(--nav-text);
+  }
+
+  .nav-link:hover {
+    color: var(--nav-text-hover);
+    background-color: var(--nav-hover-bg);
+  }
+
+  .nav-link-active {
+    @apply font-semibold;
+    color: white;
+    background-color: #0d9488;
+  }
+
+  .nav-link-active:hover {
+    color: white;
+    background-color: #0f766e;
+  }
+
+  .primary-button {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:cursor-not-allowed disabled:opacity-40;
+    color: var(--btn-outline-text);
+    border: 1px solid var(--btn-outline-border);
+    background-color: var(--btn-outline-bg);
+  }
+
+  .primary-button:hover:not(:disabled) {
+    background-color: var(--btn-outline-hover-bg);
+    border-color: var(--btn-outline-hover-border);
+  }
+
+  .primary-button-filled {
+    @apply inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .surface {
+    @apply rounded-xl p-5;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .stat-card {
+    @apply rounded-xl p-5 relative overflow-hidden;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+  }
+
+  .stat-card:hover {
+    border-color: var(--border-medium);
+    box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
+  }
+
+  .dark .stat-card:hover {
+    box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.3);
+  }
+
+  .stat-label {
+    @apply text-xs uppercase tracking-[0.15em] font-medium;
+    color: var(--text-muted);
+  }
+
+  .stat-value {
+    @apply mt-2 text-2xl font-bold;
+    color: var(--text-heading);
+  }
+
+  .muted {
+    @apply text-sm;
+    color: var(--text-muted);
+  }
+
+  .stat-icon {
+    @apply absolute top-5 right-5;
+    color: var(--text-subtle);
+    opacity: 0.6;
+  }
+
+  .section-label {
+    @apply text-xs uppercase tracking-[0.15em] font-medium;
+    color: var(--accent-text);
+  }
+
+  /* ─── Shared data grid ─── */
+  .db-grid__wrap {
+    margin-top: 0.75rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .db-grid {
+    border-collapse: separate;
+    border-spacing: 0;
+    color: var(--grid-text);
+    font-size: 0.8125rem;
+    margin: 0 auto;
+    min-width: max-content;
+    width: 100%;
+  }
+
+  .db-grid th,
+  .db-grid td {
+    padding: 10px 14px;
+    white-space: nowrap;
+  }
+
+  .db-grid td {
+    transition: background-color 0.15s ease;
+  }
+
+  .db-grid__head {
+    background-color: var(--bg-grid-head);
+    border-bottom: 1px solid var(--border-medium);
+    color: var(--grid-head-text);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .db-grid__row td {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .db-grid__row:nth-child(even) td {
+    background-color: var(--grid-stripe);
+  }
+
+  .db-grid__row:hover td {
+    background-color: var(--grid-hover);
+  }
+
+  .db-grid__cell--text {
+    text-align: left;
+  }
+
+  .db-grid__cell--num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .db-grid__cell--status {
+    text-align: center;
+  }
+
+  .db-grid__cell--checkbox {
+    text-align: center;
+    min-width: 3.5rem;
+  }
+
+  /* ─── Theme-aware utility classes ─── */
+  .text-heading {
+    color: var(--text-heading);
+  }
+
+  .text-body-secondary {
+    color: var(--text-muted);
+  }
+
+  .text-subtle {
+    color: var(--text-subtle);
+  }
+
+  .icon-accent {
+    color: var(--accent-icon);
+  }
+
+  .text-accent {
+    color: var(--accent-text);
+  }
+
+  .text-success {
+    color: var(--success-text);
+  }
+
+  .text-error {
+    color: var(--error-text);
+  }
+
+  .pill {
+    @apply flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs;
+    background-color: var(--pill-bg);
+    color: var(--pill-text);
+    box-shadow: inset 0 0 0 1px var(--pill-ring);
+  }
+
+  .logo-icon-bg {
+    background-color: var(--logo-icon-bg);
+  }
+
+  /* ─── Theme toggle button ─── */
+  .theme-toggle {
+    @apply flex items-center justify-center w-8 h-8 rounded-lg transition-colors cursor-pointer;
+    color: var(--text-muted);
+    background-color: transparent;
+    border: 1px solid var(--border-subtle);
+  }
+
+  .theme-toggle:hover {
+    color: var(--text-heading);
+    background-color: var(--nav-hover-bg);
+  }
+
+  /* ─── Environment indicator badges ─── */
+  .env-badge-dev {
+    background-color: rgba(245, 158, 11, 0.15);
+    color: #b45309;
+  }
+
+  .dark .env-badge-dev {
+    background-color: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+  }
+
+  .env-badge-prod {
+    background-color: rgba(244, 63, 94, 0.15);
+    color: #be123c;
+  }
+
+  .dark .env-badge-prod {
+    background-color: rgba(244, 63, 94, 0.2);
+    color: #fb7185;
+  }
+}

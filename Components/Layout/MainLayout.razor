@@ -1,0 +1,91 @@
+﻿@inherits LayoutComponentBase
+@inject IWebHostEnvironment Env
+
+<div class="app-shell">
+    <aside class="sidebar-card">
+        <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl logo-icon-bg">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5 icon-accent">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5" />
+                </svg>
+            </div>
+            <div>
+                <p class="text-base font-bold text-heading leading-tight">APS Actions</p>
+                <p class="text-xs text-body-secondary">XTarget Monitoring</p>
+            </div>
+        </div>
+
+        <div class="mt-6">
+            <NavMenu />
+        </div>
+
+        <div class="mt-auto space-y-4 pt-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-success">
+                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                        Connected
+                    </span>
+                    @if (Env.IsDevelopment())
+                    {
+                        <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold env-badge-dev">
+                            DEV
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold env-badge-prod">
+                            PROD
+                        </span>
+                    }
+                </div>
+                <button id="theme-toggle-btn" class="theme-toggle" title="Toggle light/dark theme">
+                    <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 hidden">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+                    </svg>
+                    <svg id="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <main class="flex flex-1 flex-col gap-6 p-6 min-h-screen overflow-x-hidden">
+        <header class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <p class="section-label">Dashboard</p>
+                <h2 class="text-2xl font-bold text-heading mt-1">Operational Pulse</h2>
+                <p class="text-sm text-body-secondary mt-1">Monitor capacity, growth, and processing health in real-time.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 text-xs">
+                <div class="pill">
+                    <svg class="w-3.5 h-3.5 icon-accent" fill="currentColor" viewBox="0 0 20 20"><path d="M13.024 9.25c.47 0 .827-.433.637-.863a4.998 4.998 0 0 0-6.32-2.709c-.427.19-.527.664-.052.862l4.735 1.97c.15.063.293.126.437.19.127.013.256.05.377.05h.186ZM6.976 10.75a.75.75 0 0 0-.637.863 4.998 4.998 0 0 0 6.32 2.709c.427-.19.527-.664.052-.862l-4.735-1.97a3.68 3.68 0 0 0-.437-.19.855.855 0 0 0-.377-.05h-.186Z"/><path fill-rule="evenodd" d="M10 1a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM3.5 10a6.5 6.5 0 1 1 13 0 6.5 6.5 0 0 1-13 0Z" clip-rule="evenodd"/></svg>
+                    Interactive Server
+                </div>
+                <div class="pill">
+                    <svg class="w-3.5 h-3.5 icon-accent" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.5 2A1.5 1.5 0 0 0 3 3.5v13A1.5 1.5 0 0 0 4.5 18h11a1.5 1.5 0 0 0 1.5-1.5V7.621a1.5 1.5 0 0 0-.44-1.06l-4.12-4.122A1.5 1.5 0 0 0 11.378 2H4.5Zm4.75 6a.75.75 0 0 0-1.5 0v2.25H5.5a.75.75 0 0 0 0 1.5h2.25V14a.75.75 0 0 0 1.5 0v-2.25h2.25a.75.75 0 0 0 0-1.5H9.25V8Z" clip-rule="evenodd"/></svg>
+                    ADO SqlClient
+                </div>
+                <AuthorizeView>
+                    <Authorized>
+                        <div class="pill" id="user-info-pill">
+                            <svg class="w-3.5 h-3.5 icon-accent" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-5.5-2.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM10 12a5.99 5.99 0 0 0-4.793 2.39A6.483 6.483 0 0 0 10 16.5a6.483 6.483 0 0 0 4.793-2.11A5.99 5.99 0 0 0 10 12Z" clip-rule="evenodd"/></svg>
+                            @context.User.Identity?.Name
+                        </div>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+        </header>
+
+        <section>
+            @Body
+        </section>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet class="fixed bottom-6 right-6 hidden rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white shadow-lg">
+    <span>An unhandled error has occurred.</span>
+    <a href="." class="ml-3 underline">Reload</a>
+    <span class="dismiss ml-3 cursor-pointer">Dismiss</span>
+</div>

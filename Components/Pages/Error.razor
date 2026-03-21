@@ -1,0 +1,28 @@
+﻿@page "/Error"
+
+<PageTitle>Error</PageTitle>
+
+<div class="space-y-4">
+    <p class="text-xs uppercase tracking-[0.2em] text-rose-500">Service error</p>
+    <h1 class="text-3xl font-semibold text-heading">Something went wrong</h1>
+    <p class="text-sm text-body-secondary">An error occurred while processing your request.</p>
+
+@if (ShowRequestId)
+{
+    <p class="text-sm text-body-secondary">
+        <span class="font-semibold text-heading">Request ID:</span> @RequestId
+    </p>
+}
+
+    <div class="surface">
+        <h2 class="text-lg font-semibold text-heading">Development mode</h2>
+        <p class="muted mt-2">
+            Switching to the Development environment will display more detailed information about the error that occurred.
+        </p>
+        <p class="muted mt-2">
+            The Development environment should not be enabled for deployed applications. For local debugging, set
+            ASPNETCORE_ENVIRONMENT to Development and restart the app.
+        </p>
+    </div>
+</div>
+

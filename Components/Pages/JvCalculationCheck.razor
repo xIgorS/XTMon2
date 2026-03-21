@@ -1,0 +1,198 @@
+@page "/jv-calculation-check"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "UamRestricted")]
+
+<PageTitle>JV Calculation</PageTitle>
+
+<div class="space-y-5">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+            <p class="section-label">Publication monitoring</p>
+            <h1 class="text-2xl font-bold text-heading mt-1">JV Calculation</h1>
+            <p class="muted mt-1">COB dates: @CobDatesProcedureName</p>
+            <p class="muted mt-1">Check procedure: @JvCheckProcedureName</p>
+        </div>
+        <button class="primary-button" @onclick="LoadCobDatesAsync" disabled="@(isLoadingDates || isChecking || isFixing)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+            </svg>
+            @(isLoadingDates ? "Loading..." : "Reload COB dates")
+        </button>
+    </div>
+
+    <div class="surface jv-controls">
+        <div class="jv-controls__grid">
+            <!-- Date Picker Section -->
+            <div class="jv-controls__section">
+                <div class="jv-controls__section-header">
+                    <svg class="w-4 h-4 icon-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+                    </svg>
+                    <label class="stat-label" for="cobDateDisplay">Pnl Date</label>
+                </div>
+                <DatePickerInput InputId="cobDateDisplay"
+                                Value="selectedCobDate"
+                                ValueChanged="OnCobDateSelected"
+                                AvailableDates="availableDates"
+                                IsDisabled="@(isLoadingDates || isChecking || isFixing)"
+                                AriaLabel="COB Date calendar" />
+                <p class="muted mt-1.5">@availableDates.Count COB date(s) loaded.</p>
+                @if (!string.IsNullOrWhiteSpace(checkError))
+                {
+                    <p class="text-xs text-error mt-1">@checkError</p>
+                }
+            </div>
+
+            <!-- Divider -->
+            <div class="jv-controls__divider"></div>
+
+            <!-- Status & Action Section -->
+            <div class="jv-controls__section jv-controls__section--actions">
+                @if (!string.IsNullOrWhiteSpace(JobStatusText))
+                {
+                    <div class="jv-status-card">
+                        <div class="jv-status-card__header">
+                            <svg class="w-4 h-4 icon-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                            </svg>
+                            <p class="stat-label">Execution Status</p>
+                        </div>
+                        <button type="button" class="jv-status-badge @JobStatusClass" @onclick="ToggleJobStatusDetails">
+                            @JobStatusText
+                        </button>
+                        <p class="jv-status-details">Latest: @LatestExecutionText</p>
+                        @if (showJobStatusDetails)
+                        {
+                            <p class="jv-status-details">@JobStatusDetailsText</p>
+                        }
+                    </div>
+                }
+
+                <button class="primary-button-filled jv-run-btn" @onclick="RunJvCalculationCheckAsync" disabled="@(isLoadingDates || isChecking || isFixing)">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+                    </svg>
+                    @(isChecking ? "Running..." : "Run Check")
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <div class="surface !border-rose-500/30">
+            <p class="text-sm font-semibold text-error">Failed to load COB dates.</p>
+            <p class="mt-2 text-sm text-error/80">@loadError</p>
+        </div>
+    }
+
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="stat-label">Latest execution</p>
+            <p class="stat-value">@LatestExecutionText</p>
+            <p class="muted mt-1">UTC (from job record)</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+            </svg>
+            <p class="stat-label">Allowed dates</p>
+            <p class="stat-value">@availableDates.Count</p>
+            <p class="muted mt-1">From stored procedure</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
+            </svg>
+            <p class="stat-label">Rows</p>
+            <p class="stat-value">@(result?.Rows.Count ?? 0)</p>
+            <p class="muted mt-1">JV result set</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" />
+            </svg>
+            <p class="stat-label">Columns</p>
+            <p class="stat-value">@(result?.Columns.Count ?? 0)</p>
+            <p class="muted mt-1">Detected fields</p>
+        </div>
+    </div>
+
+    <div class="surface">
+        <div class="flex items-center justify-between gap-3">
+            <p class="stat-label">Query - Check</p>
+            <button class="primary-button" @onclick="CopySqlToClipboardAsync" disabled="@string.IsNullOrWhiteSpace(parsedQuery)">
+                Copy SQL to Clipboard
+            </button>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(copyMessage))
+        {
+            <p class="mt-2 text-sm @(copySucceeded ? "text-success" : "text-error")">@copyMessage</p>
+        }
+        <textarea class="jv-query-textarea" readonly>@parsedQuery</textarea>
+        <div class="mt-2 flex items-center justify-between gap-3">
+            <p class="stat-label">Query - fix</p>
+            <button class="primary-button" @onclick="CopyFixSqlToClipboardAsync" disabled="@string.IsNullOrWhiteSpace(parsedFixQuery)">
+                Copy SQL to Clipboard
+            </button>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(copyFixMessage))
+        {
+            <p class="mt-2 text-sm @(copyFixSucceeded ? "text-success" : "text-error")">@copyFixMessage</p>
+        }
+        <textarea class="jv-query-textarea" readonly>@parsedFixQuery</textarea>
+    </div>
+
+    @if (result is null)
+    {
+        <div class="surface">
+            <p class="muted">Run JV calculation check to load result set.</p>
+        </div>
+    }
+    else if (result.Rows.Count == 0)
+    {
+        <div class="surface">
+            <p class="muted">No rows returned from JV calculation check.</p>
+        </div>
+    }
+    else
+    {
+        var gridColumns = GetGridColumns();
+
+        <div class="surface">
+            <div class="flex items-center justify-between gap-3">
+                <p class="stat-label">JV Calculation check</p>
+                <button class="primary-button" @onclick="RunFixCalculationAsync" disabled="@(result.Rows.Count == 0 || isChecking || isFixing)">
+                    @(isFixing ? "Fixing..." : "Fix Calculation")
+                </button>
+            </div>
+            <div class="db-grid__wrap">
+                <table class="db-grid">
+                    <thead>
+                        <tr>
+                            @foreach (var column in gridColumns)
+                            {
+                                <th class="db-grid__head @GetColumnAlignmentClass(column.Name)">@ToHeaderLabel(column.Name)</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in result.Rows)
+                        {
+                            <tr class="db-grid__row">
+                                @foreach (var column in gridColumns)
+                                {
+                                    var value = column.Index < row.Count ? row[column.Index] : null;
+                                    <td class="db-grid__cell @GetColumnAlignmentClass(column.Name)">@FormatCellValue(value)</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>

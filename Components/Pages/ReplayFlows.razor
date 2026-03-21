@@ -1,0 +1,400 @@
+@page "/replay-flows"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "UamRestricted")]
+
+<PageTitle>Replay Flows</PageTitle>
+
+<div class="space-y-5">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+            <p class="section-label">Replay operations</p>
+            <h1 class="text-2xl font-bold text-heading mt-1">Replay Flows</h1>
+            <p class="muted mt-1">Pull failed flows and submit replay requests.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <button class="primary-button" @onclick="ReloadAsync" disabled="@(!selectedPnlDate.HasValue || !IsReplayFlowSetValid() || isLoading || isSubmitting)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                </svg>
+                @(isLoading ? "Refreshing..." : "Refresh")
+            </button>
+            <button class="primary-button" @onclick="SelectAll" disabled="@(!canSelectAll)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                Select All
+            </button>
+            <button class="primary-button-filled" @onclick="SubmitAsync" disabled="@(!canSubmit)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                </svg>
+                @(isSubmitting ? "Submitting..." : $"Submit ({selectedRowsCount})")
+            </button>
+        </div>
+    </div>
+
+    <div class="surface">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end">
+            <div class="flex flex-col gap-1.5">
+                <label class="stat-label" for="replayFlowSet">Replay flow set</label>
+                <input id="replayFlowSet"
+                       class="replay-input"
+                       type="text"
+                       placeholder="e.g. 1001,1002"
+                      @ref="replayFlowSetInputRef"
+                       @bind="ReplayFlowSetInput"
+                       @bind:event="oninput"
+                       @onblur="NormalizeReplayFlowSetInput"
+                       disabled="@isSubmitting" />
+                @if (!string.IsNullOrWhiteSpace(replayFlowSetError))
+                {
+                    <p class="text-xs text-error">@replayFlowSetError</p>
+                }
+            </div>
+            <div class="flex flex-col gap-1.5">
+                <label class="stat-label" for="pnlDate">Pnl date</label>
+                <DatePickerInput InputId="pnlDate"
+                                 Value="selectedPnlDate"
+                                 ValueChanged="OnPnlDateSelected"
+                                 IsDisabled="@isSubmitting"
+                                 AriaLabel="Pnl Date calendar" />
+                @if (!string.IsNullOrWhiteSpace(pnlDateError))
+                {
+                    <p class="text-xs text-error">@pnlDateError</p>
+                }
+            </div>
+            <div class="flex flex-col gap-1.5">
+                <label class="stat-label" for="feedSourceFilter">Feed source</label>
+                <select id="feedSourceFilter"
+                        class="replay-input"
+                        @bind="FeedSourceFilter"
+                        disabled="@isSubmitting">
+                    <option value="">All Sources</option>
+                    @foreach (var option in GetFeedSourceOptions())
+                    {
+                        <option value="@option">@option</option>
+                    }
+                </select>
+            </div>
+            <div class="flex flex-col gap-1.5">
+                <label class="stat-label" for="typeOfCalculationFilter">Calculation type</label>
+                <select id="typeOfCalculationFilter"
+                        class="replay-input"
+                        @bind="TypeOfCalculationFilter"
+                        disabled="@isSubmitting">
+                    <option value="">All Types</option>
+                    @foreach (var option in GetTypeOfCalculationOptions())
+                    {
+                        <option value="@option">@option</option>
+                    }
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="stat-label">Last refresh</p>
+            <p class="stat-value">@(lastRefresh?.ToString("dd-MM-yyyy HH:mm:ss") ?? "Not loaded")</p>
+            <p class="muted mt-1">Local time</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
+            </svg>
+            <p class="stat-label">Total rows</p>
+            <p class="stat-value">@rows.Count</p>
+            <p class="muted mt-1">From stored procedure</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+            </svg>
+            <p class="stat-label">Pnl date</p>
+            <p class="stat-value">@(lastPnlDate?.ToString("dd-MM-yyyy") ?? "-")</p>
+            <p class="muted mt-1">Last requested</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="stat-label">Selected</p>
+            <p class="stat-value">@selectedRowsCount</p>
+            <p class="muted mt-1">Ready to submit</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="surface flex items-center gap-2 @(statusIsError ? "!border-rose-500/30" : "!border-emerald-500/30")">
+            @if (statusIsError)
+            {
+                <svg class="w-5 h-5 text-error shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                </svg>
+            }
+            else
+            {
+                <svg class="w-5 h-5 text-success shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+            }
+            <p class="text-sm font-semibold @(statusIsError ? "text-error" : "text-success")">@statusMessage</p>
+        </div>
+    }
+
+    <div class="space-y-4">
+        @if (isLoading)
+        {
+            <div class="surface space-y-3">
+                <div class="flex items-center gap-2">
+                    <div class="h-4 w-4 rounded-full bg-current opacity-10 animate-pulse"></div>
+                    <div class="h-4 w-24 rounded bg-current opacity-10 animate-pulse"></div>
+                </div>
+                @for (var i = 0; i < 6; i++)
+                {
+                    <div class="flex gap-3">
+                        <div class="h-4 w-10 rounded bg-current opacity-[0.07] animate-pulse"></div>
+                        <div class="h-4 w-20 rounded bg-current opacity-[0.07] animate-pulse"></div>
+                        <div class="h-4 w-28 rounded bg-current opacity-[0.07] animate-pulse"></div>
+                        <div class="h-4 w-16 rounded bg-current opacity-[0.07] animate-pulse"></div>
+                        <div class="h-4 w-24 rounded bg-current opacity-[0.07] animate-pulse"></div>
+                        <div class="h-4 w-14 rounded bg-current opacity-[0.07] animate-pulse"></div>
+                    </div>
+                }
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(loadError))
+        {
+            <div class="surface !border-rose-500/30">
+                <p class="text-sm font-semibold text-error">Failed to load replay flows.</p>
+                <p class="mt-2 text-sm text-error/80">@loadError</p>
+            </div>
+        }
+        else if (hasLoaded)
+        {
+            <div class="surface">
+                <div class="db-grid__wrap">
+                    <table class="db-grid">
+                        <thead>
+                            <tr>
+                                <th class="db-grid__head db-grid__cell--checkbox"></th>
+                                <th class="db-grid__head db-grid__cell--num">Flow Id</th>
+                                <th class="db-grid__head db-grid__cell--num">Derived From</th>
+                                <th class="db-grid__head db-grid__cell--text">Biz Data Type</th>
+                                <th class="db-grid__head db-grid__cell--text">Feed Source</th>
+                                <th class="db-grid__head db-grid__cell--text">Pnl Date</th>
+                                <th class="db-grid__head db-grid__cell--text">Arrival Date</th>
+                                <th class="db-grid__head db-grid__cell--text">Current Step</th>
+                                <th class="db-grid__head db-grid__cell--checkbox">Is Failed</th>
+                                <th class="db-grid__head db-grid__cell--text">Calc Type</th>
+                                <th class="db-grid__head db-grid__cell--checkbox">Adjustment</th>
+                                <th class="db-grid__head db-grid__cell--checkbox">Replay</th>
+                                <th class="db-grid__head db-grid__cell--checkbox">Backdated</th>
+                                <th class="db-grid__head db-grid__cell--checkbox">Skip Core</th>
+                                <th class="db-grid__head db-grid__cell--checkbox">Drop Tmp</th>
+                                <th class="db-grid__head db-grid__cell--text">Package Guid</th>
+                                <th class="db-grid__head db-grid__cell--text">File Name</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (filteredRows.Count == 0)
+                            {
+                                <tr class="db-grid__row">
+                                    <td class="db-grid__cell db-grid__cell--text" colspan="@ReplayGridColumnCount">
+                                        @(rows.Count == 0 ? "No failed flows found for the selected Pnl date." : "No rows match the current filters.")
+                                    </td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var row in filteredRows)
+                                {
+                                    <tr class="db-grid__row">
+                                        <td class="db-grid__cell db-grid__cell--checkbox">
+                                            <input type="checkbox" class="replay-checkbox" checked="@row.IsSelected" @onchange="@(e => OnRowSelectionChanged(row, (bool)(e.Value ?? false)))" disabled="@isSubmitting" />
+                                        </td>
+                                        <td class="db-grid__cell db-grid__cell--num">@FormatNumber(row.Source.FlowId)</td>
+                                        <td class="db-grid__cell db-grid__cell--num">@FormatNumber(row.Source.FlowIdDerivedFrom)</td>
+                                        <td class="db-grid__cell db-grid__cell--text">@FormatText(row.Source.BusinessDataType)</td>
+                                        <td class="db-grid__cell db-grid__cell--text">@FormatText(row.Source.FeedSource)</td>
+                                        <td class="db-grid__cell db-grid__cell--text">@FormatDate(row.Source.PnlDate)</td>
+                                        <td class="db-grid__cell db-grid__cell--text">@FormatDate(row.Source.ArrivalDate)</td>
+                                        <td class="db-grid__cell db-grid__cell--text">@FormatText(row.Source.CurrentStep)</td>
+                                        <td class="db-grid__cell db-grid__cell--checkbox">
+                                            <input type="checkbox" class="replay-checkbox" checked="@row.Source.IsFailed" disabled />
+                                        </td>
+                                        <td class="db-grid__cell db-grid__cell--text uppercase">@FormatText(row.Source.TypeOfCalculation)</td>
+                                        <td class="db-grid__cell db-grid__cell--checkbox">
+                                            <input type="checkbox" class="replay-checkbox" checked="@row.Source.IsAdjustment" disabled />
+                                        </td>
+                                        <td class="db-grid__cell db-grid__cell--checkbox">
+                                            <input type="checkbox" class="replay-checkbox" checked="@row.Source.IsReplay" disabled />
+                                        </td>
+                                        <td class="db-grid__cell db-grid__cell--checkbox">
+                                            <input type="checkbox" class="replay-checkbox" checked="@row.Source.WithBackdated" disabled />
+                                        </td>
+                                        <td class="db-grid__cell db-grid__cell--checkbox">
+                                            <input type="checkbox" class="replay-checkbox" @bind="row.SkipCoreProcess" disabled="@(!row.IsSelected || isSubmitting)" />
+                                        </td>
+                                        <td class="db-grid__cell db-grid__cell--checkbox">
+                                            <input type="checkbox" class="replay-checkbox" @bind="row.DropTableTmp" disabled="@(!row.IsSelected || isSubmitting)" />
+                                        </td>
+                                        <td class="db-grid__cell db-grid__cell--text">@row.Source.PackageGuid</td>
+                                        <td class="db-grid__cell db-grid__cell--text">@FormatText(row.Source.FileName)</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (replayResults.Count > 0)
+    {
+        <div class="surface">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <svg class="w-5 h-5 text-success" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                    <h3 class="text-base font-semibold text-heading">Submitted Flows</h3>
+                </div>
+                <p class="text-xs text-body-secondary">@replayResults.Count rows</p>
+            </div>
+            <div class="db-grid__wrap">
+                <table class="db-grid">
+                    <thead>
+                        <tr>
+                            <th class="db-grid__head db-grid__cell--num">Flow Id</th>
+                            <th class="db-grid__head db-grid__cell--num">Derived From</th>
+                            <th class="db-grid__head db-grid__cell--text">Pnl Date</th>
+                            <th class="db-grid__head db-grid__cell--text">Package Guid</th>
+                            <th class="db-grid__head db-grid__cell--checkbox">Backdated</th>
+                            <th class="db-grid__head db-grid__cell--checkbox">Skip Core</th>
+                            <th class="db-grid__head db-grid__cell--checkbox">Drop Tmp</th>
+                            <th class="db-grid__head db-grid__cell--text">Date Created</th>
+                            <th class="db-grid__head db-grid__cell--text">Created By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var result in replayResults)
+                        {
+                            <tr class="db-grid__row">
+                                <td class="db-grid__cell db-grid__cell--num">@FormatNumber(result.FlowId)</td>
+                                <td class="db-grid__cell db-grid__cell--num">@FormatNumber(result.FlowIdDerivedFrom)</td>
+                                <td class="db-grid__cell db-grid__cell--text">@FormatDate(result.PnlDate)</td>
+                                <td class="db-grid__cell db-grid__cell--text">@result.PackageGuid</td>
+                                <td class="db-grid__cell db-grid__cell--checkbox">
+                                    <input type="checkbox" class="replay-checkbox" checked="@result.WithBackdated" disabled />
+                                </td>
+                                <td class="db-grid__cell db-grid__cell--checkbox">
+                                    <input type="checkbox" class="replay-checkbox" checked="@result.SkipCoreProcess" disabled />
+                                </td>
+                                <td class="db-grid__cell db-grid__cell--checkbox">
+                                    <input type="checkbox" class="replay-checkbox" checked="@result.DropTableTmp" disabled />
+                                </td>
+                                <td class="db-grid__cell db-grid__cell--text">@FormatDateTime(result.DateCreated)</td>
+                                <td class="db-grid__cell db-grid__cell--text">@result.CreatedBy</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <div class="surface">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <svg class="w-5 h-5 text-body-secondary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+                </svg>
+                <h3 class="text-base font-semibold text-heading">Submission Status</h3>
+            </div>
+            <div class="flex items-center gap-3">
+                <button class="primary-button" @onclick="CheckProcessingStatusAsync" disabled="@(!CanCheckProcessingStatus)">
+                    Check processing status
+                </button>
+                @if (isPolling)
+                {
+                    <span class="flex items-center gap-1.5 text-xs text-body-secondary">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+                        </span>
+                        Auto-refresh
+                    </span>
+                }
+                <p class="text-xs text-body-secondary">@statusRows.Count rows</p>
+            </div>
+        </div>
+
+        @if (statusRows.Count > 0)
+        {
+            <div class="flex items-center gap-6 mt-3">
+                <div class="flex items-center gap-2">
+                    <span class="status-badge status-pending">Pending</span>
+                    <span class="text-sm font-semibold text-heading">@pendingCount</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="status-badge status-in-progress">In Progress</span>
+                    <span class="text-sm font-semibold text-heading">@inProgressCount</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="status-badge status-completed">Completed</span>
+                    <span class="text-sm font-semibold text-heading">@completedCount</span>
+                </div>
+            </div>
+
+            <div class="db-grid__wrap mt-4">
+                <table class="db-grid">
+                    <thead>
+                        <tr>
+                            <th class="db-grid__head db-grid__cell--num">Flow Id</th>
+                            <th class="db-grid__head db-grid__cell--num">Derived From</th>
+                            <th class="db-grid__head db-grid__cell--text">Pnl Date</th>
+                            <th class="db-grid__head db-grid__cell--text">Package Guid</th>
+                            <th class="db-grid__head db-grid__cell--text">Created By</th>
+                            <th class="db-grid__head db-grid__cell--text">Date Submitted</th>
+                            <th class="db-grid__head db-grid__cell--text">Date Started</th>
+                            <th class="db-grid__head db-grid__cell--text">Date Completed</th>
+                            <th class="db-grid__head db-grid__cell--text">Submit Status</th>
+                            <th class="db-grid__head db-grid__cell--text">Process Status</th>
+                            <th class="db-grid__head db-grid__cell--text">Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in statusRows)
+                        {
+                            <tr class="db-grid__row">
+                                <td class="db-grid__cell db-grid__cell--num">@FormatNumber(row.FlowId)</td>
+                                <td class="db-grid__cell db-grid__cell--num">@FormatNumber(row.FlowIdDerivedFrom)</td>
+                                <td class="db-grid__cell db-grid__cell--text">@FormatDate(row.PnlDate)</td>
+                                <td class="db-grid__cell db-grid__cell--text">@row.PackageGuid</td>
+                                <td class="db-grid__cell db-grid__cell--text">@row.CreatedBy</td>
+                                <td class="db-grid__cell db-grid__cell--text">@FormatNullableDateTime(row.DateSubmitted)</td>
+                                <td class="db-grid__cell db-grid__cell--text">@FormatNullableDateTime(row.DateStarted)</td>
+                                <td class="db-grid__cell db-grid__cell--text">@FormatNullableDateTime(row.DateCompleted)</td>
+                                <td class="db-grid__cell db-grid__cell--text">
+                                    <span class="status-badge @GetStatusBadgeClass(row)">@GetStatusText(row)</span>
+                                </td>
+                                <td class="db-grid__cell db-grid__cell--text">@FormatText(row.ProcessStatus)</td>
+                                <td class="db-grid__cell db-grid__cell--text">@FormatDuration(row)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p class="muted mt-3 text-sm">No replay flow processing records found.</p>
+        }
+    </div>
+</div>

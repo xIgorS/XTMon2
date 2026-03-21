@@ -1,0 +1,113 @@
+@page "/db-backup-info"
+@rendermode InteractiveServer
+
+<PageTitle>Database Backups</PageTitle>
+
+<div class="space-y-5">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+            <p class="section-label">Database monitoring</p>
+            <h1 class="text-2xl font-bold text-heading mt-1">Database Backups</h1>
+            <p class="muted mt-1">Stored procedure: @ProcedureName</p>
+        </div>
+        <button class="primary-button-filled" @onclick="ReloadAsync" disabled="@isLoading">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+            </svg>
+            @(isLoading ? "Refreshing..." : "Refresh data")
+        </button>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="stat-label">Last refresh</p>
+            <p class="stat-value">@(lastRefresh?.ToString("dd-MM-yyyy HH:mm:ss") ?? "Not loaded")</p>
+            <p class="muted mt-1">Local time</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
+            </svg>
+            <p class="stat-label">Rows</p>
+            <p class="stat-value">@(result?.Rows.Count ?? 0)</p>
+            <p class="muted mt-1">From stored procedure</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" />
+            </svg>
+            <p class="stat-label">Columns</p>
+            <p class="stat-value">@(result?.Columns.Count ?? 0)</p>
+            <p class="muted mt-1">Detected fields</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="stat-label">Status</p>
+            <p class="stat-value">@(string.IsNullOrWhiteSpace(loadError) ? "Ready" : "Error")</p>
+            <p class="muted mt-1">Connectivity</p>
+        </div>
+    </div>
+
+    <div class="space-y-4">
+        @if (isLoading)
+        {
+            <div class="surface">
+                <p class="muted">Loading data from SQL Server...</p>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(loadError))
+        {
+            <div class="surface !border-rose-500/30">
+                <p class="text-sm font-semibold text-error">Failed to load DB backup data.</p>
+                <p class="mt-2 text-sm text-error/80">@loadError</p>
+            </div>
+        }
+        else if (result is null || result.Rows.Count == 0)
+        {
+            <div class="surface">
+                <p class="muted">No rows returned from the stored procedure.</p>
+            </div>
+        }
+        else
+        {
+            var gridColumns = GetGridColumns();
+            var lastUpdated = GetLastUpdatedDisplayValue();
+
+            <div class="surface">
+                @if (!string.IsNullOrWhiteSpace(lastUpdated))
+                {
+                    <p class="text-sm font-bold text-heading mb-3">Last Updated: @lastUpdated</p>
+                }
+                <div class="db-grid__wrap">
+                    <table class="db-grid">
+                        <thead>
+                            <tr>
+                                @foreach (var column in gridColumns)
+                                {
+                                    <th class="db-grid__head @GetColumnAlignmentClass(column.Name)">@ToHeaderLabel(column.Name)</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in result.Rows)
+                            {
+                                <tr class="db-grid__row">
+                                    @foreach (var column in gridColumns)
+                                    {
+                                        var value = column.Index < row.Count ? row[column.Index] : null;
+                                        <td class="db-grid__cell @GetColumnAlignmentClass(column.Name)">@FormatCellValue(value, column.Name)</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </div>
+</div>

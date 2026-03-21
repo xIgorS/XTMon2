@@ -1,0 +1,102 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+        // Apply saved theme immediately to prevent flash
+        (function () {
+            var theme = null;
+            try {
+                theme = localStorage.getItem('theme');
+            } catch {
+                theme = null;
+            }
+
+            if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
+    <ResourcePreloader />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["XTMon.styles.css"]" />
+    <ImportMap />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet />
+</head>
+
+<body class="min-h-screen">
+    <Routes />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script>
+        // ── Theme helpers ──
+        function applyStoredTheme() {
+            var theme = null;
+            try {
+                theme = localStorage.getItem('theme');
+            } catch {
+                theme = null;
+            }
+
+            if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        }
+
+        function syncThemeIcons() {
+            var isDark = document.documentElement.classList.contains('dark');
+            var sun = document.getElementById('theme-icon-sun');
+            var moon = document.getElementById('theme-icon-moon');
+            if (sun && moon) {
+                sun.classList.toggle('hidden', !isDark);
+                moon.classList.toggle('hidden', isDark);
+            }
+        }
+
+        window.themeToggle = function () {
+            var isDark = document.documentElement.classList.toggle('dark');
+            try {
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            } catch {
+                // Ignore storage restrictions and keep in-memory toggle behavior.
+            }
+
+            syncThemeIcons();
+            return isDark;
+        };
+
+        // Event delegation — works on static SSR and interactive pages alike
+        if (!window.__xtMonThemeClickHandlerAttached) {
+            window.__xtMonThemeClickHandlerAttached = true;
+            document.addEventListener('click', function (e) {
+                if (e.target.closest('#theme-toggle-btn')) {
+                    themeToggle();
+                }
+            });
+        }
+
+        // Re-apply theme after every Blazor enhanced navigation
+        // (enhanced nav replaces <html> attributes, stripping the dark class)
+        if (window.Blazor?.addEventListener) {
+            Blazor.addEventListener('enhancedload', function () {
+                applyStoredTheme();
+                syncThemeIcons();
+            });
+        }
+
+        // Initial sync
+        applyStoredTheme();
+        syncThemeIcons();
+    </script>
+</body>
+
+</html>

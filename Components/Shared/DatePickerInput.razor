@@ -1,0 +1,43 @@
+<div class="relative">
+    <svg class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-body-secondary"
+         xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+    </svg>
+    <input id="@InputId"
+           class="date-picker__trigger"
+           type="text"
+           value="@DisplayValue"
+           placeholder="DD-MM-YYYY"
+           @onclick="Toggle"
+           readonly
+           disabled="@IsDisabled" />
+
+    @if (isOpen)
+    {
+        <div class="date-picker__calendar" role="dialog" aria-label="@(AriaLabel ?? "Date picker calendar")">
+            <div class="date-picker__header">
+                <button type="button" class="date-picker__nav" @onclick="() => MoveMonth(-1)">&#8249;</button>
+                <p class="date-picker__title">@GetCalendarTitle()</p>
+                <button type="button" class="date-picker__nav" @onclick="() => MoveMonth(1)">&#8250;</button>
+            </div>
+            <div class="date-picker__weekdays">
+                @foreach (var weekday in WeekdayLabels)
+                {
+                    <span>@weekday</span>
+                }
+            </div>
+            <div class="date-picker__grid">
+                @foreach (var day in GetCalendarDays())
+                {
+                    <button type="button"
+                            class="@GetDayClass(day)"
+                            @onclick="() => SelectDateAsync(day.Date)"
+                            disabled="@(!day.IsSelectable)">
+                        @day.Date.Day
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>

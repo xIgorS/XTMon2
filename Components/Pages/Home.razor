@@ -1,0 +1,196 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+<PageTitle>Overview</PageTitle>
+
+<div class="space-y-5">
+    <div class="flex flex-col gap-2">
+        <h1 class="text-3xl font-bold text-heading">Welcome to APS Actions</h1>
+        <p class="text-sm text-body-secondary" style="max-width: 48rem;">
+            A central monitoring and recovery dashboard for <strong>APS Actions / XTarget</strong> SQL Server processing.
+            Track database health, replay failed ETL flows, and run JV calculation checks — all from one place.
+        </p>
+    </div>
+
+    <!-- Quick-access feature cards -->
+    <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <a href="monitoring" class="stat-card" style="text-decoration: none; cursor: pointer;">
+            <div class="stat-label">Database Space</div>
+            <p class="mt-1.5 text-sm text-body-secondary">Monitor allocated space across all databases, grouped by métier.</p>
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375" />
+                </svg>
+            </div>
+        </a>
+        <a href="db-backup-info" class="stat-card" style="text-decoration: none; cursor: pointer;">
+            <div class="stat-label">Database Backups</div>
+            <p class="mt-1.5 text-sm text-body-secondary">View latest backup status, sizes, and schedules for every database.</p>
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5A2.25 2.25 0 0 1 5.25 5.25h13.5A2.25 2.25 0 0 1 21 7.5v9A2.25 2.25 0 0 1 18.75 18.75H5.25A2.25 2.25 0 0 1 3 16.5v-9ZM7.5 9.75h9m-9 3h5.25" />
+                </svg>
+            </div>
+        </a>
+        <AuthorizeView Policy="UamRestricted">
+            <Authorized>
+                <a href="replay-flows" class="stat-card" style="text-decoration: none; cursor: pointer;">
+                    <div class="stat-label">Replay Flows</div>
+                    <p class="mt-1.5 text-sm text-body-secondary">Identify and replay failed ETL flows from the staging pipeline.</p>
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                        </svg>
+                    </div>
+                </a>
+                <a href="jv-calculation-check" class="stat-card" style="text-decoration: none; cursor: pointer;">
+                    <div class="stat-label">JV Calculation</div>
+                    <p class="mt-1.5 text-sm text-body-secondary">Run JV checks and fix calculation discrepancies.</p>
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M3 6.75A2.25 2.25 0 0 1 5.25 4.5h13.5A2.25 2.25 0 0 1 21 6.75v10.5A2.25 2.25 0 0 1 18.75 19.5H5.25A2.25 2.25 0 0 1 3 17.25V6.75Z" />
+                        </svg>
+                    </div>
+                </a>
+            </Authorized>
+        </AuthorizeView>
+    </div>
+
+    <!-- Tech stack & info -->
+    <div class="surface">
+        <div class="stat-label mb-3">How It Works</div>
+        <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+                <p class="text-sm font-semibold text-heading">Real-time Monitoring</p>
+                <p class="text-xs text-body-secondary mt-1">
+                    Live SignalR connection keeps dashboards up to date. All data is fetched
+                    from SQL Server stored procedures via ADO.NET — no ORM overhead.
+                </p>
+            </div>
+            <div>
+                <p class="text-sm font-semibold text-heading">Role-based Access</p>
+                <p class="text-xs text-body-secondary mt-1">
+                    Windows Authentication identifies users automatically. In production,
+                    sensitive actions (Replay Flows, JV Checks) require UAM Name "APS".
+                </p>
+            </div>
+            <div>
+                <p class="text-sm font-semibold text-heading">Background Processing</p>
+                <p class="text-xs text-body-secondary mt-1">
+                    Flow replays and JV fixes run as hosted background services with
+                    queue-based job management and real-time status polling.
+                </p>
+            </div>
+            <div>
+                <p class="text-sm font-semibold text-heading">Built With</p>
+                <p class="text-xs text-body-secondary mt-1">
+                    .NET 10 &bull; Blazor Interactive Server &bull; IIS &bull;
+                    Serilog &bull; Tailwind CSS &bull; SQL Server stored procedures.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Start Guide -->
+    <div class="surface">
+        <div class="stat-label mb-3">Quick Start Guide</div>
+        <div class="grid sm:grid-cols-2 gap-4">
+            <div class="flex gap-3">
+                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">1</div>
+                <div>
+                    <p class="text-sm font-semibold text-heading">Check Database Health</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        Navigate to <strong>Database Space</strong> to view allocated storage per métier.
+                        Use the donut charts to spot databases nearing capacity.
+                    </p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">2</div>
+                <div>
+                    <p class="text-sm font-semibold text-heading">Review Backup Status</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        Open <strong>Database Backups</strong> to verify all databases have recent backups.
+                        Sort by date to quickly find any that may need attention.
+                    </p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">3</div>
+                <div>
+                    <p class="text-sm font-semibold text-heading">Replay Failed Flows</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        Go to <strong>Replay Flows</strong> to find failed ETL processes. Select the flows
+                        you want to retry and click Replay — progress updates in real time.
+                    </p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">4</div>
+                <div>
+                    <p class="text-sm font-semibold text-heading">Run JV Checks</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        Use <strong>JV Calculation</strong> to verify JV amounts. Select a
+                        business date, run the check, and review any discrepancies found.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data sources -->
+    <div class="grid sm:grid-cols-2 gap-4">
+        <div class="surface">
+            <div class="stat-label mb-3">Data Sources</div>
+            <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-teal-500"></span>
+                    <span class="text-xs text-body-secondary"><strong class="text-heading">LOG_FI_ALMT</strong> — Flow execution logs &amp; replay tracking</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-teal-500"></span>
+                    <span class="text-xs text-body-secondary"><strong class="text-heading">STAGING_FI_ALMT</strong> — ETL staging pipeline data</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-teal-500"></span>
+                    <span class="text-xs text-body-secondary"><strong class="text-heading">PUBLICATION</strong> — Published transaction records</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-teal-500"></span>
+                    <span class="text-xs text-body-secondary"><strong class="text-heading">DTM_FI</strong> — JV calculation &amp; financial data</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-teal-500"></span>
+                    <span class="text-xs text-body-secondary"><strong class="text-heading">MAIN_UAM</strong> — User access management &amp; roles</span>
+                </div>
+            </div>
+        </div>
+        <div class="surface">
+            <div class="stat-label mb-3">Need Help?</div>
+            <div class="space-y-3">
+                <div>
+                    <p class="text-sm font-semibold text-heading">Access Issues</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        <strong>Replay Flows</strong> and <strong>JV Calculation</strong> pages require
+                        an APS entitlement. If these pages are hidden or you
+                        receive 403 errors, contact your UAM administrator to request access.
+                    </p>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-heading">Data Questions</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        All data is sourced from SQL Server stored procedures. If values look
+                        unexpected, verify the source procedure and last refresh timestamp.
+                    </p>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-heading">Environment</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        Check the badge in the sidebar — <strong>DEV</strong> means authorization is
+                        bypassed, <strong>PROD</strong> means UAM roles are enforced.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

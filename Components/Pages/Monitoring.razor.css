@@ -1,0 +1,62 @@
+/* ─── Alert-level styles (Monitoring) ─── */
+
+/* Pill badge base */
+.alert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.alert-badge::before {
+  content: "";
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* OK badge */
+.alert-badge.alert-ok {
+  color: var(--success-text);
+  background-color: rgba(5, 150, 105, 0.1);
+}
+
+.alert-badge.alert-ok::before {
+  background-color: var(--success-text);
+}
+
+/* WARNING badge */
+.alert-badge.alert-warning {
+  color: #d97706;
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+.alert-badge.alert-warning::before {
+  background-color: #d97706;
+}
+
+/* CRITICAL badge */
+.alert-badge.alert-critical {
+  color: var(--error-text);
+  background-color: rgba(244, 63, 94, 0.08);
+}
+
+.alert-badge.alert-critical::before {
+  background-color: var(--error-text);
+}
+
+/* Row-level highlight for warning/critical rows */
+.db-grid__row.alert-warning td {
+  background-color: rgba(245, 158, 11, 0.06);
+}
+
+.db-grid__row.alert-critical td {
+  background-color: rgba(244, 63, 94, 0.06);
+}
