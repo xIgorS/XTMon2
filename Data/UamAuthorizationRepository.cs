@@ -61,9 +61,9 @@ public sealed class UamAuthorizationRepository : IUamAuthorizationRepository
             
             return false;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to check authorization for user {Username} via {StoredProcedure}", 
+            _logger.LogError(ex, "Failed to check authorization for user {Username} via {StoredProcedure}",
                 windowsUsername, _options.GetAdminUserStoredProcedure);
             return false;
         }

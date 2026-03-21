@@ -3,14 +3,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using XTMon.Data;
 using XTMon.Models;
 using XTMon.Options;
 
 namespace XTMon.Components.Pages;
 
-public partial class Monitoring : ComponentBase
+public partial class Monitoring : ComponentBase, IAsyncDisposable
 {
     private const string DatabaseNameColumn = "DatabaseName";
     private const string MonitoringLoadErrorMessage = "Unable to load monitoring data right now. Please try again.";
@@ -51,7 +50,7 @@ public partial class Monitoring : ComponentBase
 	];
 
     [Inject]
-    private MonitoringRepository Repository { get; set; } = default!;
+    private IMonitoringRepository Repository { get; set; } = default!;
 
     [Inject]
     private IOptions<MonitoringOptions> MonitoringOptions { get; set; } = default!;
@@ -59,6 +58,7 @@ public partial class Monitoring : ComponentBase
     [Inject]
     private ILogger<Monitoring> Logger { get; set; } = default!;
 
+    private readonly CancellationTokenSource disposeCts = new();
     private MonitoringTableResult? result;
     private IReadOnlyList<DbCard> dbCards = Array.Empty<DbCard>();
     private bool isLoading;
@@ -92,7 +92,7 @@ public partial class Monitoring : ComponentBase
         loadError = null;
         try
         {
-            result = await Repository.GetDbSizePlusDiskAsync(CancellationToken.None);
+            result = await Repository.GetDbSizePlusDiskAsync(disposeCts.Token);
             lastUpdated = GetLastUpdatedDisplayValue();
             BuildDbCards();
             lastRefresh = DateTimeOffset.Now;
@@ -110,7 +110,7 @@ public partial class Monitoring : ComponentBase
 		overviewLoadError = null;
 		try
 		{
-			var overviewResult = await Repository.GetDbBackupsOverviewAsync(CancellationToken.None);
+			var overviewResult = await Repository.GetDbBackupsAsync(disposeCts.Token);
 			fiChart = BuildPieData(overviewResult, "FI");
 			gecdChart = BuildPieData(overviewResult, "GECD");
 			overviewLastRefresh = DateTimeOffset.Now;
@@ -180,35 +180,8 @@ public partial class Monitoring : ComponentBase
         return -1;
     }
 
-    private static string ToHeaderLabel(string? columnName)
-    {
-        if (string.IsNullOrWhiteSpace(columnName))
-        {
-            return string.Empty;
-        }
-
-        var builder = new StringBuilder(columnName.Length + 4);
-        for (var i = 0; i < columnName.Length; i++)
-        {
-            var current = columnName[i];
-            if (i > 0)
-            {
-                var previous = columnName[i - 1];
-                var next = i + 1 < columnName.Length ? columnName[i + 1] : '\0';
-                var boundary = char.IsUpper(current) &&
-                               (char.IsLower(previous) || (char.IsUpper(previous) && char.IsLower(next)));
-
-                if (boundary)
-                {
-                    builder.Append(' ');
-                }
-            }
-
-            builder.Append(current);
-        }
-
-        return builder.ToString();
-    }
+    private static string ToHeaderLabel(string? columnName) =>
+        JvCalculationHelper.ToHeaderLabel(columnName);
 
     private static string FormatCellValue(string? value, string columnName)
     {
@@ -535,4 +508,11 @@ public partial class Monitoring : ComponentBase
 		public bool HasData => Slices.Count > 0 && Total > 0;
 		public string ChartStyle => BuildChartStyle(Slices, Total);
 	}
+
+    public ValueTask DisposeAsync()
+    {
+        disposeCts.Cancel();
+        disposeCts.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

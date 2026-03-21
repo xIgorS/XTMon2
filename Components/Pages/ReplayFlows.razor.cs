@@ -474,6 +474,11 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     {
         StopPolling();
 
+        if (pendingCount == 0 && inProgressCount == 0)
+        {
+            return;
+        }
+
         pollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
         var timer = new PeriodicTimer(TimeSpan.FromSeconds(ReplayFlowsOptions.Value.StatusPollIntervalSeconds));
         pollTimer = timer;

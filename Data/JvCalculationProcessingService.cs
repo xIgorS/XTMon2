@@ -44,8 +44,9 @@ public sealed class JvCalculationProcessingService : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 JvJobRecord? job;
-                using (var scope = _scopeFactory.CreateScope())
+                try
                 {
+                    using var scope = _scopeFactory.CreateScope();
                     var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
 
                     var staleTimeout = TimeSpan.FromSeconds(_jvCalculationOptions.JobRunningStaleTimeoutSeconds);
@@ -56,6 +57,17 @@ public sealed class JvCalculationProcessingService : BackgroundService
                     }
 
                     job = await repository.TryTakeNextJvJobAsync(Environment.MachineName, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    LogProcessorException(ex, "processing loop poll");
+                    _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, ex, "JV calculation processing loop encountered a transient error. Retrying after delay.");
+                    await Task.Delay(_idleDelay, stoppingToken);
+                    continue;
                 }
 
                 if (job is null)
@@ -70,11 +82,6 @@ public sealed class JvCalculationProcessingService : BackgroundService
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             _logger.LogInformation("JV calculation processing service cancellation received.");
-        }
-        catch (Exception ex)
-        {
-            LogProcessorException(ex, "processing loop");
-            _logger.LogError(AppLogEvents.ReplayProcessorBackgroundFailed, ex, "JV calculation processing service terminated unexpectedly.");
         }
 
         _logger.LogInformation("JV calculation processing service stopped.");
@@ -112,7 +119,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
         catch (Exception ex)
         {
             LogProcessorException(ex, $"job {job.JobId}");
-            _logger.LogError(AppLogEvents.ReplayProcessorBackgroundFailed, ex, "JV job {JobId} failed.", job.JobId);
+            _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, ex, "JV job {JobId} failed.", job.JobId);
             try
             {
                 using var scope = _scopeFactory.CreateScope();
@@ -121,7 +128,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
             }
             catch (Exception markFailedException)
             {
-                _logger.LogError(AppLogEvents.ReplayProcessorBackgroundFailed, markFailedException, "Failed to mark JV job {JobId} as failed.", job.JobId);
+                _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, markFailedException, "Failed to mark JV job {JobId} as failed.", job.JobId);
             }
         }
     }

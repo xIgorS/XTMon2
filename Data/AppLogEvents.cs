@@ -31,6 +31,7 @@ public static class AppLogEvents
     public static readonly EventId ReplayProcessorBackgroundFailed = new(4001, nameof(ReplayProcessorBackgroundFailed));
     public static readonly EventId JvProcessorSqlTimeout = new(4002, nameof(JvProcessorSqlTimeout));
     public static readonly EventId JvProcessorConnectionFailed = new(4003, nameof(JvProcessorConnectionFailed));
+    public static readonly EventId JvProcessorBackgroundFailed = new(4004, nameof(JvProcessorBackgroundFailed));
 
     public static readonly EventId DiagnosticsCheckFailed = new(5001, nameof(DiagnosticsCheckFailed));
 }

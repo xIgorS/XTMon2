@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Globalization;
-using System.Text;
 using XTMon.Data;
 using XTMon.Models;
 using XTMon.Options;
@@ -19,7 +18,7 @@ public partial class DbBackupInfo : ComponentBase
     };
 
     [Inject]
-    private MonitoringRepository Repository { get; set; } = default!;
+    private IMonitoringRepository Repository { get; set; } = default!;
 
     [Inject]
     private IOptions<MonitoringOptions> MonitoringOptions { get; set; } = default!;
@@ -62,35 +61,8 @@ public partial class DbBackupInfo : ComponentBase
         }
     }
 
-    private static string ToHeaderLabel(string? columnName)
-    {
-        if (string.IsNullOrWhiteSpace(columnName))
-        {
-            return string.Empty;
-        }
-
-        var builder = new StringBuilder(columnName.Length + 4);
-        for (var i = 0; i < columnName.Length; i++)
-        {
-            var current = columnName[i];
-            if (i > 0)
-            {
-                var previous = columnName[i - 1];
-                var next = i + 1 < columnName.Length ? columnName[i + 1] : '\0';
-                var boundary = char.IsUpper(current) &&
-                               (char.IsLower(previous) || (char.IsUpper(previous) && char.IsLower(next)));
-
-                if (boundary)
-                {
-                    builder.Append(' ');
-                }
-            }
-
-            builder.Append(current);
-        }
-
-        return builder.ToString();
-    }
+    private static string ToHeaderLabel(string? columnName) =>
+        JvCalculationHelper.ToHeaderLabel(columnName);
 
     private static string FormatCellValue(string? value, string columnName)
     {

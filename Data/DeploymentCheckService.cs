@@ -120,32 +120,33 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
                 storedProcedures.Select(sp => new StoredProcedureCheckResult(sp, false, [], null)).ToList());
         }
 
-        try
+        await using (connection)
         {
-            using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            connectCts.CancelAfter(TimeSpan.FromSeconds(10));
-            await connection.OpenAsync(connectCts.Token);
-        }
-        catch (Exception ex)
-        {
+            try
+            {
+                using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                connectCts.CancelAfter(TimeSpan.FromSeconds(10));
+                await connection.OpenAsync(connectCts.Token);
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                return new DatabaseCheckResult(connectionStringName, null, null, false, sw.Elapsed, ex.Message,
+                    storedProcedures.Select(sp => new StoredProcedureCheckResult(sp, false, [], null)).ToList());
+            }
+
             sw.Stop();
-            await connection.DisposeAsync();
-            return new DatabaseCheckResult(connectionStringName, null, null, false, sw.Elapsed, ex.Message,
-                storedProcedures.Select(sp => new StoredProcedureCheckResult(sp, false, [], null)).ToList());
+            var serverName = connection.DataSource;
+            var databaseName = connection.Database;
+
+            var spResults = new List<StoredProcedureCheckResult>(storedProcedures.Count);
+            foreach (var sp in storedProcedures)
+            {
+                spResults.Add(await CheckStoredProcedureAsync(connection, sp, cancellationToken));
+            }
+
+            return new DatabaseCheckResult(connectionStringName, serverName, databaseName, true, sw.Elapsed, null, spResults);
         }
-
-        sw.Stop();
-        var serverName = connection.DataSource;
-        var databaseName = connection.Database;
-
-        var spResults = new List<StoredProcedureCheckResult>(storedProcedures.Count);
-        foreach (var sp in storedProcedures)
-        {
-            spResults.Add(await CheckStoredProcedureAsync(connection, sp, cancellationToken));
-        }
-
-        await connection.DisposeAsync();
-        return new DatabaseCheckResult(connectionStringName, serverName, databaseName, true, sw.Elapsed, null, spResults);
     }
 
     private static async Task<StoredProcedureCheckResult> CheckStoredProcedureAsync(

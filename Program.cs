@@ -126,7 +126,7 @@ builder.Services
         "JvCalculation options must define all required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services.AddSingleton<SqlConnectionFactory>();
-builder.Services.AddScoped<MonitoringRepository>();
+builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();

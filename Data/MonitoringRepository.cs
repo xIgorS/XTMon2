@@ -6,7 +6,7 @@ using XTMon.Options;
 
 namespace XTMon.Data;
 
-public sealed class MonitoringRepository
+public sealed class MonitoringRepository : IMonitoringRepository
 {
     private readonly SqlConnectionFactory _connectionFactory;
     private readonly MonitoringOptions _options;
@@ -36,19 +36,6 @@ public sealed class MonitoringRepository
     }
 
     public async Task<MonitoringTableResult> GetDbBackupsAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await ExecuteMonitoringTableProcedureAsync(_options.DbBackupsStoredProcedure, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring procedure execution failed for {StoredProcedure}.", _options.DbBackupsStoredProcedure);
-            throw;
-        }
-    }
-
-    public async Task<MonitoringTableResult> GetDbBackupsOverviewAsync(CancellationToken cancellationToken)
     {
         try
         {
