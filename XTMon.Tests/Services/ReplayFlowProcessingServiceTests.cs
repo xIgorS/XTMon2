@@ -43,24 +43,18 @@ public class ReplayFlowProcessingServiceTests
     [Fact]
     public async Task StartAndStop_WithNoItems_StopsCleanly()
     {
-        var (service, _) = CreateService();
+        var (service, repo) = CreateService();
 
         await service.StartAsync(CancellationToken.None);
         await service.StopAsync(CancellationToken.None);
-        // No exception = pass
+
+        repo.Verify(x => x.ProcessReplayFlowsAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task WhenItemDequeued_CallsProcessReplayFlowsAsync()
     {
         var processedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var (service, repo) = CreateService(r =>
-        {
-            r.Setup(x => x.ProcessReplayFlowsAsync(It.IsAny<CancellationToken>()))
-             .Callback(() => processedTcs.TrySetResult(true))
-             .Returns(Task.CompletedTask);
-        });
 
         // We need to access the queue that was injected; rebuild so we control the queue
         var repo2 = new Mock<IReplayFlowRepository>();

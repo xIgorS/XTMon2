@@ -45,7 +45,8 @@ public class JvCalculationProcessingServiceTests
     private static (JvCalculationProcessingService service, Mock<IJvCalculationRepository> repo)
         CreateService(
             Mock<IJvCalculationRepository> repo,
-            IOptions<JvCalculationOptions>? options = null)
+            IOptions<JvCalculationOptions>? options = null,
+            TimeSpan? idleDelay = null)
     {
         var sp = new Mock<IServiceProvider>();
         sp.Setup(p => p.GetService(typeof(IJvCalculationRepository))).Returns(repo.Object);
@@ -60,7 +61,8 @@ public class JvCalculationProcessingServiceTests
         var service = new JvCalculationProcessingService(
             factory.Object,
             options ?? DefaultOptions(),
-            NullLogger<JvCalculationProcessingService>.Instance);
+            NullLogger<JvCalculationProcessingService>.Instance,
+            idleDelay ?? TimeSpan.FromSeconds(5));
 
         return (service, repo);
     }
@@ -186,7 +188,6 @@ public class JvCalculationProcessingServiceTests
     [Fact]
     public async Task OnEachPoll_CallsExpireStaleRunningJobs()
     {
-        var expireCallCount = 0;
         var twoExpiresTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var repo = BaseRepo();
@@ -195,26 +196,22 @@ public class JvCalculationProcessingServiceTests
         repo.Setup(r => r.ExpireStaleRunningJobsAsync(It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() =>
             {
-                expireCallCount++;
-                if (expireCallCount >= 2)
+                if (repo.Invocations.Count(invocation => invocation.Method.Name == nameof(IJvCalculationRepository.ExpireStaleRunningJobsAsync)) >= 2)
                 {
                     twoExpiresTcs.TrySetResult(true);
                 }
                 return 0;
             });
 
-        var (svc, _) = CreateService(repo);
+        var (svc, _) = CreateService(repo, idleDelay: TimeSpan.FromMilliseconds(10));
         await svc.StartAsync(CancellationToken.None);
 
-        // We need the service to poll at least twice. The idle delay is 5s which is too long.
-        // We set a short timeout and accept that this test might not verify two polls reliably
-        // without making IdleDelay configurable. Instead, verify at least one call.
-        await Task.Delay(200);
+        await twoExpiresTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await svc.StopAsync(CancellationToken.None);
 
         repo.Verify(
             r => r.ExpireStaleRunningJobsAsync(It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.AtLeastOnce);
+            Times.AtLeast(2));
     }
 
     [Fact]

@@ -7,21 +7,32 @@ namespace XTMon.Data;
 
 public sealed class JvCalculationProcessingService : BackgroundService
 {
-    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DefaultIdleDelay = TimeSpan.FromSeconds(5);
     private const string StaleRunningJobErrorMessage = "JV background job timed out while in Running status and was auto-failed.";
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<JvCalculationProcessingService> _logger;
     private readonly JvCalculationOptions _jvCalculationOptions;
+    private readonly TimeSpan _idleDelay;
 
     public JvCalculationProcessingService(
         IServiceScopeFactory scopeFactory,
         IOptions<JvCalculationOptions> jvCalculationOptions,
         ILogger<JvCalculationProcessingService> logger)
+        : this(scopeFactory, jvCalculationOptions, logger, DefaultIdleDelay)
+    {
+    }
+
+    internal JvCalculationProcessingService(
+        IServiceScopeFactory scopeFactory,
+        IOptions<JvCalculationOptions> jvCalculationOptions,
+        ILogger<JvCalculationProcessingService> logger,
+        TimeSpan idleDelay)
     {
         _scopeFactory = scopeFactory;
         _jvCalculationOptions = jvCalculationOptions.Value;
         _logger = logger;
+        _idleDelay = idleDelay;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -49,7 +60,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
 
                 if (job is null)
                 {
-                    await Task.Delay(IdleDelay, stoppingToken);
+                    await Task.Delay(_idleDelay, stoppingToken);
                     continue;
                 }
 
