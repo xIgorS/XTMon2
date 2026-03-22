@@ -18,6 +18,8 @@ node_modules/
 
 # OS
 .DS_Store
+Thumbs.db
+desktop.ini
 
 # Logs
 *.log
@@ -26,4 +28,13 @@ logs/
 # Test results / coverage
 TestResults/
 
+# Publish output
+publish/
+
+# Tool binaries
 tailwindcss.exe
+
+# ReSharper / NCrunch
+*.DotSettings.user
+*.ncrunchproject
+*.ncrunchsolution

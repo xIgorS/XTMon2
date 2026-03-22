@@ -8,7 +8,7 @@ pool:
 
 variables:
   buildConfiguration: Release
-  dotnetVersion: '10.0.x'
+  solution: 'XTMon.sln'
   testProject: 'tests/XTMon.Tests/XTMon.Tests.csproj'
   mainProject: 'src/XTMon/XTMon.csproj'
 
@@ -23,48 +23,49 @@ stages:
     displayName: 'Restore · Build · Test · Publish'
     steps:
 
-    - task: UseDotNet@2
-      displayName: 'Use .NET $(dotnetVersion)'
-      inputs:
-        packageType: sdk
-        version: $(dotnetVersion)
+    # ── Verify .NET SDK is available on the agent ──────────────────────────────
+    # No UseDotNet@2 — the agent has no internet access.
+    # .NET 10 SDK must be pre-installed on the build agent.
+    - script: dotnet --version
+      displayName: 'Verify .NET SDK version'
 
     # ── Restore ───────────────────────────────────────────────────────────────
     - task: DotNetCoreCLI@2
       displayName: 'Restore packages'
       inputs:
         command: restore
-        projects: '**/*.csproj'
+        projects: $(solution)
         # If using an internal NuGet feed add:
         # feedsToUse: select
         # vstsFeed: '<your-feed-guid-or-name>'
 
-    # ── Build (main project only — Release) ───────────────────────────────────
+    # ── Build (entire solution — ensures test project is also built) ──────────
     - task: DotNetCoreCLI@2
       displayName: 'Build $(buildConfiguration)'
       inputs:
         command: build
-        projects: $(mainProject)
+        projects: $(solution)
         arguments: '--no-restore --configuration $(buildConfiguration)'
 
-    # ── Test (Debug build keeps symbols for coverage) ─────────────────────────
+    # ── Test ──────────────────────────────────────────────────────────────────
     - task: DotNetCoreCLI@2
       displayName: 'Run unit tests'
       inputs:
         command: test
         projects: $(testProject)
         arguments: >-
-          --no-restore
-          --configuration Debug
+          --no-build
+          --configuration $(buildConfiguration)
           --collect:"XPlat Code Coverage"
           --results-directory $(Agent.TempDirectory)/TestResults
           --logger trx
         publishTestResults: true
 
     # ── Publish code coverage report ──────────────────────────────────────────
-    - task: PublishCodeCoverageResults@2
+    - task: PublishCodeCoverageResults@1
       displayName: 'Publish code coverage'
       inputs:
+        codeCoverageTool: Cobertura
         summaryFileLocation: '$(Agent.TempDirectory)/TestResults/**/coverage.cobertura.xml'
       condition: succeededOrFailed()
 
