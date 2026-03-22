@@ -13,10 +13,10 @@ A central monitoring and recovery dashboard for SQL Server processing. Provides 
 ## Running Tests
 
 ```powershell
-dotnet test XTMon.Tests/XTMon.Tests.csproj
+dotnet test tests/XTMon.Tests/XTMon.Tests.csproj
 ```
 
-The test project (`XTMon.Tests/`) contains 137 xUnit unit tests covering pure logic helpers, the in-memory processing queue, background service orchestration, and the UAM authorization handler. No SQL Server connection or browser is needed.
+The test project (`tests/XTMon.Tests/`) contains 137 xUnit unit tests covering pure logic helpers, the in-memory processing queue, background service orchestration, and the UAM authorization handler. No SQL Server connection or browser is needed.
 
 See the [Testing](#testing) section for coverage details.
 
@@ -25,7 +25,7 @@ See the [Testing](#testing) section for coverage details.
 ### Development Mode
 
 ```powershell
-dotnet run
+dotnet run --project .\src\XTMon\XTMon.csproj
 ```
 
 - Uses the **`https`** launch profile (port **7009**)
@@ -38,7 +38,7 @@ Open: **https://localhost:7009**
 ### Production Mode
 
 ```powershell
-dotnet run --launch-profile https-prod
+dotnet run --project .\src\XTMon\XTMon.csproj --launch-profile https-prod
 ```
 
 - Uses the **`https-prod`** launch profile (port **7010**)
@@ -93,7 +93,7 @@ You should see `AspNetCoreModuleV2` in the output. If it is missing, repair or r
 On your development machine:
 
 ```powershell
-dotnet publish .\XTMon.csproj -c Release -o .\publish
+dotnet publish .\src\XTMon\XTMon.csproj -c Release -o .\publish
 ```
 
 The `publish` directory is generated output and should be treated as disposable deployment artifacts rather than source-controlled project files.
@@ -212,7 +212,7 @@ Use this when you want XTMon hosted by IIS but running with `ASPNETCORE_ENVIRONM
 From project root:
 
 ```powershell
-dotnet publish .\XTMon.csproj -c Debug -o C:\inetpub\XTMon-Dev
+dotnet publish .\src\XTMon\XTMon.csproj -c Debug -o C:\inetpub\XTMon-Dev
 ```
 
 ### 3) Create IIS App Pool + Site
@@ -367,9 +367,9 @@ ORDER BY l.[TimeStamp] DESC;
 
 | File | Purpose |
 |------|---------|
-| `appsettings.json` | Base configuration (loaded in all environments) |
-| `appsettings.Development.json` | Development overrides (loaded only in Development mode) |
-| `Properties/launchSettings.json` | Launch profiles for local development |
+| `src/XTMon/appsettings.json` | Base configuration (loaded in all environments) |
+| `src/XTMon/appsettings.Development.json` | Development overrides (loaded only in Development mode) |
+| `src/XTMon/Properties/launchSettings.json` | Launch profiles for local development |
 | `web.config` | IIS integration and environment variable (auto-generated on publish) |
 
 ## Testing
@@ -377,7 +377,7 @@ ORDER BY l.[TimeStamp] DESC;
 The `XTMon.Tests` project is a self-contained xUnit test suite. It does not require a live SQL Server, IIS, or a browser to run.
 
 ```powershell
-dotnet test XTMon.Tests/XTMon.Tests.csproj
+dotnet test tests/XTMon.Tests/XTMon.Tests.csproj
 ```
 
 ### What Is Covered

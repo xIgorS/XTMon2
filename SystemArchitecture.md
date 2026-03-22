@@ -146,7 +146,7 @@ The application is structured using a standard clean layer approach for Blazor.
 ### 4.1. User Interface (Components & Pages)
 The UI is driven by Blazor Server (`InteractiveServerComponents`) and styled with **Tailwind CSS**. It incorporates centralized navigation (`App.razor`, `MainLayout.razor`, `NavMenu.razor`) with an environment indicator badge (DEV/PROD) in the sidebar.
 
-- **Pages (`Components/Pages/`)**:
+- **Pages (`src/XTMon/Components/Pages/`)**:
   - `Home.razor`: Landing page with feature cards, quick-start guide, data sources overview, and help information.
   - `Monitoring.razor` / `DbBackupInfo.razor`: System monitoring dashboards with interactive grids.
   - `ReplayFlows.razor`: Complex data-entry and tabular status UI for failed flow resolution. **Requires APS entitlement.**
@@ -184,7 +184,7 @@ One of XTMon's standout architectural patterns is the usage of `IHostedService` 
 ---
 
 ## 5. Models (Data Transfer Objects)
-The `Models/` directory houses immutable C# `record` types used strictly for mapping SQL Output to UI state, ensuring thread safety inside Blazor Server:
+The `src/XTMon/Models/` directory houses immutable C# `record` types used strictly for mapping SQL Output to UI state, ensuring thread safety inside Blazor Server:
 - **Monitoring**: `MonitoringTableResult` encompasses a dynamic array of column names and a jagged list of string values.
 - **Replay**: `FailedFlowRow`, `ReplayFlowResultRow`, `ReplayFlowSubmissionRow`, `ReplayFlowStatusRow`.
 - **JV Check**: `JvJobRecord`, `JvCalculationCheckResult`, `JvJobEnqueueResult`, `JvPnlDatesResult`.
@@ -233,8 +233,8 @@ XTMon uses a two-pronged logging system based on **Serilog**:
 
 ### 8.1. Build
 - Built on **.NET 10**.
-- Tailwind CSS compilation: `npm run build:css` compiles `Styles/tailwind.css` → `wwwroot/app.css`.
-- Publish: `dotnet publish -c Release -o ./publish`.
+- Tailwind CSS compilation: `npm --prefix src/XTMon run build:css` compiles `src/XTMon/Styles/tailwind.css` → `src/XTMon/wwwroot/app.css`.
+- Publish: `dotnet publish ./src/XTMon/XTMon.csproj -c Release -o ./publish`.
 
 ### 8.2. IIS Deployment
 The app is deployed on **IIS** (Windows Server). The **ASP.NET Core Hosting Bundle** is a mandatory prerequisite.
@@ -269,6 +269,6 @@ Deployment steps:
 Port, HTTPS, and SSL certificates are managed entirely by IIS site bindings.
 
 ### 8.3. Local Development
-- `dotnet run` — Development mode on port 7009 (UAM bypassed).
-- `dotnet run --launch-profile https-prod` — Production mode on port 7010 (UAM enforced).
-- Launch profiles defined in `Properties/launchSettings.json`.
+- `dotnet run --project ./src/XTMon/XTMon.csproj` — Development mode on port 7009 (UAM bypassed).
+- `dotnet run --project ./src/XTMon/XTMon.csproj --launch-profile https-prod` — Production mode on port 7010 (UAM enforced).
+- Launch profiles defined in `src/XTMon/Properties/launchSettings.json`.

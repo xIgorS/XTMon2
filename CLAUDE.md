@@ -10,54 +10,57 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```powershell
 # Development (port 7009, UAM authorization bypassed)
-dotnet run
+dotnet run --project src/XTMon/XTMon.csproj
 
 # Production mode (port 7010, UAM authorization enforced)
-dotnet run --launch-profile https-prod
+dotnet run --project src/XTMon/XTMon.csproj --launch-profile https-prod
 
 # Publish for IIS
-dotnet publish -c Release -o ./publish
-dotnet publish -c Debug -o C:\inetpub\XTMon-Dev
+dotnet publish ./src/XTMon/XTMon.csproj -c Release -o ./publish
+dotnet publish ./src/XTMon/XTMon.csproj -c Debug -o C:\inetpub\XTMon-Dev
 ```
 
 ```bash
 # Tailwind CSS (must be rebuilt after changing component classes)
-npm run build:css    # one-time build
-npm run watch:css    # watch mode during development
+npm --prefix src/XTMon run build:css    # one-time build
+npm --prefix src/XTMon run watch:css    # watch mode during development
 ```
 
 ```bash
 # Run unit tests
-dotnet test XTMon.Tests/XTMon.Tests.csproj
+dotnet test tests/XTMon.Tests/XTMon.Tests.csproj
 ```
 
 ## Architecture
 
 The app follows a layered architecture:
 
-- **Components/Pages/** — Blazor Server pages (routable, interactive server render mode)
-- **Data/** — Repository interfaces, concrete repositories (SQL Server/ADO.NET), background services (`IHostedService`), and internal helper classes
-- **Options/** — Strongly-typed `IOptions<T>` config classes bound from `appsettings.json`
-- **Models/** — DTOs returned by repositories
-- **Security/** — Custom `IAuthorizationHandler` for UAM role checks
-- **XTMon.Tests/** — xUnit unit test project (no live DB or browser required)
+- **src/XTMon/Components/Pages/** — Blazor Server pages (routable, interactive server render mode)
+- **src/XTMon/Repositories/** — Repository interfaces and concrete implementations (SQL Server/ADO.NET)
+- **src/XTMon/Services/** — Background/hosted services (`IHostedService`) and in-memory queues
+- **src/XTMon/Helpers/** — Pure-logic `internal static` helper classes (testable without DB)
+- **src/XTMon/Infrastructure/** — Cross-cutting concerns: `SqlConnectionFactory`, `StoredProcedureLogSink`, `AppLogEvents`
+- **src/XTMon/Options/** — Strongly-typed `IOptions<T>` config classes bound from `appsettings.json`
+- **src/XTMon/Models/** — DTOs returned by repositories
+- **src/XTMon/Security/** — Custom `IAuthorizationHandler` for UAM role checks
+- **tests/XTMon.Tests/** — xUnit unit test project (no live DB or browser required)
 
 ### Repository Interfaces
 
-Each repository has a corresponding interface in `Data/`:
+Each repository has a corresponding interface in `src/XTMon/Repositories/`:
 - `IReplayFlowRepository` — implemented by `ReplayFlowRepository`
 - `IJvCalculationRepository` — implemented by `JvCalculationRepository`
 - `IUamAuthorizationRepository` — implemented by `UamAuthorizationRepository`
 
-Interfaces are registered in DI (`Program.cs`) as `AddScoped<IInterface, Concrete>()`. Background services and the authorization handler depend on the interfaces, not the concrete classes, enabling unit testing with mocks.
+Interfaces are registered in DI (`src/XTMon/Program.cs`) as `AddScoped<IInterface, Concrete>()`. Background services and the authorization handler depend on the interfaces, not the concrete classes, enabling unit testing with mocks.
 
 ### Internal Helper Classes
 
-Pure-logic methods extracted from Blazor code-behind files into testable `internal static` classes in `Data/`:
+Pure-logic methods extracted from Blazor code-behind files into testable `internal static` classes in `src/XTMon/Helpers/`:
 - `ReplayFlowsHelper` — `TryNormalizeReplayFlowSet`, `GetStatusKind`, `FormatDate`, `FormatNumber`, `FormatDuration`, plus the `ReplayStatusKind` enum
 - `JvCalculationHelper` — `IsStaleRunningJob`, `ToUtc`, `ToHeaderLabel`, `GetColumnAlignmentClass`, `DeserializeMonitoringTable`
 
-The test project accesses these via `[assembly: InternalsVisibleTo("XTMon.Tests")]` declared in `XTMon.csproj`.
+The test project accesses these via `[assembly: InternalsVisibleTo("XTMon.Tests")]` declared in `src/XTMon/XTMon.csproj`.
 
 ### Key Data Flow Patterns
 
@@ -93,13 +96,13 @@ Serilog with two sinks:
 - **SQL Server:** `monitoring.UspInsertAPSActionsLog` in `LogFiAlmt`
 - **Rolling file:** `logs/xtmon-YYYYMMDD.log` (14-day retention)
 
-Structured log event IDs are defined in `Data/AppLogEvents.cs` (range 3000–4000).
+Structured log event IDs are defined in `src/XTMon/Infrastructure/AppLogEvents.cs` (range 3000–4000).
 
 ## Configuration
 
-- `appsettings.json` — base config: connection strings, stored procedure names, timeouts
-- `appsettings.Development.json` — dev overrides (UAM bypass)
-- `Properties/launchSettings.json` — `https` (dev, port 7009) and `https-prod` (prod, port 7010)
+- `src/XTMon/appsettings.json` — base config: connection strings, stored procedure names, timeouts
+- `src/XTMon/appsettings.Development.json` — dev overrides (UAM bypass)
+- `src/XTMon/Properties/launchSettings.json` — `https` (dev, port 7009) and `https-prod` (prod, port 7010)
 
 ## Testing
 

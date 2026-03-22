@@ -9,8 +9,8 @@ pool:
 variables:
   buildConfiguration: Release
   dotnetVersion: '10.0.x'
-  testProject: 'XTMon.Tests/XTMon.Tests.csproj'
-  mainProject: 'XTMon.csproj'
+  testProject: 'tests/XTMon.Tests/XTMon.Tests.csproj'
+  mainProject: 'src/XTMon/XTMon.csproj'
 
 stages:
 

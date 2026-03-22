@@ -12,7 +12,7 @@
 
 ### 1. Plaintext SA credentials in `appsettings.json` committed to git
 
-[appsettings.json](appsettings.json)
+[src/XTMon/appsettings.json](src/XTMon/appsettings.json)
 
 All five connection strings use `sa` / `DockerPassword123!` with `TrustServerCertificate=True`. Even if these are local dev values, they are committed to source control.
 
@@ -37,7 +37,7 @@ Even with correct credentials, `TrustServerCertificate=True` silently allows MIT
 
 ### 3. Internal error messages surfaced directly to the user
 
-[Components/Pages/JvCalculationCheck.razor.cs](Components/Pages/JvCalculationCheck.razor.cs)
+[src/XTMon/Components/Pages/JvCalculationCheck.razor.cs](src/XTMon/Components/Pages/JvCalculationCheck.razor.cs)
 
 ```csharp
 checkError = string.IsNullOrWhiteSpace(job.ErrorMessage)
@@ -53,7 +53,7 @@ checkError = string.IsNullOrWhiteSpace(job.ErrorMessage)
 
 ### 4. `MonitoringOptions` bypassed startup validation ✅ Fixed
 
-[Program.cs](Program.cs) — [Options/MonitoringOptions.cs](Options/MonitoringOptions.cs)
+[src/XTMon/Program.cs](src/XTMon/Program.cs) — [src/XTMon/Options/MonitoringOptions.cs](src/XTMon/Options/MonitoringOptions.cs)
 
 `builder.Services.Configure<MonitoringOptions>` was used instead of `AddOptions<T>().ValidateDataAnnotations().ValidateOnStart()`, meaning a missing or malformed `Monitoring` config section would fail silently at runtime rather than on startup.
 
@@ -63,7 +63,7 @@ checkError = string.IsNullOrWhiteSpace(job.ErrorMessage)
 
 ### 5. Hardcoded stored procedure in `MonitoringRepository` bypassed the options pattern ✅ Fixed
 
-[Data/MonitoringRepository.cs](Data/MonitoringRepository.cs) — [Options/MonitoringOptions.cs](Options/MonitoringOptions.cs)
+[src/XTMon/Data/MonitoringRepository.cs](src/XTMon/Data/MonitoringRepository.cs) — [src/XTMon/Options/MonitoringOptions.cs](src/XTMon/Options/MonitoringOptions.cs)
 
 `DbBackupsOverviewStoredProcedure` was a private `const` hardcoded in the repository. All other SP names are configurable via `appsettings.json`.
 
@@ -73,7 +73,7 @@ checkError = string.IsNullOrWhiteSpace(job.ErrorMessage)
 
 ### 6. `ExpireStaleRunningJobsAsync` embedded raw inline SQL instead of a stored procedure ✅ Fixed
 
-[Data/JvCalculationRepository.cs](Data/JvCalculationRepository.cs)
+[src/XTMon/Data/JvCalculationRepository.cs](src/XTMon/Data/JvCalculationRepository.cs)
 
 Every other database operation uses stored procedures, but this method contained an inline `UPDATE` statement directly in C# code — hardcoding table name, column names, and business logic.
 
@@ -83,7 +83,7 @@ Every other database operation uses stored procedures, but this method contained
 
 ### 7. `ExecuteJvJobStateProcedureAsync` detected behavior by comparing the SP name string ✅ Fixed
 
-[Data/JvCalculationRepository.cs](Data/JvCalculationRepository.cs)
+[src/XTMon/Data/JvCalculationRepository.cs](src/XTMon/Data/JvCalculationRepository.cs)
 
 ```csharp
 // Before
@@ -101,7 +101,7 @@ The decision of whether to add `@ErrorMessage` was based on a string comparison 
 
 ### 8. `LoadCobDatesAsync` ignored `disposeCts` when loading dates ✅ Fixed
 
-[Components/Pages/JvCalculationCheck.razor.cs](Components/Pages/JvCalculationCheck.razor.cs)
+[src/XTMon/Components/Pages/JvCalculationCheck.razor.cs](src/XTMon/Components/Pages/JvCalculationCheck.razor.cs)
 
 ```csharp
 // Before
@@ -117,7 +117,7 @@ All other async calls in the component used `disposeCts.Token`. This one did not
 
 ### 9. Typo in `GetStatusKind` status string ✅ Documented
 
-[Components/Pages/ReplayFlows.razor.cs](Components/Pages/ReplayFlows.razor.cs)
+[src/XTMon/Components/Pages/ReplayFlows.razor.cs](src/XTMon/Components/Pages/ReplayFlows.razor.cs)
 
 `"submissonstarted"` (misspelling) is retained because it compensates for a typo present in the DB status value. A clarifying comment was added to prevent future "fixes" from breaking the match.
 
@@ -125,7 +125,7 @@ All other async calls in the component used `disposeCts.Token`. This one did not
 
 ### 10. Typo in user-visible error message ✅ Fixed
 
-[Components/Pages/JvCalculationCheck.razor.cs](Components/Pages/JvCalculationCheck.razor.cs)
+[src/XTMon/Components/Pages/JvCalculationCheck.razor.cs](src/XTMon/Components/Pages/JvCalculationCheck.razor.cs)
 
 ```csharp
 // Before
@@ -139,7 +139,7 @@ All other async calls in the component used `disposeCts.Token`. This one did not
 
 ### 11. `StatusPollingIntervalSeconds` hardcoded constant ignored the configured option ✅ Fixed
 
-[Components/Pages/ReplayFlows.razor.cs](Components/Pages/ReplayFlows.razor.cs)
+[src/XTMon/Components/Pages/ReplayFlows.razor.cs](src/XTMon/Components/Pages/ReplayFlows.razor.cs)
 
 `ReplayFlowsOptions` was injected and exposes `StatusPollIntervalSeconds`, but the component used a hardcoded `private const int StatusPollingIntervalSeconds = 15` instead. Changing the config had no effect.
 
@@ -149,7 +149,7 @@ All other async calls in the component used `disposeCts.Token`. This one did not
 
 ### 12. `DisplayDateFormat` and `PnlDateDisplayFormat` were identical redundant constants ✅ Fixed
 
-[Components/Pages/ReplayFlows.razor.cs](Components/Pages/ReplayFlows.razor.cs)
+[src/XTMon/Components/Pages/ReplayFlows.razor.cs](src/XTMon/Components/Pages/ReplayFlows.razor.cs)
 
 Two constants with different names held the exact same value `"dd-MM-yyyy"`. Removed `PnlDateDisplayFormat` and replaced all usages with `DisplayDateFormat`.
 
@@ -159,7 +159,7 @@ Two constants with different names held the exact same value `"dd-MM-yyyy"`. Rem
 
 ### 13. Duplicated SQL exception classification logic ✅ Fixed
 
-[Data/JvCalculationRepository.cs](Data/JvCalculationRepository.cs) and [Data/JvCalculationProcessingService.cs](Data/JvCalculationProcessingService.cs)
+[src/XTMon/Data/JvCalculationRepository.cs](src/XTMon/Data/JvCalculationRepository.cs) and [src/XTMon/Data/JvCalculationProcessingService.cs](src/XTMon/Data/JvCalculationProcessingService.cs)
 
 Both classes contained identical `IsSqlTimeout(SqlException)` and `IsSqlConnectionFailure(SqlException)` static methods.
 
@@ -169,7 +169,7 @@ Both classes contained identical `IsSqlTimeout(SqlException)` and `IsSqlConnecti
 
 ### 14. `UamAuthorizationRepository` and `UamPermissionHandler` are not `sealed` ✅ Fixed
 
-[Data/UamAuthorizationRepository.cs](Data/UamAuthorizationRepository.cs) — [Security/UamPermissionHandler.cs](Security/UamPermissionHandler.cs)
+[src/XTMon/Data/UamAuthorizationRepository.cs](src/XTMon/Data/UamAuthorizationRepository.cs) — [src/XTMon/Security/UamPermissionHandler.cs](src/XTMon/Security/UamPermissionHandler.cs)
 
 **Fix:** Added `sealed` to both classes, consistent with all other repositories and services.
 
@@ -185,7 +185,7 @@ Both classes contained identical `IsSqlTimeout(SqlException)` and `IsSqlConnecti
 
 ### 16. `GetStatusKind` uses an open-ended set of magic strings for status matching ✅ Fixed
 
-[Components/Pages/ReplayFlows.razor.cs](Components/Pages/ReplayFlows.razor.cs)
+[src/XTMon/Components/Pages/ReplayFlows.razor.cs](src/XTMon/Components/Pages/ReplayFlows.razor.cs)
 
 **Fix:** Extracted 13 named private constants (`NormalizedCompleted`, `NormalizedInProgress`, `NormalizedSubmissionStartedTypo`, etc.) and updated `GetStatusKind` to use them. The DB typo constant is explicitly documented with a comment.
 
@@ -193,7 +193,7 @@ Both classes contained identical `IsSqlTimeout(SqlException)` and `IsSqlConnecti
 
 ### 17. `SerializeProperties` in `StoredProcedureLogSink` produces an unstructured string ✅ Fixed
 
-[Data/StoredProcedureLogSink.cs](Data/StoredProcedureLogSink.cs)
+[src/XTMon/Data/StoredProcedureLogSink.cs](src/XTMon/Data/StoredProcedureLogSink.cs)
 
 **Fix:** Replaced the `Key=Value, Key2=Value2` string builder with `JsonSerializer.Serialize(dict)`. Log properties are now stored as structured JSON.
 
@@ -201,7 +201,7 @@ Both classes contained identical `IsSqlTimeout(SqlException)` and `IsSqlConnecti
 
 ### 18. `FormatCellValue` uses `DateTimeStyles.AssumeLocal` for DB-sourced datetimes ✅ Fixed
 
-[Components/Pages/JvCalculationCheck.razor.cs](Components/Pages/JvCalculationCheck.razor.cs)
+[src/XTMon/Components/Pages/JvCalculationCheck.razor.cs](src/XTMon/Components/Pages/JvCalculationCheck.razor.cs)
 
 **Fix:** `FormatCellValue` simplified to `return string.IsNullOrWhiteSpace(value) ? "-" : value`. No datetime parsing — the raw string from `ReadMonitoringTableAsync` is displayed as-is.
 
@@ -209,7 +209,7 @@ Both classes contained identical `IsSqlTimeout(SqlException)` and `IsSqlConnecti
 
 ### 19. JV-related log calls reuse `MonitoringLoadFailed` (event ID 1001) ✅ Fixed
 
-[Components/Pages/JvCalculationCheck.razor.cs](Components/Pages/JvCalculationCheck.razor.cs)
+[src/XTMon/Components/Pages/JvCalculationCheck.razor.cs](src/XTMon/Components/Pages/JvCalculationCheck.razor.cs)
 
 **Fix:** Added `JvPageLoadFailed` (1002) and `JvPageActionFailed` (1003) to `AppLogEvents`. Updated both log call sites in `JvCalculationCheck.razor.cs`.
 
@@ -217,7 +217,7 @@ Both classes contained identical `IsSqlTimeout(SqlException)` and `IsSqlConnecti
 
 ### 20. `UamAuthorizationRepository.IsUserAuthorizedAsync` calls `GetOrdinal` inside a read loop ✅ Fixed
 
-[Data/UamAuthorizationRepository.cs](Data/UamAuthorizationRepository.cs)
+[src/XTMon/Data/UamAuthorizationRepository.cs](src/XTMon/Data/UamAuthorizationRepository.cs)
 
 **Fix:** Moved `var nameOrdinal = reader.GetOrdinal("Name")` outside the `while` loop. Consistent with every other repository.
 
@@ -225,7 +225,7 @@ Both classes contained identical `IsSqlTimeout(SqlException)` and `IsSqlConnecti
 
 ### 21. `GetReplayFlowProcessStatusAsync` has a misleading name and return type ✅ Fixed
 
-[Data/ReplayFlowRepository.cs](Data/ReplayFlowRepository.cs)
+[src/XTMon/Data/ReplayFlowRepository.cs](src/XTMon/Data/ReplayFlowRepository.cs)
 
 **Fix:** Renamed to `RefreshReplayFlowProcessStatusAsync` in both the repository and its caller in `ReplayFlows.razor.cs`.
 
@@ -235,10 +235,10 @@ Both classes contained identical `IsSqlTimeout(SqlException)` and `IsSqlConnecti
 
 | Location | Issue |
 |---|---|
-| [Data/MonitoringRepository.cs](Data/MonitoringRepository.cs) | `ReadMonitoringTableAsync` is `internal static` — used cross-class from `JvCalculationRepository`. Worth a comment documenting the intentional coupling. |
-| [Components/Pages/ReplayFlows.razor.cs](Components/Pages/ReplayFlows.razor.cs) | `PendingCount`, `InProgressCount`, `CompletedCount` properties are redundant wrappers over identically-named private backing fields. |
-| [Components/Pages/JvCalculationCheck.razor.cs](Components/Pages/JvCalculationCheck.razor.cs) | `JobStatusClass` falls back to `jv-status-badge--queued` for unknown statuses, which could silently style a "Failed" job as "Queued" if the string doesn't match. |
-| [Data/ReplayFlowProcessingQueue.cs](Data/ReplayFlowProcessingQueue.cs) | `BoundedChannelFullMode.DropWrite` silently discards queue entries when full. This is intentional (all items trigger the same SP), but a comment explaining the design would help. |
+| [src/XTMon/Data/MonitoringRepository.cs](src/XTMon/Data/MonitoringRepository.cs) | `ReadMonitoringTableAsync` is `internal static` — used cross-class from `JvCalculationRepository`. Worth a comment documenting the intentional coupling. |
+| [src/XTMon/Components/Pages/ReplayFlows.razor.cs](src/XTMon/Components/Pages/ReplayFlows.razor.cs) | `PendingCount`, `InProgressCount`, `CompletedCount` properties are redundant wrappers over identically-named private backing fields. |
+| [src/XTMon/Components/Pages/JvCalculationCheck.razor.cs](src/XTMon/Components/Pages/JvCalculationCheck.razor.cs) | `JobStatusClass` falls back to `jv-status-badge--queued` for unknown statuses, which could silently style a "Failed" job as "Queued" if the string doesn't match. |
+| [src/XTMon/Data/ReplayFlowProcessingQueue.cs](src/XTMon/Data/ReplayFlowProcessingQueue.cs) | `BoundedChannelFullMode.DropWrite` silently discards queue entries when full. This is intentional (all items trigger the same SP), but a comment explaining the design would help. |
 
 ---
 
