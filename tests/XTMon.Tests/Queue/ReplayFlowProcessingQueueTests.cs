@@ -47,6 +47,36 @@ public class ReplayFlowProcessingQueueTests
     }
 
     [Fact]
+    public async Task MultipleEnqueuesBeforeRead_AreCoalescedIntoSingleSignal()
+    {
+        var queue = new ReplayFlowProcessingQueue();
+
+        for (var i = 0; i < 11; i++)
+        {
+            await queue.EnqueueAsync(CancellationToken.None);
+        }
+
+        var received = new List<bool>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+
+        try
+        {
+            await foreach (var item in queue.DequeueAllAsync(cts.Token))
+            {
+                received.Add(item);
+                cts.Cancel();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // expected
+        }
+
+        Assert.Single(received);
+        Assert.True(received[0]);
+    }
+
+    [Fact]
     public async Task DequeueAllAsync_WhenCancelled_StopsIteration()
     {
         var queue = new ReplayFlowProcessingQueue();
@@ -70,26 +100,25 @@ public class ReplayFlowProcessingQueueTests
     }
 
     [Fact]
-    public async Task EnqueueAsync_WhenFull_DropsWrite()
+    public async Task EnqueueAsync_AfterSignalIsRead_QueuesAnotherSignal()
     {
-        // The channel capacity is 10; enqueuing 11 items should silently drop the last one.
         var queue = new ReplayFlowProcessingQueue();
-
-        for (var i = 0; i < 11; i++)
-        {
-            // WriteAsync with DropWrite mode will silently drop when full — no exception
-            await queue.EnqueueAsync(CancellationToken.None);
-        }
+        await queue.EnqueueAsync(CancellationToken.None);
 
         var received = new List<bool>();
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
 
         try
         {
             await foreach (var item in queue.DequeueAllAsync(cts.Token))
             {
                 received.Add(item);
-                if (received.Count == 10)
+                if (received.Count == 1)
+                {
+                    await queue.EnqueueAsync(CancellationToken.None);
+                }
+
+                if (received.Count == 2)
                 {
                     cts.Cancel();
                 }
@@ -100,29 +129,29 @@ public class ReplayFlowProcessingQueueTests
             // expected
         }
 
-        // At most 10 items should have been stored (capacity)
-        Assert.True(received.Count <= 10);
+        Assert.Equal(2, received.Count);
     }
 
     [Fact]
-    public async Task MultipleEnqueues_AllDequeued_InOrder()
+    public async Task MultipleSequentialEnqueues_AllDequeued()
     {
         var queue = new ReplayFlowProcessingQueue();
 
-        // Enqueue 3 items
-        for (var i = 0; i < 3; i++)
-        {
-            await queue.EnqueueAsync(CancellationToken.None);
-        }
-
         var count = 0;
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+
+        await queue.EnqueueAsync(CancellationToken.None);
 
         try
         {
             await foreach (var _ in queue.DequeueAllAsync(cts.Token))
             {
                 count++;
+                if (count < 3)
+                {
+                    await queue.EnqueueAsync(CancellationToken.None);
+                }
+
                 if (count == 3)
                 {
                     cts.Cancel();

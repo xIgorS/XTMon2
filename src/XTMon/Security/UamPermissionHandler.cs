@@ -5,13 +5,16 @@ namespace XTMon.Security;
 
 public sealed class UamPermissionHandler(
     IUamAuthorizationRepository repository,
-    ILogger<UamPermissionHandler> logger)
+    ILogger<UamPermissionHandler> logger,
+    AuthorizationFeedbackState feedbackState)
     : AuthorizationHandler<RequiresUamPermissionRequirement>
 {
     protected override async Task HandleRequirementAsync(
         AuthorizationHandlerContext context, 
         RequiresUamPermissionRequirement requirement)
     {
+        feedbackState.Clear();
+
         if (context.User.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(context.User.Identity.Name))
         {
             logger.LogWarning("UamPermissionHandler: User identity is not authenticated or name is missing.");
@@ -37,6 +40,7 @@ public sealed class UamPermissionHandler(
         }
         catch (Exception ex)
         {
+            feedbackState.SetInfrastructureFailure("The authorization service is currently unavailable. Please try again later or contact support if the problem persists.");
             logger.LogError(ex, "UamPermissionHandler: Error checking UAM authorization for {Username}.", username);
             // Don't succeed the requirement on error
         }

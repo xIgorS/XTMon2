@@ -231,7 +231,7 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
             await InvokeAsync(StateHasChanged);
             await replayFlowSetInputRef.FocusAsync();
 
-            await ProcessingQueue.EnqueueAsync(CancellationToken.None);
+            await ProcessingQueue.EnqueueAsync(disposeCts.Token);
             await LoadStatusAsync();
             StartPollingIfNeeded();
         }

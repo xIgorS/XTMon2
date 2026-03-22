@@ -83,6 +83,7 @@ public class ReplayFlowProcessingServiceTests
     {
         // First call throws, second call succeeds — service should not crash
         var callCount = 0;
+        var firstCallTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondCallTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var repo = new Mock<IReplayFlowRepository>();
@@ -92,6 +93,7 @@ public class ReplayFlowProcessingServiceTests
                 callCount++;
                 if (callCount == 1)
                 {
+                    firstCallTcs.TrySetResult(true);
                     throw new InvalidOperationException("Simulated transient failure");
                 }
                 secondCallTcs.TrySetResult(true);
@@ -106,6 +108,7 @@ public class ReplayFlowProcessingServiceTests
         await svc.StartAsync(CancellationToken.None);
 
         await queue.EnqueueAsync(CancellationToken.None);
+        await firstCallTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await queue.EnqueueAsync(CancellationToken.None);
 
         var secondSucceeded = await secondCallTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));

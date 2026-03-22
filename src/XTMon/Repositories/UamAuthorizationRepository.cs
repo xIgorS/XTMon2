@@ -66,7 +66,7 @@ public sealed class UamAuthorizationRepository : IUamAuthorizationRepository
         {
             _logger.LogError(ex, "Failed to check authorization for user {Username} via {StoredProcedure}",
                 windowsUsername, _options.GetAdminUserStoredProcedure);
-            return false;
+            throw;
         }
     }
 }

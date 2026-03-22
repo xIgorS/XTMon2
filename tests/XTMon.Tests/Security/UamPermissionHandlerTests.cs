@@ -9,8 +9,8 @@ namespace XTMon.Tests.Security;
 
 public class UamPermissionHandlerTests
 {
-    private static UamPermissionHandler CreateHandler(IUamAuthorizationRepository repository) =>
-        new UamPermissionHandler(repository, NullLogger<UamPermissionHandler>.Instance);
+    private static UamPermissionHandler CreateHandler(IUamAuthorizationRepository repository, AuthorizationFeedbackState? feedbackState = null) =>
+        new UamPermissionHandler(repository, NullLogger<UamPermissionHandler>.Instance, feedbackState ?? new AuthorizationFeedbackState());
 
     private static AuthorizationHandlerContext CreateContext(
         string? identityName,
@@ -40,12 +40,15 @@ public class UamPermissionHandlerTests
         repo.Setup(r => r.IsUserAuthorizedAsync("DOMAIN\\alice", It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        var handler = CreateHandler(repo.Object);
+        var feedbackState = new AuthorizationFeedbackState();
+
+        var handler = CreateHandler(repo.Object, feedbackState);
         var context = CreateContext("DOMAIN\\alice");
 
         await handler.HandleAsync(context);
 
         Assert.True(context.HasSucceeded);
+        Assert.False(feedbackState.HasInfrastructureFailure);
     }
 
     [Fact]
@@ -55,12 +58,15 @@ public class UamPermissionHandlerTests
         repo.Setup(r => r.IsUserAuthorizedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        var handler = CreateHandler(repo.Object);
+        var feedbackState = new AuthorizationFeedbackState();
+
+        var handler = CreateHandler(repo.Object, feedbackState);
         var context = CreateContext("DOMAIN\\bob");
 
         await handler.HandleAsync(context);
 
         Assert.False(context.HasSucceeded);
+        Assert.False(feedbackState.HasInfrastructureFailure);
     }
 
     [Fact]
@@ -104,12 +110,35 @@ public class UamPermissionHandlerTests
         repo.Setup(r => r.IsUserAuthorizedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("DB unavailable"));
 
-        var handler = CreateHandler(repo.Object);
+        var feedbackState = new AuthorizationFeedbackState();
+
+        var handler = CreateHandler(repo.Object, feedbackState);
         var context = CreateContext("DOMAIN\\carol");
 
         // Should not throw
         await handler.HandleAsync(context);
 
         Assert.False(context.HasSucceeded);
+        Assert.True(feedbackState.HasInfrastructureFailure);
+        Assert.Equal("The authorization service is currently unavailable. Please try again later or contact support if the problem persists.", feedbackState.UserMessage);
+    }
+
+    [Fact]
+    public async Task WhenHandlerRecoversAfterFailure_ClearsInfrastructureFailureState()
+    {
+        var repo = new Mock<IUamAuthorizationRepository>();
+        repo.SetupSequence(r => r.IsUserAuthorizedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("DB unavailable"))
+            .ReturnsAsync(false);
+
+        var feedbackState = new AuthorizationFeedbackState();
+        var handler = CreateHandler(repo.Object, feedbackState);
+
+        await handler.HandleAsync(CreateContext("DOMAIN\\carol"));
+        Assert.True(feedbackState.HasInfrastructureFailure);
+
+        await handler.HandleAsync(CreateContext("DOMAIN\\carol"));
+        Assert.False(feedbackState.HasInfrastructureFailure);
+        Assert.Null(feedbackState.UserMessage);
     }
 }

@@ -1,11 +1,21 @@
-﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+﻿@inject XTMon.Security.AuthorizationFeedbackState AuthorizationFeedback
+
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
             <NotAuthorized>
                 <div class="fixed inset-0 flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-900 z-50">
                     <div class="text-center">
-                        <h1 class="text-4xl font-bold text-red-600 mb-4">Access Denied</h1>
-                        <p class="text-lg text-slate-600 dark:text-slate-400">You are not authorized to access this page.</p>
+                        @if (AuthorizationFeedback.HasInfrastructureFailure)
+                        {
+                            <h1 class="text-4xl font-bold text-amber-600 mb-4">Access Unavailable</h1>
+                            <p class="text-lg text-slate-600 dark:text-slate-400">@(AuthorizationFeedback.UserMessage ?? "The authorization service is currently unavailable.")</p>
+                        }
+                        else
+                        {
+                            <h1 class="text-4xl font-bold text-red-600 mb-4">Access Denied</h1>
+                            <p class="text-lg text-slate-600 dark:text-slate-400">You are not authorized to access this page.</p>
+                        }
                     </div>
                 </div>
             </NotAuthorized>

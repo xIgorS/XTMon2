@@ -5,7 +5,7 @@ using XTMon.Models;
 
 namespace XTMon.Components.Pages;
 
-public partial class SystemDiagnostics : ComponentBase
+public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
 {
     [Inject]
     private IDeploymentCheckService CheckService { get; set; } = default!;
@@ -16,6 +16,7 @@ public partial class SystemDiagnostics : ComponentBase
     private DiagnosticsReport? report;
     private bool isRunning;
     private string? runError;
+    private readonly CancellationTokenSource disposeCts = new();
 
     private async Task RunCheckAsync()
     {
@@ -26,7 +27,10 @@ public partial class SystemDiagnostics : ComponentBase
 
         try
         {
-            report = await CheckService.RunCheckAsync(CancellationToken.None);
+            report = await CheckService.RunCheckAsync(disposeCts.Token);
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
@@ -46,4 +50,11 @@ public partial class SystemDiagnostics : ComponentBase
 
     private static string FormatParameters(IReadOnlyList<StoredProcedureParameterInfo> parameters) =>
         string.Join(", ", parameters.Select(p => p.IsOutput ? $"{p.Name} ({p.TypeName} OUT)" : $"{p.Name} ({p.TypeName})"));
+
+    public ValueTask DisposeAsync()
+    {
+        disposeCts.Cancel();
+        disposeCts.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

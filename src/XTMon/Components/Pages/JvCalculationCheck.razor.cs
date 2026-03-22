@@ -233,6 +233,9 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     private async Task RefreshActiveJobAsync(CancellationToken cancellationToken)

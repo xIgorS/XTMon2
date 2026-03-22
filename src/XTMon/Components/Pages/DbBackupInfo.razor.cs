@@ -10,7 +10,7 @@ using XTMon.Options;
 
 namespace XTMon.Components.Pages;
 
-public partial class DbBackupInfo : ComponentBase
+public partial class DbBackupInfo : ComponentBase, IAsyncDisposable
 {
     private const string MonitoringLoadErrorMessage = "Unable to load DB backup data right now. Please try again.";
     private static readonly HashSet<string> TextColumns = new(StringComparer.OrdinalIgnoreCase)
@@ -32,6 +32,7 @@ public partial class DbBackupInfo : ComponentBase
     private bool isLoading;
     private string? loadError;
     private DateTimeOffset? lastRefresh;
+    private readonly CancellationTokenSource disposeCts = new();
 
     private string ProcedureName => MonitoringOptions.Value.DbBackupsStoredProcedure;
 
@@ -49,8 +50,12 @@ public partial class DbBackupInfo : ComponentBase
 
         try
         {
-            result = await Repository.GetDbBackupsAsync(CancellationToken.None);
+            result = await Repository.GetDbBackupsAsync(disposeCts.Token);
             lastRefresh = DateTimeOffset.Now;
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+            return;
         }
         catch (Exception ex)
         {
@@ -253,5 +258,12 @@ public partial class DbBackupInfo : ComponentBase
         }
 
         return value;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        disposeCts.Cancel();
+        disposeCts.Dispose();
+        return ValueTask.CompletedTask;
     }
 }

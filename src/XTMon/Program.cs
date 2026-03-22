@@ -132,6 +132,7 @@ builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
+builder.Services.AddScoped<AuthorizationFeedbackState>();
 builder.Services.AddScoped<IAuthorizationHandler, UamPermissionHandler>();
 builder.Services.AddScoped<IDeploymentCheckService, DeploymentCheckService>();
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();
