@@ -17,6 +17,10 @@ public sealed class ReplayFlowProcessingQueue
 
     // This queue is a wake-up signal for the background processor, not a payload queue.
     // Coalescing repeated enqueues avoids silent drops and unnecessary backlog.
+    // Safety: concurrent Enqueue calls are coalesced (only one signal is queued),
+    // which is correct because the consumer (ReplayFlowProcessingService) calls
+    // ProcessReplayFlowsAsync, which processes ALL pending items from the DB —
+    // not just the work associated with the signal that triggered it.
     public async ValueTask EnqueueAsync(CancellationToken cancellationToken = default)
     {
         if (Interlocked.CompareExchange(ref _signalPending, 1, 0) != 0)

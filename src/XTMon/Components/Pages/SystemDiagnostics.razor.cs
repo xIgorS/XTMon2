@@ -55,6 +55,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     {
         disposeCts.Cancel();
         disposeCts.Dispose();
+        GC.SuppressFinalize(this);
         return ValueTask.CompletedTask;
     }
 }

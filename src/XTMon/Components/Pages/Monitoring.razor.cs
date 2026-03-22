@@ -35,21 +35,21 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
         "TotalFreeSpaceMB"
     ];
 
-	private static readonly string[] SegmentColors =
-	[
-		"#06B6D4",
-		"#0EA5E9",
-		"#84CC16",
-		"#8B5CF6",
-		"#10B981",
-		"#22C55E",
-		"#14B8A6",
-		"#3B82F6",
-		"#6366F1",
-		"#A855F7",
-		"#2DD4BF",
-		"#38BDF8"
-	];
+    private static readonly string[] SegmentColors =
+    [
+        "#06B6D4",
+        "#0EA5E9",
+        "#84CC16",
+        "#8B5CF6",
+        "#10B981",
+        "#22C55E",
+        "#14B8A6",
+        "#3B82F6",
+        "#6366F1",
+        "#A855F7",
+        "#2DD4BF",
+        "#38BDF8"
+    ];
 
     [Inject]
     private IMonitoringRepository Repository { get; set; } = default!;
@@ -69,9 +69,9 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
     private string? lastUpdated;
     private DateTimeOffset? lastRefresh;
     private DateTimeOffset? overviewLastRefresh;
-    
-	private PieChartData fiChart = PieChartData.Empty("FI");
-	private PieChartData gecdChart = PieChartData.Empty("GECD");
+
+    private PieChartData fiChart = PieChartData.Empty("FI");
+    private PieChartData gecdChart = PieChartData.Empty("GECD");
 
     private string ProcedureName => MonitoringOptions.Value.DbSizePlusDiskStoredProcedure;
 
@@ -83,9 +83,9 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
     private async Task ReloadAsync()
     {
         isLoading = true;
-        
+
         await Task.WhenAll(ReloadOverviewAsync(), ReloadGridAsync());
-        
+
         isLoading = false;
     }
 
@@ -95,7 +95,7 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
         try
         {
             result = await Repository.GetDbSizePlusDiskAsync(disposeCts.Token);
-            lastUpdated = GetLastUpdatedDisplayValue();
+            lastUpdated = MonitoringDisplayHelper.GetLastUpdatedDisplayValue(result);
             BuildDbCards();
             lastRefresh = DateTimeOffset.Now;
         }
@@ -107,24 +107,24 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
         }
     }
 
-	private async Task ReloadOverviewAsync()
-	{
-		overviewLoadError = null;
-		try
-		{
-			var overviewResult = await Repository.GetDbBackupsAsync(disposeCts.Token);
-			fiChart = BuildPieData(overviewResult, "FI");
-			gecdChart = BuildPieData(overviewResult, "GECD");
-			overviewLastRefresh = DateTimeOffset.Now;
-		}
-		catch (Exception ex)
-		{
-			Logger.LogError(AppLogEvents.MonitoringLoadFailed, ex, "Overview backup pie load failed.");
-			overviewLoadError = BackupLoadErrorMessage;
-			fiChart = PieChartData.Empty("FI");
-			gecdChart = PieChartData.Empty("GECD");
-		}
-	}
+    private async Task ReloadOverviewAsync()
+    {
+        overviewLoadError = null;
+        try
+        {
+            var overviewResult = await Repository.GetDbBackupsAsync(disposeCts.Token);
+            fiChart = BuildPieData(overviewResult, "FI");
+            gecdChart = BuildPieData(overviewResult, "GECD");
+            overviewLastRefresh = DateTimeOffset.Now;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(AppLogEvents.MonitoringLoadFailed, ex, "Overview backup pie load failed.");
+            overviewLoadError = BackupLoadErrorMessage;
+            fiChart = PieChartData.Empty("FI");
+            gecdChart = PieChartData.Empty("GECD");
+        }
+    }
 
     private void BuildDbCards()
     {
@@ -192,7 +192,7 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
             return "-";
         }
 
-        if (IsDateLikeColumn(columnName) &&
+        if (MonitoringDisplayHelper.IsDateLikeColumn(columnName) &&
             DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var dateTimeValue))
         {
             return dateTimeValue.ToString("dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture);
@@ -200,7 +200,7 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
 
         if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number))
         {
-            var formatted = FormatWithSpaces(number);
+            var formatted = MonitoringDisplayHelper.FormatWithSpaces(number);
             if (columnName.EndsWith("MB", StringComparison.OrdinalIgnoreCase))
             {
                 return formatted + " MB";
@@ -210,19 +210,6 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
         }
 
         return value;
-    }
-
-    private static bool IsDateLikeColumn(string columnName)
-    {
-        var normalized = NormalizeColumnName(columnName);
-        return normalized.Contains("date", StringComparison.Ordinal) ||
-               normalized.Contains("time", StringComparison.Ordinal) ||
-               normalized.Contains("updated", StringComparison.Ordinal);
-    }
-
-    private static string FormatWithSpaces(long value)
-    {
-        return value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
     }
 
     private static string GetAlertLevelClass(string? value)
@@ -274,247 +261,175 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
         return "db-grid__cell--num";
     }
 
-    private string? GetLastUpdatedDisplayValue()
+    private sealed record DbCard(
+        string Name,
+        IReadOnlyList<string> Columns,
+        IReadOnlyList<IReadOnlyList<string?>> Rows);
+
+    private static PieChartData BuildPieData(MonitoringTableResult result, string metier)
     {
-        if (result is null || result.Rows.Count == 0)
+        var metierIndex = FindColumnIndex(result.Columns, "Metier");
+        var spaceMbIndex = FindColumnIndex(result.Columns, "SpaceAllocatedMB", "SpaceAllocatedMb", "SpaceAllocated_MB");
+        var databaseIndex = FindColumnIndex(result.Columns, "DatabaseName", "Database", "DbName", "DBName", "Name");
+
+        if (metierIndex < 0 || spaceMbIndex < 0)
         {
-            return null;
+            return PieChartData.Empty(metier, GetMetierDisplayName(metier));
         }
 
-        var lastUpdatedIndex = FindLastUpdatedColumnIndex();
-        if (lastUpdatedIndex < 0)
-        {
-            return null;
-        }
-
+        var totalsByLabel = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in result.Rows)
         {
-            if (row.Count <= lastUpdatedIndex)
+            if (row.Count <= Math.Max(metierIndex, spaceMbIndex))
             {
                 continue;
             }
 
-            var value = row[lastUpdatedIndex];
-            if (!string.IsNullOrWhiteSpace(value))
+            var metierValue = row[metierIndex];
+            if (!string.Equals(metierValue?.Trim(), metier, StringComparison.OrdinalIgnoreCase))
             {
-                return FormatDateTimeForDisplay(value);
+                continue;
             }
+
+            var spaceRaw = row[spaceMbIndex];
+            if (!TryParseDecimal(spaceRaw, out var spaceMb) || spaceMb <= 0)
+            {
+                continue;
+            }
+
+            var label = databaseIndex >= 0 && row.Count > databaseIndex && !string.IsNullOrWhiteSpace(row[databaseIndex])
+                ? row[databaseIndex]!.Trim()
+                : "Unknown";
+
+            totalsByLabel[label] = totalsByLabel.TryGetValue(label, out var existing)
+                ? existing + spaceMb
+                : spaceMb;
         }
 
-        return null;
+        if (totalsByLabel.Count == 0)
+        {
+            return PieChartData.Empty(metier, GetMetierDisplayName(metier));
+        }
+
+        var ordered = totalsByLabel
+            .OrderByDescending(pair => pair.Value)
+            .ToList();
+
+        var total = ordered.Sum(item => item.Value);
+        var slices = new List<PieSlice>(ordered.Count);
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var (label, value) = ordered[i];
+            var color = GetSegmentColor(i);
+            slices.Add(new PieSlice(label, value, color));
+        }
+
+        var normalizedMetier = metier.ToUpperInvariant();
+        return new PieChartData(normalizedMetier, GetMetierDisplayName(normalizedMetier), slices, total);
     }
 
-    private int FindLastUpdatedColumnIndex()
+    private static string GetSegmentColor(int rank)
     {
-        if (result is null)
+        if (SegmentColors.Length == 0)
         {
-            return -1;
+            return "#06B6D4";
         }
 
-        for (var i = 0; i < result.Columns.Count; i++)
+        var spacedIndex = (rank * 5) % SegmentColors.Length;
+        return SegmentColors[spacedIndex];
+    }
+
+    private static string GetMetierDisplayName(string metier)
+    {
+        return metier.ToUpperInvariant() switch
         {
-            var normalized = NormalizeColumnName(result.Columns[i]);
-            if (normalized is "lastupdated" or "lastupdateddate")
+            "FI" => "FI",
+            "GECD" => "GECD",
+            _ => metier.ToUpperInvariant()
+        };
+    }
+
+    private static int FindColumnIndex(IReadOnlyList<string> columns, params string[] candidates)
+    {
+        for (var i = 0; i < columns.Count; i++)
+        {
+            var normalized = MonitoringDisplayHelper.NormalizeColumnName(columns[i]);
+            foreach (var candidate in candidates)
             {
-                return i;
+                if (normalized == MonitoringDisplayHelper.NormalizeColumnName(candidate))
+                {
+                    return i;
+                }
             }
         }
 
         return -1;
     }
 
-    private static string NormalizeColumnName(string? columnName)
+    private static bool TryParseDecimal(string? rawValue, out decimal parsed)
     {
-        if (string.IsNullOrWhiteSpace(columnName))
+        if (decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out parsed))
         {
-            return string.Empty;
+            return true;
         }
 
-        return columnName
-            .Replace("_", string.Empty, StringComparison.Ordinal)
-            .Replace(" ", string.Empty, StringComparison.Ordinal)
-            .Trim()
-            .ToLowerInvariant();
+        return decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.CurrentCulture, out parsed);
     }
 
-    private static string FormatDateTimeForDisplay(string value)
+    private static string FormatSpaceMb(decimal value)
     {
-        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsed))
+        return value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ", StringComparison.Ordinal) + " MB";
+    }
+
+    private static string BuildChartStyle(IReadOnlyList<PieSlice> slices, decimal total)
+    {
+        if (slices.Count == 0 || total <= 0)
         {
-            return parsed.ToString("dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+            return "background: var(--bg-surface-hover);";
         }
 
-        return value;
+        var cumulativePercent = 0m;
+        var segments = new List<string>(slices.Count);
+        for (var i = 0; i < slices.Count; i++)
+        {
+            var slice = slices[i];
+            var start = cumulativePercent;
+            var end = i == slices.Count - 1
+                ? 100m
+                : cumulativePercent + (slice.Value / total * 100m);
+
+            segments.Add($"{slice.Color} {start.ToString("0.##", CultureInfo.InvariantCulture)}% {end.ToString("0.##", CultureInfo.InvariantCulture)}%");
+            cumulativePercent = end;
+        }
+
+        return $"background: conic-gradient({string.Join(", ", segments)});";
     }
 
-    private sealed record DbCard(
-        string Name,
-        IReadOnlyList<string> Columns,
-        IReadOnlyList<IReadOnlyList<string?>> Rows);
+    private static string ToPercent(decimal value, decimal total)
+    {
+        if (total <= 0)
+        {
+            return "0%";
+        }
 
-	private static PieChartData BuildPieData(MonitoringTableResult result, string metier)
-	{
-		var metierIndex = FindColumnIndex(result.Columns, "Metier");
-		var spaceMbIndex = FindColumnIndex(result.Columns, "SpaceAllocatedMB", "SpaceAllocatedMb", "SpaceAllocated_MB");
-		var databaseIndex = FindColumnIndex(result.Columns, "DatabaseName", "Database", "DbName", "DBName", "Name");
+        var percent = value / total * 100m;
+        return percent.ToString("0.#", CultureInfo.InvariantCulture) + "%";
+    }
 
-		if (metierIndex < 0 || spaceMbIndex < 0)
-		{
-			return PieChartData.Empty(metier, GetMetierDisplayName(metier));
-		}
+    private sealed record PieSlice(string Label, decimal Value, string Color);
 
-		var totalsByLabel = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-		foreach (var row in result.Rows)
-		{
-			if (row.Count <= Math.Max(metierIndex, spaceMbIndex))
-			{
-				continue;
-			}
-
-			var metierValue = row[metierIndex];
-			if (!string.Equals(metierValue?.Trim(), metier, StringComparison.OrdinalIgnoreCase))
-			{
-				continue;
-			}
-
-			var spaceRaw = row[spaceMbIndex];
-			if (!TryParseDecimal(spaceRaw, out var spaceMb) || spaceMb <= 0)
-			{
-				continue;
-			}
-
-			var label = databaseIndex >= 0 && row.Count > databaseIndex && !string.IsNullOrWhiteSpace(row[databaseIndex])
-				? row[databaseIndex]!.Trim()
-				: "Unknown";
-
-			totalsByLabel[label] = totalsByLabel.TryGetValue(label, out var existing)
-				? existing + spaceMb
-				: spaceMb;
-		}
-
-		if (totalsByLabel.Count == 0)
-		{
-			return PieChartData.Empty(metier, GetMetierDisplayName(metier));
-		}
-
-		var ordered = totalsByLabel
-			.OrderByDescending(pair => pair.Value)
-			.ToList();
-
-		var total = ordered.Sum(item => item.Value);
-		var slices = new List<PieSlice>(ordered.Count);
-		for (var i = 0; i < ordered.Count; i++)
-		{
-			var (label, value) = ordered[i];
-			var color = GetSegmentColor(i);
-			slices.Add(new PieSlice(label, value, color));
-		}
-
-		var normalizedMetier = metier.ToUpperInvariant();
-		return new PieChartData(normalizedMetier, GetMetierDisplayName(normalizedMetier), slices, total);
-	}
-
-	private static string GetSegmentColor(int rank)
-	{
-		if (SegmentColors.Length == 0)
-		{
-			return "#06B6D4";
-		}
-
-		var spacedIndex = (rank * 5) % SegmentColors.Length;
-		return SegmentColors[spacedIndex];
-	}
-
-	private static string GetMetierDisplayName(string metier)
-	{
-		return metier.ToUpperInvariant() switch
-		{
-			"FI" => "FI",
-			"GECD" => "GECD",
-			_ => metier.ToUpperInvariant()
-		};
-	}
-
-	private static int FindColumnIndex(IReadOnlyList<string> columns, params string[] candidates)
-	{
-		for (var i = 0; i < columns.Count; i++)
-		{
-			var normalized = NormalizeColumnName(columns[i]);
-			foreach (var candidate in candidates)
-			{
-				if (normalized == NormalizeColumnName(candidate))
-				{
-					return i;
-				}
-			}
-		}
-
-		return -1;
-	}
-
-	private static bool TryParseDecimal(string? rawValue, out decimal parsed)
-	{
-		if (decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out parsed))
-		{
-			return true;
-		}
-
-		return decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.CurrentCulture, out parsed);
-	}
-
-	private static string FormatSpaceMb(decimal value)
-	{
-		return value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ", StringComparison.Ordinal) + " MB";
-	}
-
-	private static string BuildChartStyle(IReadOnlyList<PieSlice> slices, decimal total)
-	{
-		if (slices.Count == 0 || total <= 0)
-		{
-			return "background: var(--bg-surface-hover);";
-		}
-
-		var cumulativePercent = 0m;
-		var segments = new List<string>(slices.Count);
-		for (var i = 0; i < slices.Count; i++)
-		{
-			var slice = slices[i];
-			var start = cumulativePercent;
-			var end = i == slices.Count - 1
-				? 100m
-				: cumulativePercent + (slice.Value / total * 100m);
-
-			segments.Add($"{slice.Color} {start.ToString("0.##", CultureInfo.InvariantCulture)}% {end.ToString("0.##", CultureInfo.InvariantCulture)}%");
-			cumulativePercent = end;
-		}
-
-		return $"background: conic-gradient({string.Join(", ", segments)});";
-	}
-
-	private static string ToPercent(decimal value, decimal total)
-	{
-		if (total <= 0)
-		{
-			return "0%";
-		}
-
-		var percent = value / total * 100m;
-		return percent.ToString("0.#", CultureInfo.InvariantCulture) + "%";
-	}
-
-	private sealed record PieSlice(string Label, decimal Value, string Color);
-
-	private sealed record PieChartData(string Metier, string DisplayName, IReadOnlyList<PieSlice> Slices, decimal Total)
-	{
-		public static PieChartData Empty(string metier, string? displayName = null) => new(metier, displayName ?? metier, Array.Empty<PieSlice>(), 0);
-		public bool HasData => Slices.Count > 0 && Total > 0;
-		public string ChartStyle => BuildChartStyle(Slices, Total);
-	}
+    private sealed record PieChartData(string Metier, string DisplayName, IReadOnlyList<PieSlice> Slices, decimal Total)
+    {
+        public static PieChartData Empty(string metier, string? displayName = null) => new(metier, displayName ?? metier, Array.Empty<PieSlice>(), 0);
+        public bool HasData => Slices.Count > 0 && Total > 0;
+        public string ChartStyle => BuildChartStyle(Slices, Total);
+    }
 
     public ValueTask DisposeAsync()
     {
         disposeCts.Cancel();
         disposeCts.Dispose();
+        GC.SuppressFinalize(this);
         return ValueTask.CompletedTask;
     }
 }

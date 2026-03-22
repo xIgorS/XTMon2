@@ -215,6 +215,11 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
             return;
         }
 
+        if (activeJobStatus is "Completed" or "Failed")
+        {
+            return;
+        }
+
         pollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
         pollTimer = new PeriodicTimer(TimeSpan.FromSeconds(JvOptions.Value.JobPollIntervalSeconds));
         _ = PollJobAsync(pollTimer, pollCts.Token);
@@ -366,6 +371,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         StopPolling();
         disposeCts.Cancel();
         disposeCts.Dispose();
+        GC.SuppressFinalize(this);
         return ValueTask.CompletedTask;
     }
 

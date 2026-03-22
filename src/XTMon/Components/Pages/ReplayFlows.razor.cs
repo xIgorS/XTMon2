@@ -564,6 +564,7 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
         StopPolling();
         disposeCts.Cancel();
         disposeCts.Dispose();
+        GC.SuppressFinalize(this);
         return ValueTask.CompletedTask;
     }
 }

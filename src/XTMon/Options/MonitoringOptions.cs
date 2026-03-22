@@ -7,6 +7,9 @@ public sealed class MonitoringOptions
     public const string SectionName = "Monitoring";
 
     [Required]
+    public string ConnectionStringName { get; set; } = "LogFiAlmt";
+
+    [Required]
     public string DbSizePlusDiskStoredProcedure { get; set; } = "monitoring.UspGetDbSizePlusDisk";
 
     [Required]

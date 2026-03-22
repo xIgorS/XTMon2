@@ -10,9 +10,6 @@ namespace XTMon.Services;
 
 public sealed class DeploymentCheckService : IDeploymentCheckService
 {
-    // Monitoring SPs use the factory default connection (LogFiAlmt hardcoded in SqlConnectionFactory).
-    private const string MonitoringConnectionStringName = "LogFiAlmt";
-
     private readonly SqlConnectionFactory _connectionFactory;
     private readonly IReadOnlyList<(string ConnectionStringName, string StoredProcedure)> _checks;
 
@@ -38,8 +35,8 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         var checks = new List<(string, string)>
         {
             // Monitoring
-            (MonitoringConnectionStringName, monitoring.DbSizePlusDiskStoredProcedure),
-            (MonitoringConnectionStringName, monitoring.DbBackupsStoredProcedure),
+            (monitoring.ConnectionStringName, monitoring.DbSizePlusDiskStoredProcedure),
+            (monitoring.ConnectionStringName, monitoring.DbBackupsStoredProcedure),
 
             // Logging stored procedure (configured outside of the typed options)
             (

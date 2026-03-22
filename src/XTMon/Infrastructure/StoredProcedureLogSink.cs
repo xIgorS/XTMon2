@@ -23,6 +23,9 @@ public sealed class StoredProcedureLogSink : ILogEventSink
         _commandTimeoutSeconds = commandTimeoutSeconds;
     }
 
+    // Emit is synchronous by design (Serilog ILogEventSink contract).
+    // Callers wrap this sink with WriteTo.Async(), which batches events and
+    // invokes Emit on a dedicated background thread — not the ASP.NET thread pool.
     public void Emit(LogEvent logEvent)
     {
         try
@@ -48,6 +51,8 @@ public sealed class StoredProcedureLogSink : ILogEventSink
     {
         try
         {
+            // Reset the flag so that if the SelfLog write below succeeds,
+            // the next SelfLog failure will be reported (not suppressed).
             Interlocked.Exchange(ref _fallbackFailureLogged, 0);
 
             var selfLogMessage = string.Format(

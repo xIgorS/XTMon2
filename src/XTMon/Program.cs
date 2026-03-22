@@ -134,7 +134,7 @@ builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
 builder.Services.AddScoped<AuthorizationFeedbackState>();
 builder.Services.AddScoped<IAuthorizationHandler, UamPermissionHandler>();
-builder.Services.AddScoped<IDeploymentCheckService, DeploymentCheckService>();
+builder.Services.AddSingleton<IDeploymentCheckService, DeploymentCheckService>();
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();
 builder.Services.AddHostedService<ReplayFlowProcessingService>();
 builder.Services.AddHostedService<JvCalculationProcessingService>();
@@ -154,7 +154,6 @@ builder.Services.AddAuthorization(options =>
         {
             // In Development/others, bypass the DB check and just require authentication
             policy.RequireAuthenticatedUser();
-            policy.RequireAssertion(_ => true);
         }
     });
 });

@@ -51,7 +51,7 @@ public sealed class MonitoringRepository : IMonitoringRepository
 
     private async Task<MonitoringTableResult> ExecuteMonitoringTableProcedureAsync(string storedProcedure, CancellationToken cancellationToken)
     {
-        using var connection = _connectionFactory.CreateConnection();
+        using var connection = _connectionFactory.CreateConnection(_options.ConnectionStringName);
         using var command = connection.CreateCommand();
         command.CommandText = storedProcedure;
         command.CommandType = CommandType.StoredProcedure;
