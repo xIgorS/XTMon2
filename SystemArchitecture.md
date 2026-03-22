@@ -3,9 +3,46 @@
 ## 1. Overview
 **XTMon** (APS Actions XTarget Monitoring) is a Blazor Web App (Interactive Server render mode) built on **.NET 10** and deployed on **IIS**. Its primary purpose is to provide a comprehensive, real-time dashboard for monitoring SQL Server processing data, replaying failed processing flows, and scheduling and verifying JV calculations.
 
-The application has a robust, layered architecture consisting of a Blazor UI frontend, a strongly-typed Configuration/Options layer, a Repository-based Data Access layer, Background Hosted Services for asynchronous polling and processing, and a UAM-based authorization layer. It employs a centralized Serilog pipeline writing back to SQL Server and local files.
+The application has a layered architecture consisting of a Blazor UI frontend, a strongly-typed Configuration/Options layer, a repository-based Data Access layer, background hosted services for asynchronous polling and processing, and a UAM-based authorization layer. It employs a centralized Serilog pipeline writing back to SQL Server and local files.
 
-## 2. Architecture Diagram
+## 2. Repository & Folder Structure
+
+```text
+XTMon2/
+├── src/
+│   └── XTMon/
+│       ├── Components/
+│       │   ├── App.razor / Routes.razor
+│       │   ├── Layout/
+│       │   ├── Pages/
+│       │   └── Shared/
+│       ├── Helpers/
+│       ├── Infrastructure/
+│       ├── Models/
+│       ├── Options/
+│       ├── Repositories/
+│       ├── Security/
+│       ├── Services/
+│       ├── Sql/
+│       ├── Styles/
+│       ├── wwwroot/
+│       ├── Program.cs
+│       └── XTMon.csproj
+├── tests/
+│   └── XTMon.Tests/
+│       ├── Helpers/
+│       ├── Queue/
+│       ├── Security/
+│       ├── Services/
+│       └── XTMon.Tests.csproj
+├── README.md
+├── SystemArchitecture.md
+└── XTMon.sln
+```
+
+---
+
+## 3. Architecture Diagram
 
 ```mermaid
 flowchart TD
@@ -119,7 +156,7 @@ flowchart TD
 
 ---
 
-## 3. Core Functional Features
+## 4. Core Functional Features
 XTMon is divided into three major functional areas (features):
 
 1. **Database & Infrastructure Monitoring** (`Monitoring.razor` & `DbBackupInfo.razor`)
@@ -139,7 +176,7 @@ XTMon is divided into three major functional areas (features):
 
 ---
 
-## 4. Architecture Layers Context
+## 5. Architecture Layers Context
 
 The application is structured using a standard clean layer approach for Blazor.
 
@@ -153,6 +190,7 @@ The UI is driven by Blazor Server (`InteractiveServerComponents`) and styled wit
   - `JvCalculationCheck.razor`: Execution and validation UI for JV reporting. **Requires APS entitlement.**
 - **Styling**: `tailwind.css` provides variables for full light/dark mode support.
 - **Authorization UI**: `NavMenu.razor` uses `AuthorizeView Policy="UamRestricted"` to hide restricted pages from unauthorized users. The landing page feature cards also respect this policy.
+- **Access feedback**: `Routes.razor` renders either an **Access Denied** message for genuine authorization failures or an **Access Unavailable** message when the UAM backend is unreachable.
 
 ### 4.2. Configuration (Options Layer)
 XTMon uses the strongly-typed `IOptions<T>` pattern, heavily validated on application startup via `IValidateOptions` and Data Annotations.
@@ -167,12 +205,13 @@ Direct database connection handling is abstracted away from the UI into domain-s
 - **`ReplayFlowRepository`**: Maps rows to strongly typed models (`FailedFlowRow`, `ReplayFlowResultRow`, `ReplayFlowStatusRow`) and issues the table-valued parameter submissions.
 - **`JvCalculationRepository`**: Implements a robust state-machine persistence layer. It enqueues jobs, `TryTakeNextJvJobAsync` claims jobs with a worker ID, and it maintains `HeartbeatJvJobAsync`, `FixJvCalculationAsync`, `CheckJvCalculationAsync`, and completion markers.
 
-### 4.4. Background Services (Processing via Hosted Services)
+### 5.4. Background Services (Processing via Hosted Services)
 One of XTMon's standout architectural patterns is the usage of `IHostedService` (specifically `BackgroundService`) to detach long-running SQL computations from the Blazor UI lifecycle.
 
 1. **`ReplayFlowProcessingService`**
-   - **Queue-based**: Depends on an in-memory `ReplayFlowProcessingQueue` (a thin wrapper over `Channel<T>`).
-   - The Blazor UI triggers a processing request which adds a token to the queue.
+    - **Queue-based**: Depends on an in-memory `ReplayFlowProcessingQueue` (a thin wrapper over `Channel<T>`).
+    - The queue is intentionally modeled as a **wake-up signal**, not a payload backlog. Multiple enqueue requests coalesce into a single pending signal until the background worker consumes it.
+    - The Blazor UI triggers a processing request which adds a signal to the queue.
    - The background service `DequeueAllAsync` unblocks, acquires a dependency injection scope using `IServiceScopeFactory`, creates a `ReplayFlowRepository`, and executes `ProcessReplayFlowsAsync`. 
    - This prevents web request thread exhaustion and allows for safe teardown on app shutdown.
 
@@ -183,7 +222,7 @@ One of XTMon's standout architectural patterns is the usage of `IHostedService` 
 
 ---
 
-## 5. Models (Data Transfer Objects)
+## 6. Models (Data Transfer Objects)
 The `src/XTMon/Models/` directory houses immutable C# `record` types used strictly for mapping SQL Output to UI state, ensuring thread safety inside Blazor Server:
 - **Monitoring**: `MonitoringTableResult` encompasses a dynamic array of column names and a jagged list of string values.
 - **Replay**: `FailedFlowRow`, `ReplayFlowResultRow`, `ReplayFlowSubmissionRow`, `ReplayFlowStatusRow`.
@@ -191,7 +230,7 @@ The `src/XTMon/Models/` directory houses immutable C# `record` types used strict
 
 ---
 
-## 6. Security & Authorization
+## 7. Security & Authorization
 
 ### 6.1. Authentication
 - Windows Authentication via `NegotiateDefaults.AuthenticationScheme` (NTLM/Negotiate).
@@ -210,6 +249,7 @@ The app uses a custom `UamRestricted` authorization policy that behaves differen
 - `RequiresUamPermissionRequirement` — custom `IAuthorizationRequirement`.
 - `UamPermissionHandler` — custom `IAuthorizationHandler` that queries the `UamAuthorizationRepository`.
 - `UamAuthorizationRepository` — executes the UAM stored procedure against `MAIN_UAM`.
+- `AuthorizationFeedbackState` — scoped UI state used to distinguish backend authorization outages from normal access denial.
 
 ### 6.3. Environment Indicator
 The sidebar displays a visual badge showing the current mode:
@@ -218,7 +258,7 @@ The sidebar displays a visual badge showing the current mode:
 
 ---
 
-## 7. Centralized Logging Pipeline
+## 8. Centralized Logging Pipeline
 XTMon uses a two-pronged logging system based on **Serilog**:
 1. **Asynchronous SQL Server Sink**: `StoredProcedureLogSink` writes all metrics tagged `Warning` and `Error` into a dedicated database `LOG_FI_ALMT` via `monitoring.UspInsertAPSActionsLog`. This allows DBAs to track the application's overall stability and failure rates in Replays/Jobs.
 2. **Rolling File Sink**: A standard local file log (`logs/xtmon-YYYYMMDD.log`) acts as a persistent fallback for environment startup issues and comprehensive operational tracking.
@@ -229,7 +269,7 @@ XTMon uses a two-pronged logging system based on **Serilog**:
 
 ---
 
-## 8. Build and Deployment
+## 9. Build and Deployment
 
 ### 8.1. Build
 - Built on **.NET 10**.
@@ -272,3 +312,57 @@ Port, HTTPS, and SSL certificates are managed entirely by IIS site bindings.
 - `dotnet run --project ./src/XTMon/XTMon.csproj` — Development mode on port 7009 (UAM bypassed).
 - `dotnet run --project ./src/XTMon/XTMon.csproj --launch-profile https-prod` — Production mode on port 7010 (UAM enforced).
 - Launch profiles defined in `src/XTMon/Properties/launchSettings.json`.
+
+---
+
+## 10. Test Project Structure and Usage
+
+The repository contains a dedicated xUnit test project at `tests/XTMon.Tests/XTMon.Tests.csproj`.
+
+### 10.1. Folder Layout
+
+```text
+tests/XTMon.Tests/
+├── GlobalUsings.cs
+├── Helpers/
+│   ├── JvCalculationHelperTests.cs
+│   ├── ReplayFlowsHelperTests.cs
+│   └── SqlDataHelperTests.cs
+├── Queue/
+│   └── ReplayFlowProcessingQueueTests.cs
+├── Security/
+│   └── UamPermissionHandlerTests.cs
+├── Services/
+│   ├── JvCalculationProcessingServiceTests.cs
+│   └── ReplayFlowProcessingServiceTests.cs
+└── XTMon.Tests.csproj
+```
+
+### 10.2. How to Run the Test Project
+
+Run the full test project from the repository root:
+
+```powershell
+dotnet test .\tests\XTMon.Tests\XTMon.Tests.csproj
+```
+
+Run a filtered subset:
+
+```powershell
+dotnet test .\tests\XTMon.Tests\XTMon.Tests.csproj --filter "FullyQualifiedName~UamPermissionHandlerTests"
+dotnet test .\tests\XTMon.Tests\XTMon.Tests.csproj --filter "FullyQualifiedName~ReplayFlowProcessingQueueTests"
+```
+
+### 10.3. What the Test Project Covers
+
+- Helper-level pure logic with no infrastructure dependencies.
+- Replay queue wake-up semantics and cancellation behavior.
+- Hosted service orchestration for replay and JV background processing.
+- UAM authorization handler decisions and infrastructure-failure feedback behavior.
+
+### 10.4. Current Test Baseline
+
+- Total tests: 139
+- Database dependency: none required
+- Browser dependency: none required
+- Main limitation: repository SQL calls and Razor markup are not unit-tested in this project

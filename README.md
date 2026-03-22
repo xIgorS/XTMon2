@@ -2,6 +2,40 @@
 
 A central monitoring and recovery dashboard for SQL Server processing. Provides real-time visibility into database infrastructure health, allows operation teams to replay failed ETL flows, and facilitates JV calculation checks.
 
+## Repository Structure
+
+```text
+XTMon2/
+├── src/
+│   └── XTMon/
+│       ├── Components/
+│       │   ├── Layout/          # Main layout, navigation, reconnect modal
+│       │   ├── Pages/           # Routable Blazor pages
+│       │   └── Shared/          # Reusable UI components
+│       ├── Helpers/             # Pure logic helpers used by pages/services
+│       ├── Infrastructure/      # Logging, connection factory, event IDs
+│       ├── Models/              # DTOs and result records
+│       ├── Options/             # Strongly-typed configuration objects
+│       ├── Repositories/        # SQL Server data-access layer
+│       ├── Security/            # UAM authorization requirement/handler/state
+│       ├── Services/            # Hosted services and diagnostics services
+│       ├── Sql/                 # SQL scripts / database artifacts
+│       ├── Styles/              # Tailwind source styles
+│       ├── wwwroot/             # Static assets and compiled CSS
+│       ├── Program.cs           # Application bootstrap and DI wiring
+│       └── XTMon.csproj         # Main web application project
+├── tests/
+│   └── XTMon.Tests/
+│       ├── Helpers/             # Helper unit tests
+│       ├── Queue/               # Replay queue tests
+│       ├── Security/            # Authorization handler tests
+│       ├── Services/            # Hosted service tests
+│       └── XTMon.Tests.csproj   # xUnit test project
+├── README.md
+├── SystemArchitecture.md
+└── XTMon.sln
+```
+
 ## Prerequisites
 
 - **Development:** .NET 10 SDK
@@ -16,9 +50,37 @@ A central monitoring and recovery dashboard for SQL Server processing. Provides 
 dotnet test tests/XTMon.Tests/XTMon.Tests.csproj
 ```
 
-The test project (`tests/XTMon.Tests/`) contains 137 xUnit unit tests covering pure logic helpers, the in-memory processing queue, background service orchestration, and the UAM authorization handler. No SQL Server connection or browser is needed.
+The test project (`tests/XTMon.Tests/`) currently contains 139 xUnit unit tests covering pure logic helpers, the replay wake-up queue, background service orchestration, and the UAM authorization handler. No SQL Server connection or browser is needed.
 
 See the [Testing](#testing) section for coverage details.
+
+### Test Project Usage
+
+The test project is self-contained and can be run independently of the web app.
+
+```powershell
+dotnet test .\tests\XTMon.Tests\XTMon.Tests.csproj
+```
+
+Useful variants:
+
+```powershell
+# Run the full suite
+dotnet test .\tests\XTMon.Tests\XTMon.Tests.csproj
+
+# Run only one test class
+dotnet test .\tests\XTMon.Tests\XTMon.Tests.csproj --filter "FullyQualifiedName~ReplayFlowProcessingQueueTests"
+
+# Run only security-related tests
+dotnet test .\tests\XTMon.Tests\XTMon.Tests.csproj --filter "FullyQualifiedName~UamPermissionHandlerTests"
+```
+
+The test project is organized by production layer:
+
+- `tests/XTMon.Tests/Helpers` validates pure helper logic.
+- `tests/XTMon.Tests/Queue` validates replay processing queue semantics.
+- `tests/XTMon.Tests/Services` validates hosted-service orchestration.
+- `tests/XTMon.Tests/Security` validates authorization handler behavior.
 
 ## Running Locally
 
@@ -34,6 +96,14 @@ dotnet run --project .\src\XTMon\XTMon.csproj
 - Environment indicator shows **DEV** (amber badge)
 
 Open: **https://localhost:7009**
+
+Typical local workflow:
+
+1. Start the app in Development mode.
+2. Open the Overview page.
+3. Use **Database Space** and **Database Backups** for monitoring data.
+4. Use **Replay Flows** to load failed flow rows, select items, and submit replay requests.
+5. Use **JV Calculation** to enqueue a check or fix-and-check job, then wait for the status panel and result grid to refresh.
 
 ### Production Mode
 
@@ -362,6 +432,7 @@ ORDER BY l.[TimeStamp] DESC;
 1. User authenticates via Windows Authentication (Negotiate/NTLM)
 2. In Production, `UamPermissionHandler` calls `[uam].[UspGetAdminUserByBnpId]` on the `MAIN_UAM` database
 3. If the user has **Name = "APS"**, access is granted; otherwise, access is denied
+4. If the authorization backend is unavailable, the UI remains fail-closed and displays an **Access Unavailable** message instead of a generic authorization denial
 
 ## Configuration Files
 
@@ -387,10 +458,10 @@ dotnet test tests/XTMon.Tests/XTMon.Tests.csproj
 | `SqlDataHelper` — type coercions, `ParseQuery`, SQL error classification | 27 | SQL exceptions constructed via reflection |
 | `ReplayFlowsHelper` — flow set normalisation, all 12+ status strings, formatting | 39 | Pure logic, no dependencies |
 | `JvCalculationHelper` — stale detection, UTC conversion, header labels, JSON | 24 | Pure logic, no dependencies |
-| `ReplayFlowProcessingQueue` — enqueue/dequeue, cancellation, drop-on-full | 5 | In-memory channel only |
+| `ReplayFlowProcessingQueue` — enqueue/dequeue, cancellation, coalesced wake-up signals | 5 | In-memory signal queue only |
 | `ReplayFlowProcessingService` — item processing, transient error resilience | 3 | Mocked `IReplayFlowRepository` |
 | `JvCalculationProcessingService` — CheckOnly vs FixAndCheck routing, failure handling, heartbeat ordering | 6 | Mocked `IJvCalculationRepository` |
-| `UamPermissionHandler` — authorized / denied / unauthenticated / repository exception | 5 | Mocked `IUamAuthorizationRepository` |
+| `UamPermissionHandler` — authorized / denied / unauthenticated / repository exception / feedback state reset | 7 | Mocked `IUamAuthorizationRepository` |
 
 ### What Is Not Covered (and Why)
 
