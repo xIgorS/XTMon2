@@ -23,4 +23,7 @@ node_modules/
 *.log
 logs/
 
+# Test results / coverage
+TestResults/
+
 tailwindcss.exe
