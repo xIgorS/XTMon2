@@ -216,6 +216,59 @@ public class JvCalculationProcessingServiceTests
     }
 
     [Fact]
+    public async Task WhenMarkFailedThrowsOnFirstAttempt_RetriesAndSucceeds()
+    {
+        var failedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = MakeJob("CheckOnly");
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextJvJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((JvJobRecord?)null);
+        repo.Setup(r => r.CheckJvCalculationAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("check failed"));
+        repo.SetupSequence(r => r.MarkJvJobFailedAsync(1L, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("db unavailable"))
+            .Returns(() =>
+            {
+                failedTcs.TrySetResult(true);
+                return Task.CompletedTask;
+            });
+
+        var (svc, _) = CreateService(repo);
+        await svc.StartAsync(CancellationToken.None);
+
+        await failedTcs.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await svc.StopAsync(CancellationToken.None);
+
+        repo.Verify(r => r.MarkJvJobFailedAsync(1L, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task WhenMarkFailedThrowsOnBothAttempts_DoesNotRetryMoreThanTwice()
+    {
+        var job = MakeJob("CheckOnly");
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextJvJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((JvJobRecord?)null);
+        repo.Setup(r => r.CheckJvCalculationAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("check failed"));
+        repo.Setup(r => r.MarkJvJobFailedAsync(1L, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("db unavailable"));
+
+        var (svc, _) = CreateService(repo);
+        await svc.StartAsync(CancellationToken.None);
+
+        // Allow enough time for both attempts plus the 2s retry delay
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        await svc.StopAsync(CancellationToken.None);
+
+        repo.Verify(r => r.MarkJvJobFailedAsync(1L, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
     public async Task HeartbeatIsCalledBeforeProcessing()
     {
         var callOrder = new List<string>();

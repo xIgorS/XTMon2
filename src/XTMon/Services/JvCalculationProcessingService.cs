@@ -123,15 +123,24 @@ public sealed class JvCalculationProcessingService : BackgroundService
         {
             LogProcessorException(ex, $"job {job.JobId}");
             _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, ex, "JV job {JobId} failed.", job.JobId);
-            try
+            for (var attempt = 1; attempt <= 2; attempt++)
             {
-                using var scope = _scopeFactory.CreateScope();
-                var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
-                await repository.MarkJvJobFailedAsync(job.JobId, ex.Message, CancellationToken.None);
-            }
-            catch (Exception markFailedException)
-            {
-                _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, markFailedException, "Failed to mark JV job {JobId} as failed.", job.JobId);
+                try
+                {
+                    using var scope = _scopeFactory.CreateScope();
+                    var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
+                    await repository.MarkJvJobFailedAsync(job.JobId, ex.Message, CancellationToken.None);
+                    break;
+                }
+                catch (Exception markFailedException)
+                {
+                    _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, markFailedException,
+                        "Failed to mark JV job {JobId} as failed (attempt {Attempt}/2).", job.JobId, attempt);
+                    if (attempt < 2)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                    }
+                }
             }
         }
     }
