@@ -87,3 +87,181 @@ stages:
         PathtoPublish: '$(Build.ArtifactStagingDirectory)/app'
         ArtifactName: drop
         publishLocation: Container
+
+# ─── Stage 2: Deploy to Staging ──────────────────────────────────────────────
+# IIS site must already exist with HTTPS 443 binding and certificate configured.
+- stage: DeployStaging
+  displayName: 'Deploy to Staging'
+  dependsOn: BuildAndTest
+  variables:
+  - group: XTMon-Staging          # Variable group with ConnectionStrings.*, etc.
+  - name: iis.siteName
+    value: 'XTMon-Staging'
+  - name: iis.physicalPath
+    value: 'C:\inetpub\XTMon-Staging'
+  - name: aspnetcore.environment
+    value: 'Staging'
+  jobs:
+
+  - deployment: DeployToStaging
+    displayName: 'Deploy to Staging IIS'
+    environment: 'Staging'        # Create this environment in Azure DevOps
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          # ── Transform appsettings.json with pipeline variables ─────────
+          # Variables named with dot-notation (e.g. ConnectionStrings.LogFiAlmt)
+          # automatically replace matching keys in the JSON file.
+          - task: FileTransform@2
+            displayName: 'Apply environment config'
+            inputs:
+              folderPath: '$(Pipeline.Workspace)/drop'
+              jsonTargetFiles: 'appsettings.json'
+
+          # ── Configure web.config for HTTPS 443 ────────────────────────
+          # Sets ASPNETCORE_ENVIRONMENT and ASPNETCORE_HTTPS_PORT.
+          # IIS manages the HTTPS binding and certificate; the app only
+          # needs the port hint for correct redirect URLs.
+          - task: PowerShell@2
+            displayName: 'Configure web.config environment variables'
+            inputs:
+              targetType: inline
+              script: |
+                $webConfig = "$(Pipeline.Workspace)/drop/web.config"
+                [xml]$xml = Get-Content $webConfig
+
+                # Ensure <environmentVariables> node exists
+                $envVars = $xml.SelectSingleNode("//environmentVariables")
+                if (-not $envVars) {
+                  $aspNetCore = $xml.SelectSingleNode("//aspNetCore")
+                  $envVars = $xml.CreateElement("environmentVariables")
+                  $aspNetCore.AppendChild($envVars) | Out-Null
+                }
+
+                # Upsert helper — creates or updates an environment variable
+                function Set-EnvVar([xml]$doc, $parent, [string]$name, [string]$value) {
+                  $node = $doc.SelectSingleNode("//environmentVariable[@name='$name']")
+                  if ($node) {
+                    $node.SetAttribute("value", $value)
+                  } else {
+                    $el = $doc.CreateElement("environmentVariable")
+                    $el.SetAttribute("name", $name)
+                    $el.SetAttribute("value", $value)
+                    $parent.AppendChild($el) | Out-Null
+                  }
+                }
+
+                Set-EnvVar $xml $envVars "ASPNETCORE_ENVIRONMENT" "$(aspnetcore.environment)"
+                Set-EnvVar $xml $envVars "ASPNETCORE_HTTPS_PORT"  "443"
+
+                $xml.Save($webConfig)
+                Write-Host "web.config updated — ASPNETCORE_ENVIRONMENT=$(aspnetcore.environment), HTTPS_PORT=443"
+
+          # ── Stop IIS site, deploy, start ──────────────────────────────
+          - task: IISWebAppManagementOnMachineGroup@0
+            displayName: 'Stop IIS site'
+            inputs:
+              IISDeploymentType: IISWebsite
+              ActionIISWebsite: StopWebsite
+              StartStopWebsiteName: '$(iis.siteName)'
+            continueOnError: true
+
+          - task: CopyFiles@2
+            displayName: 'Copy files to IIS directory'
+            inputs:
+              SourceFolder: '$(Pipeline.Workspace)/drop'
+              TargetFolder: '$(iis.physicalPath)'
+              CleanTargetFolder: true
+
+          - task: IISWebAppManagementOnMachineGroup@0
+            displayName: 'Start IIS site'
+            inputs:
+              IISDeploymentType: IISWebsite
+              ActionIISWebsite: StartWebsite
+              StartStopWebsiteName: '$(iis.siteName)'
+
+# ─── Stage 3: Deploy to Production ──────────────────────────────────────────
+# IIS site must already exist with HTTPS 443 binding and certificate configured.
+- stage: DeployProd
+  displayName: 'Deploy to Production'
+  dependsOn: DeployStaging
+  variables:
+  - group: XTMon-Prod             # Variable group with ConnectionStrings.*, etc.
+  - name: iis.siteName
+    value: 'XTMon'
+  - name: iis.physicalPath
+    value: 'C:\inetpub\XTMon'
+  - name: aspnetcore.environment
+    value: 'Production'
+  jobs:
+
+  - deployment: DeployToProd
+    displayName: 'Deploy to Production IIS'
+    environment: 'Production'     # Create this environment in Azure DevOps (add approval gate)
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - task: FileTransform@2
+            displayName: 'Apply environment config'
+            inputs:
+              folderPath: '$(Pipeline.Workspace)/drop'
+              jsonTargetFiles: 'appsettings.json'
+
+          - task: PowerShell@2
+            displayName: 'Configure web.config environment variables'
+            inputs:
+              targetType: inline
+              script: |
+                $webConfig = "$(Pipeline.Workspace)/drop/web.config"
+                [xml]$xml = Get-Content $webConfig
+
+                $envVars = $xml.SelectSingleNode("//environmentVariables")
+                if (-not $envVars) {
+                  $aspNetCore = $xml.SelectSingleNode("//aspNetCore")
+                  $envVars = $xml.CreateElement("environmentVariables")
+                  $aspNetCore.AppendChild($envVars) | Out-Null
+                }
+
+                function Set-EnvVar([xml]$doc, $parent, [string]$name, [string]$value) {
+                  $node = $doc.SelectSingleNode("//environmentVariable[@name='$name']")
+                  if ($node) {
+                    $node.SetAttribute("value", $value)
+                  } else {
+                    $el = $doc.CreateElement("environmentVariable")
+                    $el.SetAttribute("name", $name)
+                    $el.SetAttribute("value", $value)
+                    $parent.AppendChild($el) | Out-Null
+                  }
+                }
+
+                Set-EnvVar $xml $envVars "ASPNETCORE_ENVIRONMENT" "$(aspnetcore.environment)"
+                Set-EnvVar $xml $envVars "ASPNETCORE_HTTPS_PORT"  "443"
+
+                $xml.Save($webConfig)
+                Write-Host "web.config updated — ASPNETCORE_ENVIRONMENT=$(aspnetcore.environment), HTTPS_PORT=443"
+
+          - task: IISWebAppManagementOnMachineGroup@0
+            displayName: 'Stop IIS site'
+            inputs:
+              IISDeploymentType: IISWebsite
+              ActionIISWebsite: StopWebsite
+              StartStopWebsiteName: '$(iis.siteName)'
+            continueOnError: true
+
+          - task: CopyFiles@2
+            displayName: 'Copy files to IIS directory'
+            inputs:
+              SourceFolder: '$(Pipeline.Workspace)/drop'
+              TargetFolder: '$(iis.physicalPath)'
+              CleanTargetFolder: true
+
+          - task: IISWebAppManagementOnMachineGroup@0
+            displayName: 'Start IIS site'
+            inputs:
+              IISDeploymentType: IISWebsite
+              ActionIISWebsite: StartWebsite
+              StartStopWebsiteName: '$(iis.siteName)'
