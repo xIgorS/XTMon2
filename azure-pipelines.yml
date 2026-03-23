@@ -3,6 +3,7 @@ trigger:
     include:
       - main
 
+
 pool:
   name: Default          # on-premises Azure DevOps 2022 agent pool; adjust to your pool name
 
@@ -29,6 +30,11 @@ stages:
     - script: dotnet --version
       displayName: 'Verify .NET SDK version'
 
+    - script: |
+        dotnet --list-sdks
+        dotnet --info
+      displayName: 'Print .NET SDK details'
+
     # ── Restore ───────────────────────────────────────────────────────────────
     - task: DotNetCoreCLI@2
       displayName: 'Restore packages'
@@ -53,12 +59,7 @@ stages:
       inputs:
         command: test
         projects: $(testProject)
-        arguments: >-
-          --no-build
-          --configuration $(buildConfiguration)
-          --collect:"XPlat Code Coverage"
-          --results-directory $(Agent.TempDirectory)/TestResults
-          --logger trx
+        arguments: '--no-build --configuration $(buildConfiguration) --collect:"XPlat Code Coverage"'
         publishTestResults: true
 
     # ── Publish code coverage report ──────────────────────────────────────────

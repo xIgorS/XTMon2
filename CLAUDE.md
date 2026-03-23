@@ -59,6 +59,7 @@ Interfaces are registered in DI (`src/XTMon/Program.cs`) as `AddScoped<IInterfac
 Pure-logic methods extracted from Blazor code-behind files into testable `internal static` classes in `src/XTMon/Helpers/`:
 - `ReplayFlowsHelper` — `TryNormalizeReplayFlowSet`, `GetStatusKind`, `FormatDate`, `FormatNumber`, `FormatDuration`, plus the `ReplayStatusKind` enum
 - `JvCalculationHelper` — `IsStaleRunningJob`, `ToUtc`, `ToHeaderLabel`, `GetColumnAlignmentClass`, `DeserializeMonitoringTable`
+- `MonitoringDisplayHelper` — display formatting helpers for monitoring pages
 
 The test project accesses these via `[assembly: InternalsVisibleTo("XTMon.Tests")]` declared in `src/XTMon/XTMon.csproj`.
 
@@ -113,6 +114,7 @@ The `XTMon.Tests` project contains xUnit unit tests that run without a live SQL 
 |------|------|----------|
 | `SqlDataHelper` | `Helpers/SqlDataHelperTests.cs` | All 8 methods; SQL error number classification via reflection-built `SqlException` |
 | `ReplayFlowsHelper` | `Helpers/ReplayFlowsHelperTests.cs` | Replay flow set normalization, all 12+ status string mappings, date/number/duration formatting |
+| `MonitoringDisplayHelper` | `Helpers/MonitoringDisplayHelperTests.cs` | Display formatting for monitoring pages |
 | `JvCalculationHelper` | `Helpers/JvCalculationHelperTests.cs` | Stale detection, UTC conversion, camelCase header labels, column alignment, JSON deserialization |
 | `ReplayFlowProcessingQueue` | `Queue/ReplayFlowProcessingQueueTests.cs` | Enqueue/dequeue, cancellation, drop-on-full (capacity 10) |
 | `ReplayFlowProcessingService` | `Services/ReplayFlowProcessingServiceTests.cs` | Item processing, error resilience (service continues after exception) |

@@ -31,6 +31,8 @@ XTMon2/
 │       ├── Security/            # Authorization handler tests
 │       ├── Services/            # Hosted service tests
 │       └── XTMon.Tests.csproj   # xUnit test project
+├── azure-pipelines.yml
+├── global.json
 ├── README.md
 ├── SystemArchitecture.md
 └── XTMon.sln
@@ -50,7 +52,7 @@ XTMon2/
 dotnet test tests/XTMon.Tests/XTMon.Tests.csproj
 ```
 
-The test project (`tests/XTMon.Tests/`) currently contains 139 xUnit unit tests covering pure logic helpers, the replay wake-up queue, background service orchestration, and the UAM authorization handler. No SQL Server connection or browser is needed.
+The test project (`tests/XTMon.Tests/`) currently contains 175 xUnit unit tests covering pure logic helpers, monitoring display formatting, the replay wake-up queue, background service orchestration, and the UAM authorization handler. No SQL Server connection or browser is needed.
 
 See the [Testing](#testing) section for coverage details.
 
@@ -455,13 +457,14 @@ dotnet test tests/XTMon.Tests/XTMon.Tests.csproj
 
 | Area | Tests | Notes |
 |------|------:|-------|
-| `SqlDataHelper` — type coercions, `ParseQuery`, SQL error classification | 27 | SQL exceptions constructed via reflection |
-| `ReplayFlowsHelper` — flow set normalisation, all 12+ status strings, formatting | 39 | Pure logic, no dependencies |
-| `JvCalculationHelper` — stale detection, UTC conversion, header labels, JSON | 24 | Pure logic, no dependencies |
-| `ReplayFlowProcessingQueue` — enqueue/dequeue, cancellation, coalesced wake-up signals | 5 | In-memory signal queue only |
+| `SqlDataHelper` — type coercions, `ParseQuery`, SQL error classification | 41 | SQL exceptions constructed via reflection |
+| `ReplayFlowsHelper` — flow set normalisation, all 12+ status strings, formatting | 52 | Pure logic, no dependencies |
+| `MonitoringDisplayHelper` — display formatting for monitoring pages | 34 | Pure logic, no dependencies |
+| `JvCalculationHelper` — stale detection, UTC conversion, header labels, JSON | 25 | Pure logic, no dependencies |
+| `ReplayFlowProcessingQueue` — enqueue/dequeue, cancellation, coalesced wake-up signals | 6 | In-memory signal queue only |
 | `ReplayFlowProcessingService` — item processing, transient error resilience | 3 | Mocked `IReplayFlowRepository` |
-| `JvCalculationProcessingService` — CheckOnly vs FixAndCheck routing, failure handling, heartbeat ordering | 6 | Mocked `IJvCalculationRepository` |
-| `UamPermissionHandler` — authorized / denied / unauthenticated / repository exception / feedback state reset | 7 | Mocked `IUamAuthorizationRepository` |
+| `JvCalculationProcessingService` — CheckOnly vs FixAndCheck routing, failure handling, heartbeat ordering | 8 | Mocked `IJvCalculationRepository` |
+| `UamPermissionHandler` — authorized / denied / unauthenticated / repository exception / feedback state reset | 6 | Mocked `IUamAuthorizationRepository` |
 
 ### What Is Not Covered (and Why)
 
