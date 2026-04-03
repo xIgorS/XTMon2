@@ -136,10 +136,20 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.CheckBatchStatusStoredProcedure),
         "BatchStatus options must define the required connection and stored procedure names.")
     .ValidateOnStart();
+builder.Services
+    .AddOptions<ReferentialDataOptions>()
+    .Bind(builder.Configuration.GetSection(ReferentialDataOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.CheckReferentialDataStoredProcedure),
+        "ReferentialData options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
 builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IBatchStatusRepository, BatchStatusRepository>();
+builder.Services.AddScoped<IReferentialDataRepository, ReferentialDataRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
 builder.Services.AddScoped<AuthorizationFeedbackState>();

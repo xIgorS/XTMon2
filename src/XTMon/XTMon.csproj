@@ -15,6 +15,9 @@
     <None Update="Components\Pages\BatchStatus.razor.css">
       <DependentUpon>BatchStatus.razor</DependentUpon>
     </None>
+    <None Update="Components\Pages\ReferentialData.razor.css">
+      <DependentUpon>ReferentialData.razor</DependentUpon>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
