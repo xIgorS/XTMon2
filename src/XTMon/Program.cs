@@ -127,9 +127,19 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.JobExpireStaleStoredProcedure),
         "JvCalculation options must define all required connection and stored procedure names.")
     .ValidateOnStart();
+builder.Services
+    .AddOptions<BatchStatusOptions>()
+    .Bind(builder.Configuration.GetSection(BatchStatusOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.CheckBatchStatusStoredProcedure),
+        "BatchStatus options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
 builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
+builder.Services.AddScoped<IBatchStatusRepository, BatchStatusRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
 builder.Services.AddScoped<AuthorizationFeedbackState>();

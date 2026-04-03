@@ -1,0 +1,43 @@
+.batch-status-controls__grid {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.batch-status-controls__section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.batch-status-controls__section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.batch-status-controls__divider {
+    display: none;
+}
+
+.batch-status-controls__section--actions {
+    justify-content: center;
+}
+
+.batch-status-run-btn {
+    width: 100%;
+    justify-content: center;
+}
+
+@media (min-width: 1024px) {
+    .batch-status-controls__grid {
+        grid-template-columns: minmax(0, 1fr) auto minmax(14rem, 18rem);
+        align-items: center;
+    }
+
+    .batch-status-controls__divider {
+        display: block;
+        width: 1px;
+        align-self: stretch;
+        background: color-mix(in srgb, var(--border-color) 80%, transparent);
+    }
+}
