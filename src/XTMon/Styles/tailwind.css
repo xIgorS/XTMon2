@@ -160,6 +160,29 @@
     background-color: #0f766e;
   }
 
+  .submenu-link {
+    @apply flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors;
+    color: color-mix(in srgb, var(--nav-text) 74%, white 26%);
+    background-color: transparent;
+  }
+
+  .submenu-link:hover {
+    color: var(--nav-text-hover);
+    background-color: color-mix(in srgb, var(--nav-hover-bg) 55%, transparent 45%);
+  }
+
+  .submenu-link-active {
+    @apply font-semibold;
+    color: #f0fdfa;
+    background-color: color-mix(in srgb, #0d9488 14%, transparent 86%);
+    box-shadow: inset 2px 0 0 #5eead4;
+  }
+
+  .submenu-link-active:hover {
+    color: white;
+    background-color: color-mix(in srgb, #0d9488 20%, transparent 80%);
+  }
+
   .primary-button {
     @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:cursor-not-allowed disabled:opacity-40;
     color: var(--btn-outline-text);
