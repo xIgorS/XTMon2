@@ -9,7 +9,7 @@
         <div>
             <p class="section-label">Deployment verification</p>
             <h1 class="text-2xl font-bold text-heading mt-1">System Diagnostics</h1>
-            <p class="muted mt-1">Checks all database connections and stored procedure signatures.</p>
+            <p class="muted mt-1">Checks database connections and stored procedure signatures for monitoring, data validation, replay flows, JV calculation, logging, and UAM authorization.</p>
         </div>
         <button class="primary-button-filled" @onclick="RunCheckAsync" disabled="@isRunning">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
@@ -35,11 +35,31 @@
     else if (report is null)
     {
         <div class="surface">
-            <p class="muted">Click <strong>Run Diagnostics</strong> to verify all database connections and stored procedures.</p>
+            <p class="muted">Click <strong>Run Diagnostics</strong> to verify all database connections and stored procedures, including Pricing, Daily Balance, and Adjustments data-validation checks.</p>
         </div>
     }
     else
     {
+        <div class="surface">
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div>
+                    <p class="stat-label">Coverage</p>
+                    <p class="mt-1 text-sm text-heading">Monitoring and validation stack</p>
+                    <p class="muted mt-1 text-xs">Database Space, Database Backups, Pricing, Daily Balance, Adjustments, Replay Flows, JV Calculation, and UAM authorization.</p>
+                </div>
+                <div>
+                    <p class="stat-label">What Is Verified</p>
+                    <p class="mt-1 text-sm text-heading">Connection and signature health</p>
+                    <p class="muted mt-1 text-xs">Each configured connection string is opened and every required stored procedure is checked for existence and parameter metadata.</p>
+                </div>
+                <div>
+                    <p class="stat-label">When To Use It</p>
+                    <p class="mt-1 text-sm text-heading">Before troubleshooting results</p>
+                    <p class="muted mt-1 text-xs">Run diagnostics first when a screen fails to load, returns unexpected metadata, or appears misconfigured after a deployment.</p>
+                </div>
+            </div>
+        </div>
+
         @* Summary banner *@
         <div class="surface @(report.AllPassed ? "!border-emerald-500/40" : "!border-rose-500/40")">
             <div class="flex items-center gap-3">

@@ -8,12 +8,12 @@
         <h1 class="text-3xl font-bold text-heading">Welcome to APS Actions</h1>
         <p class="text-sm text-body-secondary" style="max-width: 48rem;">
             A central monitoring and recovery dashboard for <strong>APS Actions / XTarget</strong> SQL Server processing.
-            Track database health, replay failed ETL flows, and run JV calculation checks — all from one place.
+            Track database health, validate Pricing, Daily Balance, and Adjustments outputs, replay failed ETL flows, and run JV calculation checks from one place.
         </p>
     </div>
 
     <!-- Quick-access feature cards -->
-    <div class="grid sm:grid-cols-2 xl:grid-cols-7 gap-4">
+    <div class="grid sm:grid-cols-2 xl:grid-cols-8 gap-4">
         <a href="monitoring" class="stat-card" style="text-decoration: none; cursor: pointer;">
             <div class="stat-label">Database Space</div>
             <p class="mt-1.5 text-sm text-body-secondary">Monitor allocated space across all databases, grouped by métier.</p>
@@ -56,6 +56,15 @@
             <div class="stat-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h9.75m-6.75 4.5h7.5m3.75-7.5 2.25 2.25-4.5 4.5H15v-2.25l4.5-4.5Z" />
+                </svg>
+            </div>
+        </a>
+        <a href="system-diagnostics" class="stat-card" style="text-decoration: none; cursor: pointer;">
+            <div class="stat-label">System Diagnostics</div>
+            <p class="mt-1.5 text-sm text-body-secondary">Verify database connectivity and stored procedure signatures before troubleshooting incidents.</p>
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.75h4.5m-7.5 0h10.5A2.25 2.25 0 0 1 19.5 6v12a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 18V6a2.25 2.25 0 0 1 2.25-2.25Zm1.5 6 1.5 1.5 3-3m-4.5 7.5 1.5 1.5 3-3" />
                 </svg>
             </div>
         </a>
@@ -121,7 +130,7 @@
     <!-- Quick Start Guide -->
     <div class="surface">
         <div class="stat-label mb-3">Quick Start Guide</div>
-        <div class="grid sm:grid-cols-2 gap-4">
+        <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             <div class="flex gap-3">
                 <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">1</div>
                 <div>
@@ -145,6 +154,16 @@
             <div class="flex gap-3">
                 <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">3</div>
                 <div>
+                    <p class="text-sm font-semibold text-heading">Run Data Validation</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        Use <strong>Pricing</strong>, <strong>Daily Balance</strong>, and <strong>Adjustments</strong>
+                        to validate monitored outputs for a selected PNL date and source-system scope.
+                    </p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">4</div>
+                <div>
                     <p class="text-sm font-semibold text-heading">Replay Failed Flows</p>
                     <p class="text-xs text-body-secondary mt-1">
                         Go to <strong>Replay Flows</strong> to find failed ETL processes. Select the flows
@@ -153,12 +172,22 @@
                 </div>
             </div>
             <div class="flex gap-3">
-                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">4</div>
+                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">5</div>
                 <div>
                     <p class="text-sm font-semibold text-heading">Run JV Checks</p>
                     <p class="text-xs text-body-secondary mt-1">
                         Use <strong>JV Calculation</strong> to verify JV amounts. Select a
                         business date, run the check, and review any discrepancies found.
+                    </p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background-color: var(--logo-icon-bg); color: var(--accent-text);">6</div>
+                <div>
+                    <p class="text-sm font-semibold text-heading">Check Diagnostics</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        Open <strong>System Diagnostics</strong> before deeper investigation to confirm
+                        database connectivity and stored procedure signatures across all monitored features.
                     </p>
                 </div>
             </div>
@@ -206,8 +235,8 @@
                 <div>
                     <p class="text-sm font-semibold text-heading">Data Questions</p>
                     <p class="text-xs text-body-secondary mt-1">
-                        All data is sourced from SQL Server stored procedures. If values look
-                        unexpected, verify the source procedure and last refresh timestamp.
+                        All monitoring and data-validation results are sourced from SQL Server stored procedures.
+                        If values look unexpected, verify the source procedure, selected PNL date, and last refresh timestamp.
                     </p>
                 </div>
                 <div>
@@ -215,6 +244,13 @@
                     <p class="text-xs text-body-secondary mt-1">
                         Check the badge in the sidebar — <strong>DEV</strong> means authorization is
                         bypassed, <strong>PROD</strong> means UAM roles are enforced.
+                    </p>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-heading">Diagnostics</p>
+                    <p class="text-xs text-body-secondary mt-1">
+                        Use <strong>System Diagnostics</strong> to confirm connection and procedure metadata for Database Space,
+                        Database Backups, Data Validation, Replay Flows, JV Calculation, and UAM authorization.
                     </p>
                 </div>
             </div>
