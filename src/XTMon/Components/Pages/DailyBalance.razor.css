@@ -1,0 +1,156 @@
+.daily-balance-query-textarea {
+  margin-top: 0.75rem;
+  width: 100%;
+  min-height: 12rem;
+  border: 1px solid var(--input-border);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--input-bg);
+  color: var(--input-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.35rem;
+  resize: vertical;
+}
+
+.daily-balance-query-textarea:focus {
+  outline: none;
+  border-color: var(--btn-outline-text);
+}
+
+.daily-balance-controls {
+  padding: 1.25rem 1.5rem;
+}
+
+.daily-balance-controls__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+@media (min-width: 1024px) {
+  .daily-balance-controls__grid {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
+
+.daily-balance-controls__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.daily-balance-controls__section--filters {
+  min-width: min(24rem, 100%);
+}
+
+.daily-balance-controls__section--actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+@media (min-width: 1024px) {
+  .daily-balance-controls__section--actions {
+    margin-left: auto;
+    align-items: flex-end;
+  }
+}
+
+.daily-balance-controls__section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.125rem;
+}
+
+.daily-balance-controls__divider {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .daily-balance-controls__divider {
+    display: block;
+    width: 1px;
+    align-self: stretch;
+    background-color: var(--border-subtle);
+    margin: 0 0.5rem;
+  }
+}
+
+.daily-balance-run-btn {
+  min-width: 12rem;
+  justify-content: center;
+}
+
+.daily-balance-source-systems {
+  width: 100%;
+}
+
+.daily-balance-source-systems__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--input-border);
+  border-radius: 0.75rem;
+  background-color: var(--input-bg);
+  color: var(--input-text);
+  cursor: pointer;
+  list-style: none;
+}
+
+.daily-balance-source-systems__summary::-webkit-details-marker {
+  display: none;
+}
+
+.daily-balance-source-systems__summary-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-balance-source-systems[open] .daily-balance-source-systems__summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.daily-balance-source-systems__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  padding: 0.875rem 1rem 1rem;
+  border: 1px solid var(--input-border);
+  border-top: none;
+  border-bottom-left-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+  background-color: color-mix(in srgb, var(--input-bg) 88%, black 12%);
+}
+
+.daily-balance-source-systems__option {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: var(--input-text);
+  font-size: 0.875rem;
+}
+
+.daily-balance-source-systems__option--all {
+  padding-bottom: 0.625rem;
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 600;
+}
+
+.daily-balance-checkbox {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  accent-color: var(--btn-filled-bg);
+}
