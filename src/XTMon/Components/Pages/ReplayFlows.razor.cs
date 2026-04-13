@@ -28,6 +28,9 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     private ReplayFlowProcessingQueue ProcessingQueue { get; set; } = default!;
 
     [Inject]
+    private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
+
+    [Inject]
     private IOptions<ReplayFlowsOptions> ReplayFlowsOptions { get; set; } = default!;
 
     [Inject]
@@ -40,6 +43,7 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     private readonly List<ReplayFlowResultRow> replayResults = new();
     private readonly List<ReplayFlowStatusRow> statusRows = new();
     private readonly CancellationTokenSource disposeCts = new();
+    private readonly HashSet<DateOnly> availableDates = new();
     private DateOnly? selectedPnlDate;
     private string replayFlowSetInput = string.Empty;
     private string? feedSourceFilter;
@@ -113,9 +117,42 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadDataAsync(pnlDate: null, replayFlowSet: null);
+        await LoadPnlDatesAsync();
+        await LoadDataAsync(selectedPnlDate, replayFlowSet: null);
         await LoadStatusAsync();
         StartPollingIfNeeded();
+    }
+
+    private async Task LoadPnlDatesAsync()
+    {
+        try
+        {
+            var response = await PnlDateRepository.GetJvPnlDatesAsync(disposeCts.Token);
+
+            availableDates.Clear();
+            foreach (var date in response.AvailableDates)
+            {
+                availableDates.Add(date);
+            }
+
+            var selectedDate = response.DefaultDate;
+            if (!selectedDate.HasValue && response.AvailableDates.Count > 0)
+            {
+                selectedDate = response.AvailableDates[0];
+            }
+
+            if (selectedDate.HasValue)
+            {
+                selectedPnlDate = selectedDate.Value;
+            }
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to load default PNL dates for Replay Flows.");
+        }
     }
 
     private async Task ReloadAsync()
@@ -155,7 +192,10 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
             if (resultPnlDate.HasValue)
             {
                 lastPnlDate = resultPnlDate.Value;
-                selectedPnlDate = resultPnlDate.Value;
+                if (!pnlDate.HasValue)
+                {
+                    selectedPnlDate = resultPnlDate.Value;
+                }
             }
             else
             {

@@ -24,6 +24,7 @@
                 <DatePickerInput InputId="marketDataPnlDate"
                                  Value="selectedPnlDate"
                                  ValueChanged="OnPnlDateSelected"
+                                 AvailableDates="availableDates"
                                  IsDisabled="@isLoading"
                                  AriaLabel="PNL DATE calendar" />
                 @if (!string.IsNullOrWhiteSpace(validationError))

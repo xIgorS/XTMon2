@@ -19,10 +19,23 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IOptions<MonitoringOptions> monitoringOptions,
         IOptions<ReplayFlowsOptions> replayFlowsOptions,
         IOptions<JvCalculationOptions> jvOptions,
+        IOptions<BatchStatusOptions> batchStatusOptions,
+        IOptions<ReferentialDataOptions> referentialDataOptions,
+        IOptions<MarketDataOptions> marketDataOptions,
+        IOptions<PricingOptions> pricingOptions,
         IOptions<UamAuthorizationOptions> uamOptions)
     {
         _connectionFactory = connectionFactory;
-        _checks = BuildChecks(configuration, monitoringOptions.Value, replayFlowsOptions.Value, jvOptions.Value, uamOptions.Value);
+        _checks = BuildChecks(
+            configuration,
+            monitoringOptions.Value,
+            replayFlowsOptions.Value,
+            jvOptions.Value,
+            batchStatusOptions.Value,
+            referentialDataOptions.Value,
+            marketDataOptions.Value,
+            pricingOptions.Value,
+            uamOptions.Value);
     }
 
     private static IReadOnlyList<(string, string)> BuildChecks(
@@ -30,6 +43,10 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         MonitoringOptions monitoring,
         ReplayFlowsOptions replay,
         JvCalculationOptions jv,
+        BatchStatusOptions batchStatus,
+        ReferentialDataOptions referentialData,
+        MarketDataOptions marketData,
+        PricingOptions pricing,
         UamAuthorizationOptions uam)
     {
         var checks = new List<(string, string)>
@@ -70,6 +87,13 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (jv.JobConnectionStringName, jv.JobGetByIdStoredProcedure),
             (jv.JobConnectionStringName, jv.JobGetLatestStoredProcedure),
             (jv.JobConnectionStringName, jv.JobExpireStaleStoredProcedure),
+
+            // Data validation
+            (batchStatus.ConnectionStringName, batchStatus.CheckBatchStatusStoredProcedure),
+            (referentialData.ConnectionStringName, referentialData.CheckReferentialDataStoredProcedure),
+            (marketData.ConnectionStringName, marketData.MarketDataStoredProcedure),
+            (pricing.ConnectionStringName, pricing.PricingStoredProcedure),
+            (pricing.ConnectionStringName, pricing.GetAllSourceSystemsStoredProcedure),
 
             // UAM authorization
             (uam.ConnectionStringName, uam.GetAdminUserStoredProcedure),

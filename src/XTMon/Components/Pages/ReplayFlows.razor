@@ -58,6 +58,7 @@
                 <DatePickerInput InputId="pnlDate"
                                  Value="selectedPnlDate"
                                  ValueChanged="OnPnlDateSelected"
+                                 AvailableDates="availableDates"
                                  IsDisabled="@isSubmitting"
                                  AriaLabel="Pnl Date calendar" />
                 @if (!string.IsNullOrWhiteSpace(pnlDateError))

@@ -154,12 +154,23 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.MarketDataStoredProcedure),
         "MarketData options must define the required connection and stored procedure names.")
     .ValidateOnStart();
+builder.Services
+    .AddOptions<PricingOptions>()
+    .Bind(builder.Configuration.GetSection(PricingOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.PricingStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.GetAllSourceSystemsStoredProcedure),
+        "Pricing options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
 builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IBatchStatusRepository, BatchStatusRepository>();
 builder.Services.AddScoped<IReferentialDataRepository, ReferentialDataRepository>();
 builder.Services.AddScoped<IMarketDataRepository, MarketDataRepository>();
+builder.Services.AddScoped<IPricingRepository, PricingRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
 builder.Services.AddScoped<AuthorizationFeedbackState>();

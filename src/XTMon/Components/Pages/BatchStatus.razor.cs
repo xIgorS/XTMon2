@@ -16,8 +16,13 @@ public partial class BatchStatus : ComponentBase
     private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string LoadErrorMessage = "Unable to load batch status right now. Please try again.";
 
+    private readonly HashSet<DateOnly> availableDates = [];
+
     [Inject]
     private IBatchStatusRepository Repository { get; set; } = default!;
+
+    [Inject]
+    private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
 
     [Inject]
     private IOptions<BatchStatusOptions> BatchStatusOptions { get; set; } = default!;
@@ -41,6 +46,40 @@ public partial class BatchStatus : ComponentBase
     private string LastRunText => lastRunAt.HasValue
         ? lastRunAt.Value.ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture)
         : "-";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPnlDatesAsync();
+    }
+
+    private async Task LoadPnlDatesAsync()
+    {
+        try
+        {
+            var response = await PnlDateRepository.GetJvPnlDatesAsync(CancellationToken.None);
+
+            availableDates.Clear();
+            foreach (var date in response.AvailableDates)
+            {
+                availableDates.Add(date);
+            }
+
+            var selectedDate = response.DefaultDate;
+            if (!selectedDate.HasValue && response.AvailableDates.Count > 0)
+            {
+                selectedDate = response.AvailableDates[0];
+            }
+
+            if (selectedDate.HasValue)
+            {
+                selectedPnlDate = selectedDate.Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to load default PNL dates for Batch Status.");
+        }
+    }
 
     private Task OnPnlDateSelected(DateOnly date)
     {
