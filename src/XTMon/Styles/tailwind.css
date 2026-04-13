@@ -44,6 +44,13 @@
     --nav-text: #64748b;
     --nav-text-hover: #0f172a;
     --nav-hover-bg: rgba(0, 0, 0, 0.04);
+    --nav-submenu-border: #cbd5e1;
+    --nav-submenu-text: #475569;
+    --nav-submenu-text-hover: #0f172a;
+    --nav-submenu-hover-bg: rgba(148, 163, 184, 0.12);
+    --nav-submenu-active-text: #115e59;
+    --nav-submenu-active-bg: rgba(45, 212, 191, 0.14);
+    --nav-submenu-active-rail: #14b8a6;
 
     --btn-outline-text: #0d9488;
     --btn-outline-border: rgba(13, 148, 136, 0.3);
@@ -93,6 +100,13 @@
     --nav-text: #94a3b8;
     --nav-text-hover: #e2e8f0;
     --nav-hover-bg: rgba(255, 255, 255, 0.04);
+    --nav-submenu-border: rgba(255, 255, 255, 0.1);
+    --nav-submenu-text: #94a3b8;
+    --nav-submenu-text-hover: #e2e8f0;
+    --nav-submenu-hover-bg: rgba(255, 255, 255, 0.04);
+    --nav-submenu-active-text: #f0fdfa;
+    --nav-submenu-active-bg: rgba(13, 148, 136, 0.18);
+    --nav-submenu-active-rail: #5eead4;
 
     --btn-outline-text: #2dd4bf;
     --btn-outline-border: rgba(45, 212, 191, 0.3);
@@ -160,27 +174,32 @@
     background-color: #0f766e;
   }
 
+  .submenu-group {
+    @apply ml-4 mt-1.5 flex flex-col gap-1 pl-4;
+    border-left: 1px solid var(--nav-submenu-border);
+  }
+
   .submenu-link {
     @apply flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors;
-    color: color-mix(in srgb, var(--nav-text) 74%, white 26%);
+    color: var(--nav-submenu-text);
     background-color: transparent;
   }
 
   .submenu-link:hover {
-    color: var(--nav-text-hover);
-    background-color: color-mix(in srgb, var(--nav-hover-bg) 55%, transparent 45%);
+    color: var(--nav-submenu-text-hover);
+    background-color: var(--nav-submenu-hover-bg);
   }
 
   .submenu-link-active {
     @apply font-semibold;
-    color: #f0fdfa;
-    background-color: color-mix(in srgb, #0d9488 14%, transparent 86%);
-    box-shadow: inset 2px 0 0 #5eead4;
+    color: var(--nav-submenu-active-text);
+    background-color: var(--nav-submenu-active-bg);
+    box-shadow: inset 2px 0 0 var(--nav-submenu-active-rail);
   }
 
   .submenu-link-active:hover {
-    color: white;
-    background-color: color-mix(in srgb, #0d9488 20%, transparent 80%);
+    color: var(--nav-submenu-active-text);
+    background-color: var(--nav-submenu-active-bg);
   }
 
   .primary-button {
