@@ -11,6 +11,7 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("batch-status") ||
 		IsCurrentRoute("referential-data") ||
 		IsCurrentRoute("market-data") ||
+		IsCurrentRoute("adjustments") ||
 		IsCurrentRoute("pricing");
 
 	private bool IsCurrentRoute(string route)

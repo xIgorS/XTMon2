@@ -22,6 +22,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IOptions<BatchStatusOptions> batchStatusOptions,
         IOptions<ReferentialDataOptions> referentialDataOptions,
         IOptions<MarketDataOptions> marketDataOptions,
+        IOptions<AdjustmentsOptions> adjustmentsOptions,
         IOptions<PricingOptions> pricingOptions,
         IOptions<UamAuthorizationOptions> uamOptions)
     {
@@ -34,6 +35,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             batchStatusOptions.Value,
             referentialDataOptions.Value,
             marketDataOptions.Value,
+            adjustmentsOptions.Value,
             pricingOptions.Value,
             uamOptions.Value);
     }
@@ -46,6 +48,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         BatchStatusOptions batchStatus,
         ReferentialDataOptions referentialData,
         MarketDataOptions marketData,
+        AdjustmentsOptions adjustments,
         PricingOptions pricing,
         UamAuthorizationOptions uam)
     {
@@ -92,6 +95,8 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (batchStatus.ConnectionStringName, batchStatus.CheckBatchStatusStoredProcedure),
             (referentialData.ConnectionStringName, referentialData.CheckReferentialDataStoredProcedure),
             (marketData.ConnectionStringName, marketData.MarketDataStoredProcedure),
+            (adjustments.ConnectionStringName, adjustments.AdjustmentsStoredProcedure),
+            (adjustments.ConnectionStringName, adjustments.GetAllSourceSystemsStoredProcedure),
             (pricing.ConnectionStringName, pricing.PricingStoredProcedure),
             (pricing.ConnectionStringName, pricing.GetAllSourceSystemsStoredProcedure),
 

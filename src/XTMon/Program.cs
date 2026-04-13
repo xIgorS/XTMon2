@@ -155,6 +155,16 @@ builder.Services
         "MarketData options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<AdjustmentsOptions>()
+    .Bind(builder.Configuration.GetSection(AdjustmentsOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.AdjustmentsStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.GetAllSourceSystemsStoredProcedure),
+        "Adjustments options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<PricingOptions>()
     .Bind(builder.Configuration.GetSection(PricingOptions.SectionName))
     .ValidateDataAnnotations()
@@ -170,6 +180,7 @@ builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IBatchStatusRepository, BatchStatusRepository>();
 builder.Services.AddScoped<IReferentialDataRepository, ReferentialDataRepository>();
 builder.Services.AddScoped<IMarketDataRepository, MarketDataRepository>();
+builder.Services.AddScoped<IAdjustmentsRepository, AdjustmentsRepository>();
 builder.Services.AddScoped<IPricingRepository, PricingRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
