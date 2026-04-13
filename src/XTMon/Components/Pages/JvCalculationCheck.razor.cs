@@ -64,6 +64,8 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
 
     private string CobDatesProcedureName => JvOptions.Value.GetPnlDatesStoredProcedure;
     private string JvCheckProcedureName => JvOptions.Value.CheckJvCalculationStoredProcedure;
+    private string FullyQualifiedCobDatesProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(JvOptions.Value.PnlDatesConnectionStringName, CobDatesProcedureName);
+    private string FullyQualifiedJvCheckProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(JvOptions.Value.PublicationConnectionStringName, JvCheckProcedureName);
     private TimeSpan JobRunningStaleTimeout => TimeSpan.FromSeconds(JvOptions.Value.JobRunningStaleTimeoutSeconds);
     private string? JobStatusText => string.IsNullOrWhiteSpace(activeJobStatus) ? null : $"Status: {activeJobStatus}";
     private string JobStatusDetailsText => $"JobId: {(activeJobId?.ToString(CultureInfo.InvariantCulture) ?? "-")} | Latest execution: {LatestExecutionText}";

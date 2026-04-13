@@ -100,6 +100,14 @@ public class JvCalculationHelperTests
         Assert.Equal("XML Parser", JvCalculationHelper.ToHeaderLabel("XMLParser"));
     }
 
+    [Fact]
+    public void BuildFullyQualifiedProcedureName_FormatsDatabaseAndProcedure()
+    {
+        var result = JvCalculationHelper.BuildFullyQualifiedProcedureName("StagingFiAlmt", "monitoring.UspTestProcedure");
+
+        Assert.Equal("STAGING_FI_ALMT.monitoring.UspTestProcedure", result);
+    }
+
     // ─── GetColumnAlignmentClass ─────────────────────────────────────────────────
 
     [Theory]

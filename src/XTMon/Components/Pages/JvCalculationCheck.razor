@@ -9,8 +9,8 @@
         <div>
             <p class="section-label">Publication monitoring</p>
             <h1 class="text-2xl font-bold text-heading mt-1">JV Calculation</h1>
-            <p class="muted mt-1">COB dates: @CobDatesProcedureName</p>
-            <p class="muted mt-1">Check procedure: @JvCheckProcedureName</p>
+            <p class="muted mt-1">COB dates: @FullyQualifiedCobDatesProcedureName</p>
+            <p class="muted mt-1">Check procedure: @FullyQualifiedJvCheckProcedureName</p>
         </div>
         <button class="primary-button" @onclick="LoadCobDatesAsync" disabled="@(isLoadingDates || isChecking || isFixing)">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">

@@ -74,6 +74,7 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
     private PieChartData gecdChart = PieChartData.Empty("GECD");
 
     private string ProcedureName => MonitoringOptions.Value.DbSizePlusDiskStoredProcedure;
+    private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(MonitoringOptions.Value.ConnectionStringName, ProcedureName);
 
     protected override async Task OnInitializedAsync()
     {

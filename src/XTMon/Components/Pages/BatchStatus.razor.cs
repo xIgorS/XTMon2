@@ -34,6 +34,7 @@ public partial class BatchStatus : ComponentBase
     private IReadOnlyList<BatchStatusGridRow> gridRows = Array.Empty<BatchStatusGridRow>();
 
     private string ProcedureName => BatchStatusOptions.Value.CheckBatchStatusStoredProcedure;
+    private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(BatchStatusOptions.Value.ConnectionStringName, ProcedureName);
     private string SelectedPnlDateText => selectedPnlDate.HasValue
         ? selectedPnlDate.Value.ToString(DisplayDateFormat, CultureInfo.InvariantCulture)
         : "-";
@@ -83,4 +84,5 @@ public partial class BatchStatus : ComponentBase
             isLoading = false;
         }
     }
+
 }

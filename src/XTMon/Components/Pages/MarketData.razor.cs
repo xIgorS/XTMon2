@@ -10,20 +10,20 @@ using XTMon.Repositories;
 
 namespace XTMon.Components.Pages;
 
-public partial class ReferentialData : ComponentBase
+public partial class MarketData : ComponentBase
 {
     private const string DisplayDateFormat = "dd-MM-yyyy";
     private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
-    private const string LoadErrorMessage = "Unable to load Referential Data right now. Please try again.";
+    private const string LoadErrorMessage = "Unable to load Market Data right now. Please try again.";
 
     [Inject]
-    private IReferentialDataRepository Repository { get; set; } = default!;
+    private IMarketDataRepository Repository { get; set; } = default!;
 
     [Inject]
-    private IOptions<ReferentialDataOptions> ReferentialOptions { get; set; } = default!;
+    private IOptions<MarketDataOptions> MarketDataOptions { get; set; } = default!;
 
     [Inject]
-    private ILogger<ReferentialData> Logger { get; set; } = default!;
+    private ILogger<MarketData> Logger { get; set; } = default!;
 
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
@@ -40,8 +40,8 @@ public partial class ReferentialData : ComponentBase
     private MonitoringTableResult? result;
     private bool showQuery;
 
-    private string ProcedureName => ReferentialOptions.Value.CheckReferentialDataStoredProcedure;
-    private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(ReferentialOptions.Value.ConnectionStringName, ProcedureName);
+    private string ProcedureName => MarketDataOptions.Value.MarketDataStoredProcedure;
+    private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(MarketDataOptions.Value.ConnectionStringName, ProcedureName);
     private string QueryDisplayText => string.IsNullOrWhiteSpace(parsedQuery) ? string.Empty : parsedQuery;
     private string SelectedPnlDateText => selectedPnlDate.HasValue
         ? selectedPnlDate.Value.ToString(DisplayDateFormat, CultureInfo.InvariantCulture)
@@ -75,7 +75,7 @@ public partial class ReferentialData : ComponentBase
 
         try
         {
-            var response = await Repository.GetReferentialDataAsync(selectedPnlDate.Value, CancellationToken.None);
+            var response = await Repository.GetMarketDataAsync(selectedPnlDate.Value, CancellationToken.None);
             parsedQuery = response.ParsedQuery;
             result = response.Table;
             lastRunAt = DateTime.Now;
@@ -85,7 +85,7 @@ public partial class ReferentialData : ComponentBase
             Logger.LogError(
                 AppLogEvents.MonitoringLoadFailed,
                 ex,
-                "Failed to load Referential Data for PnlDate {PnlDate}.",
+                "Failed to load Market Data for PnlDate {PnlDate}.",
                 selectedPnlDate.Value);
             loadError = LoadErrorMessage;
             parsedQuery = string.Empty;
@@ -124,7 +124,7 @@ public partial class ReferentialData : ComponentBase
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Unable to copy Referential Data SQL statement to clipboard.");
+            Logger.LogWarning(ex, "Unable to copy Market Data SQL statement to clipboard.");
             copyMessage = "Failed to copy SQL to clipboard.";
             copySucceeded = false;
         }

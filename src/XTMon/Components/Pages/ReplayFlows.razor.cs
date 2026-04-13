@@ -66,6 +66,8 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
 
     private bool canSubmit => !isSubmitting && !isLoading && selectedRowsCount > 0;
     private bool canSelectAll => !isSubmitting && !isLoading && filteredRows.Count > 0;
+    private string FullyQualifiedLoadProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(ReplayFlowsOptions.Value.ConnectionStringName, ReplayFlowsOptions.Value.GetFailedFlowsStoredProcedure);
+    private string FullyQualifiedSubmitProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(ReplayFlowsOptions.Value.ConnectionStringName, ReplayFlowsOptions.Value.ReplayFlowsStoredProcedure);
 
     private bool CanCheckProcessingStatus =>
         statusRows.Count > 0;

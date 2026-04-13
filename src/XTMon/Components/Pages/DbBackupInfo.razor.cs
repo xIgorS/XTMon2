@@ -35,6 +35,7 @@ public partial class DbBackupInfo : ComponentBase, IAsyncDisposable
     private readonly CancellationTokenSource disposeCts = new();
 
     private string ProcedureName => MonitoringOptions.Value.DbBackupsStoredProcedure;
+    private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(MonitoringOptions.Value.ConnectionStringName, ProcedureName);
 
     private sealed record GridColumn(int Index, string Name);
 

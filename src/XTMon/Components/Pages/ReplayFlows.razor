@@ -10,6 +10,8 @@
             <p class="section-label">Replay operations</p>
             <h1 class="text-2xl font-bold text-heading mt-1">Replay Flows</h1>
             <p class="muted mt-1">Pull failed flows and submit replay requests.</p>
+            <p class="muted mt-1">Load procedure: @FullyQualifiedLoadProcedureName</p>
+            <p class="muted mt-1">Submit procedure: @FullyQualifiedSubmitProcedureName</p>
         </div>
         <div class="flex flex-wrap gap-2">
             <button class="primary-button" @onclick="ReloadAsync" disabled="@(!selectedPnlDate.HasValue || !IsReplayFlowSetValid() || isLoading || isSubmitting)">

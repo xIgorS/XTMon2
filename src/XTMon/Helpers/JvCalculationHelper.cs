@@ -69,6 +69,26 @@ internal static class JvCalculationHelper
     }
 
     /// <summary>
+    /// Formats a configured connection-string name and stored procedure name into a fully-qualified display label.
+    /// Example: "StagingFiAlmt" + "monitoring.UspFoo" → "STAGING_FI_ALMT.monitoring.UspFoo".
+    /// </summary>
+    public static string BuildFullyQualifiedProcedureName(string connectionStringName, string procedureName)
+    {
+        if (string.IsNullOrWhiteSpace(procedureName))
+        {
+            return string.Empty;
+        }
+
+        var databaseName = ToHeaderLabel(connectionStringName)
+            .Replace(' ', '_')
+            .ToUpperInvariant();
+
+        return string.IsNullOrWhiteSpace(databaseName)
+            ? procedureName
+            : $"{databaseName}.{procedureName}";
+    }
+
+    /// <summary>
     /// Returns the CSS alignment class for a column based on keyword matching in the column name.
     /// </summary>
     public static string GetColumnAlignmentClass(string columnName)
