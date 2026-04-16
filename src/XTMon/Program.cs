@@ -155,6 +155,25 @@ builder.Services
         "MarketData options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<PricingFileReceptionOptions>()
+    .Bind(builder.Configuration.GetSection(PricingFileReceptionOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.PricingFileReceptionStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.GetAllSourceSystemsStoredProcedure),
+        "PricingFileReception options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
+    .AddOptions<OutOfScopePortfolioOptions>()
+    .Bind(builder.Configuration.GetSection(OutOfScopePortfolioOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.OutOfScopePortfolioStoredProcedure),
+        "OutOfScopePortfolio options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<DailyBalanceOptions>()
     .Bind(builder.Configuration.GetSection(DailyBalanceOptions.SectionName))
     .ValidateDataAnnotations()
@@ -190,6 +209,8 @@ builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IBatchStatusRepository, BatchStatusRepository>();
 builder.Services.AddScoped<IReferentialDataRepository, ReferentialDataRepository>();
 builder.Services.AddScoped<IMarketDataRepository, MarketDataRepository>();
+builder.Services.AddScoped<IPricingFileReceptionRepository, PricingFileReceptionRepository>();
+builder.Services.AddScoped<IOutOfScopePortfolioRepository, OutOfScopePortfolioRepository>();
 builder.Services.AddScoped<IDailyBalanceRepository, DailyBalanceRepository>();
 builder.Services.AddScoped<IAdjustmentsRepository, AdjustmentsRepository>();
 builder.Services.AddScoped<IPricingRepository, PricingRepository>();
