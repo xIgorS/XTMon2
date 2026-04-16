@@ -15,6 +15,7 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("out-of-scope-portfolio") ||
 		IsCurrentRoute("mirrorization") ||
 		IsCurrentRoute("result-transfer") ||
+		IsCurrentRoute("rollovered-portfolios") ||
 		IsCurrentRoute("daily-balance") ||
 		IsCurrentRoute("adjustments") ||
 		IsCurrentRoute("pricing");
