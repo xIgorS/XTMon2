@@ -182,6 +182,15 @@ builder.Services
         "MissingSogCheck options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<AdjustmentLinksCheckOptions>()
+    .Bind(builder.Configuration.GetSection(AdjustmentLinksCheckOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.AdjustmentLinksCheckStoredProcedure),
+        "AdjustmentLinksCheck options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<MirrorizationOptions>()
     .Bind(builder.Configuration.GetSection(MirrorizationOptions.SectionName))
     .ValidateDataAnnotations()
@@ -310,6 +319,7 @@ builder.Services.AddScoped<IMarketDataRepository, MarketDataRepository>();
 builder.Services.AddScoped<IPricingFileReceptionRepository, PricingFileReceptionRepository>();
 builder.Services.AddScoped<IOutOfScopePortfolioRepository, OutOfScopePortfolioRepository>();
 builder.Services.AddScoped<IMissingSogCheckRepository, MissingSogCheckRepository>();
+builder.Services.AddScoped<IAdjustmentLinksCheckRepository, AdjustmentLinksCheckRepository>();
 builder.Services.AddScoped<IMirrorizationRepository, MirrorizationRepository>();
 builder.Services.AddScoped<IResultTransferRepository, ResultTransferRepository>();
 builder.Services.AddScoped<IRolloveredPortfoliosRepository, RolloveredPortfoliosRepository>();

@@ -9,7 +9,7 @@
         <div>
             <p class="section-label">Deployment verification</p>
             <h1 class="text-2xl font-bold text-heading mt-1">System Diagnostics</h1>
-            <p class="muted mt-1">Checks database connections and stored procedure signatures for monitoring, pricing validation, out-of-scope portfolio, missing SOG check, mirrorization, result transfer, rollovered portfolios, sas tables, non XTG portfolio, rejected XTG portfolio, feedout extraction, future cash, fact PV/CA consistency, multiple feed version, replay flows, JV calculation, logging, and UAM authorization.</p>
+            <p class="muted mt-1">Checks database connections and stored procedure signatures for monitoring, pricing validation, out-of-scope portfolio, missing SOG check, adjustment links check, mirrorization, result transfer, rollovered portfolios, sas tables, non XTG portfolio, rejected XTG portfolio, feedout extraction, future cash, fact PV/CA consistency, multiple feed version, replay flows, JV calculation, logging, and UAM authorization.</p>
         </div>
         <button class="primary-button-filled" @onclick="RunCheckAsync" disabled="@isRunning">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
@@ -35,7 +35,7 @@
     else if (report is null)
     {
         <div class="surface">
-            <p class="muted">Click <strong>Run Diagnostics</strong> to verify all database connections and stored procedures, including Pricing, Pricing File Reception, Out of Scope Portfolio, Missing SOG Check, Mirrorization, Result Transfer, Rollovered Portfolios, Sas tables, Non XTG Portfolio, Rejected XTG Portfolio, FeedOut Extraction, Future Cash, Fact PV/CA Consistency, Multiple Feed Version, Daily Balance, and Adjustments data-validation checks.</p>
+            <p class="muted">Click <strong>Run Diagnostics</strong> to verify all database connections and stored procedures, including Pricing, Pricing File Reception, Out of Scope Portfolio, Missing SOG Check, Adjustment Links Check, Mirrorization, Result Transfer, Rollovered Portfolios, Sas tables, Non XTG Portfolio, Rejected XTG Portfolio, FeedOut Extraction, Future Cash, Fact PV/CA Consistency, Multiple Feed Version, Daily Balance, and Adjustments data-validation checks.</p>
         </div>
     }
     else
@@ -45,7 +45,7 @@
                 <div>
                     <p class="stat-label">Coverage</p>
                     <p class="mt-1 text-sm text-heading">Monitoring and validation stack</p>
-                    <p class="muted mt-1 text-xs">Database Space, Database Backups, Pricing, Pricing File Reception, Out of Scope Portfolio, Missing SOG Check, Mirrorization, Result Transfer, Rollovered Portfolios, Sas tables, Non XTG Portfolio, Rejected XTG Portfolio, FeedOut Extraction, Future Cash, Fact PV/CA Consistency, Multiple Feed Version, Daily Balance, Adjustments, Replay Flows, JV Calculation, and UAM authorization.</p>
+                    <p class="muted mt-1 text-xs">Database Space, Database Backups, Pricing, Pricing File Reception, Out of Scope Portfolio, Missing SOG Check, Adjustment Links Check, Mirrorization, Result Transfer, Rollovered Portfolios, Sas tables, Non XTG Portfolio, Rejected XTG Portfolio, FeedOut Extraction, Future Cash, Fact PV/CA Consistency, Multiple Feed Version, Daily Balance, Adjustments, Replay Flows, JV Calculation, and UAM authorization.</p>
                 </div>
                 <div>
                     <p class="stat-label">What Is Verified</p>
