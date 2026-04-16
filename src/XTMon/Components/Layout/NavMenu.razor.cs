@@ -20,6 +20,7 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("non-xtg-portfolio") ||
 		IsCurrentRoute("rejected-xtg-portfolio") ||
 		IsCurrentRoute("feedout-extraction") ||
+		IsCurrentRoute("future-cash") ||
 		IsCurrentRoute("daily-balance") ||
 		IsCurrentRoute("adjustments") ||
 		IsCurrentRoute("pricing");

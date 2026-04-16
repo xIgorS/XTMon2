@@ -236,6 +236,15 @@ builder.Services
         "FeedOutExtraction options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<FutureCashOptions>()
+    .Bind(builder.Configuration.GetSection(FutureCashOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.FutureCashStoredProcedure),
+        "FutureCash options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<DailyBalanceOptions>()
     .Bind(builder.Configuration.GetSection(DailyBalanceOptions.SectionName))
     .ValidateDataAnnotations()
@@ -280,6 +289,7 @@ builder.Services.AddScoped<ISasTablesRepository, SasTablesRepository>();
 builder.Services.AddScoped<INonXtgPortfolioRepository, NonXtgPortfolioRepository>();
 builder.Services.AddScoped<IRejectedXtgPortfolioRepository, RejectedXtgPortfolioRepository>();
 builder.Services.AddScoped<IFeedOutExtractionRepository, FeedOutExtractionRepository>();
+builder.Services.AddScoped<IFutureCashRepository, FutureCashRepository>();
 builder.Services.AddScoped<IDailyBalanceRepository, DailyBalanceRepository>();
 builder.Services.AddScoped<IAdjustmentsRepository, AdjustmentsRepository>();
 builder.Services.AddScoped<IPricingRepository, PricingRepository>();
