@@ -22,6 +22,7 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("feedout-extraction") ||
 		IsCurrentRoute("future-cash") ||
 		IsCurrentRoute("fact-pv-ca-consistency") ||
+		IsCurrentRoute("multiple-feed-version") ||
 		IsCurrentRoute("daily-balance") ||
 		IsCurrentRoute("adjustments") ||
 		IsCurrentRoute("pricing");

@@ -1,0 +1,157 @@
+@page "/multiple-feed-version"
+@rendermode InteractiveServer
+
+<PageTitle>Multiple Feed Version</PageTitle>
+
+<div class="space-y-5">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+            <p class="section-label">Monitoring</p>
+            <h1 class="text-2xl font-bold text-heading mt-1">Multiple Feed Version</h1>
+            <p class="muted mt-1">Procedure: @FullyQualifiedProcedureName</p>
+        </div>
+    </div>
+
+    <div class="surface multiple-feed-version-controls">
+        <div class="multiple-feed-version-controls__grid">
+            <div class="multiple-feed-version-controls__section">
+                <div class="multiple-feed-version-controls__section-header">
+                    <svg class="w-4 h-4 icon-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+                    </svg>
+                    <label class="stat-label" for="multipleFeedVersionPnlDate">PNL DATE</label>
+                </div>
+                <DatePickerInput InputId="multipleFeedVersionPnlDate"
+                                 Value="selectedPnlDate"
+                                 ValueChanged="OnPnlDateSelected"
+                                 AvailableDates="availableDates"
+                                 IsDisabled="@isLoading"
+                                 AriaLabel="Multiple Feed Version PNL DATE calendar" />
+                <p class="muted mt-1.5">Select the PNL DATE and run the procedure.</p>
+                @if (!string.IsNullOrWhiteSpace(validationError))
+                {
+                    <p class="text-xs text-error mt-1">@validationError</p>
+                }
+            </div>
+
+            <div class="multiple-feed-version-controls__divider"></div>
+
+            <div class="multiple-feed-version-controls__section multiple-feed-version-controls__section--actions">
+                <button class="primary-button-filled multiple-feed-version-run-btn" @onclick="RunAsync" disabled="@(isLoading || !selectedPnlDate.HasValue)">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+                    </svg>
+                    @(isLoading ? "Running..." : "Run Multiple Feed Version")
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(runError))
+    {
+        <div class="surface !border-rose-500/30">
+            <p class="text-sm font-semibold text-error">Failed to load Multiple Feed Version.</p>
+            <p class="mt-2 text-sm text-error/80">@runError</p>
+        </div>
+    }
+
+    <div class="grid grid-cols-3 gap-4">
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+            </svg>
+            <p class="stat-label">Selected PNL Date</p>
+            <p class="stat-value">@SelectedPnlDateText</p>
+            <p class="muted mt-1">Calendar input</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
+            </svg>
+            <p class="stat-label">Rows</p>
+            <p class="stat-value">@(result?.Rows.Count ?? 0)</p>
+            <p class="muted mt-1">Procedure result set</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="stat-label">Last run</p>
+            <p class="stat-value">@LastRunText</p>
+            <p class="muted mt-1">Local session state</p>
+        </div>
+    </div>
+
+    <div class="surface">
+        <div class="flex items-center justify-between gap-3">
+            <button class="primary-button" @onclick="ToggleQueryVisibility" disabled="@(!hasRun || string.IsNullOrWhiteSpace(parsedQuery))">
+                @(showQuery ? "Hide Query" : "Show Query")
+            </button>
+            @if (showQuery)
+            {
+                <button class="primary-button" @onclick="CopySqlToClipboardAsync" disabled="@string.IsNullOrWhiteSpace(parsedQuery)">
+                    Copy SQL to Clipboard
+                </button>
+            }
+        </div>
+        @if (!string.IsNullOrWhiteSpace(copyMessage))
+        {
+            <p class="mt-2 text-sm @(copySucceeded ? "text-success" : "text-error")">@copyMessage</p>
+        }
+        @if (hasRun && string.IsNullOrWhiteSpace(parsedQuery))
+        {
+            <p class="mt-3 muted">No SQL output was returned by the procedure.</p>
+        }
+        @if (showQuery && !string.IsNullOrWhiteSpace(parsedQuery))
+        {
+            <textarea class="multiple-feed-version-query-textarea" readonly>@QueryDisplayText</textarea>
+        }
+    </div>
+
+    @if (!hasRun)
+    {
+        <div class="surface">
+            <p class="muted">Choose a PNL DATE and run Multiple Feed Version to load results.</p>
+        </div>
+    }
+    else if (result is null || result.Rows.Count == 0)
+    {
+        <div class="surface">
+            <p class="muted">No rows returned from Multiple Feed Version.</p>
+        </div>
+    }
+    else
+    {
+        var gridColumns = GetGridColumns();
+
+        <div class="surface">
+            <div class="flex items-center justify-between gap-3">
+                <p class="stat-label">Multiple Feed Version result</p>
+            </div>
+            <div class="db-grid__wrap">
+                <table class="db-grid">
+                    <thead>
+                        <tr>
+                            @foreach (var column in gridColumns)
+                            {
+                                <th class="db-grid__head @GetColumnAlignmentClass(column.Name)">@column.Header</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in result.Rows)
+                        {
+                            <tr class="db-grid__row">
+                                @foreach (var column in gridColumns)
+                                {
+                                    var value = column.Index < row.Count ? row[column.Index] : null;
+                                    <td class="db-grid__cell @GetColumnAlignmentClass(column.Name)">@FormatCellValue(column.Name, value)</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>

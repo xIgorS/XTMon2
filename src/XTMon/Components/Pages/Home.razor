@@ -8,7 +8,7 @@
         <h1 class="text-3xl font-bold text-heading">Welcome to APS Actions</h1>
         <p class="text-sm text-body-secondary" style="max-width: 48rem;">
             A central monitoring and recovery dashboard for <strong>APS Actions / XTarget</strong> SQL Server processing.
-            Track database health, validate Pricing, Pricing File Reception, Out of Scope Portfolio, Mirrorization, Result Transfer, Rollovered Portfolios, Sas tables, Non XTG Portfolio, Rejected XTG Portfolio, FeedOut Extraction, Future Cash, Fact PV/CA Consistency, Daily Balance, and Adjustments outputs, replay failed ETL flows, and run JV calculation checks from one place.
+            Track database health, validate Pricing, Pricing File Reception, Out of Scope Portfolio, Mirrorization, Result Transfer, Rollovered Portfolios, Sas tables, Non XTG Portfolio, Rejected XTG Portfolio, FeedOut Extraction, Future Cash, Fact PV/CA Consistency, Multiple Feed Version, Daily Balance, and Adjustments outputs, replay failed ETL flows, and run JV calculation checks from one place.
         </p>
     </div>
 
@@ -140,6 +140,15 @@
                 </svg>
             </div>
         </a>
+        <a href="multiple-feed-version" class="stat-card" style="text-decoration: none; cursor: pointer;">
+            <div class="stat-label">Multiple Feed Version</div>
+            <p class="mt-1.5 text-sm text-body-secondary">Review multiple feed version output by PNL date from the staging monitoring procedure.</p>
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h8.25m-8.25 4.5h8.25m-8.25 4.5h8.25m4.5-9v9m-2.25-6.75h4.5m-4.5 4.5h4.5" />
+                </svg>
+            </div>
+        </a>
         <a href="adjustments" class="stat-card" style="text-decoration: none; cursor: pointer;">
             <div class="stat-label">Adjustments</div>
             <p class="mt-1.5 text-sm text-body-secondary">Review daily adjustments output by PNL date and source-system scope.</p>
@@ -246,7 +255,7 @@
                 <div>
                     <p class="text-sm font-semibold text-heading">Run Data Validation</p>
                     <p class="text-xs text-body-secondary mt-1">
-                        Use <strong>Pricing</strong>, <strong>Pricing File Reception</strong>, <strong>Out of Scope Portfolio</strong>, <strong>Mirrorization</strong>, <strong>Result Transfer</strong>, <strong>Rollovered Portfolios</strong>, <strong>Sas tables</strong>, <strong>Non XTG Portfolio</strong>, <strong>Rejected XTG Portfolio</strong>, <strong>FeedOut Extraction</strong>, <strong>Future Cash</strong>, <strong>Fact PV/CA Consistency</strong>, <strong>Daily Balance</strong>, and <strong>Adjustments</strong>
+                        Use <strong>Pricing</strong>, <strong>Pricing File Reception</strong>, <strong>Out of Scope Portfolio</strong>, <strong>Mirrorization</strong>, <strong>Result Transfer</strong>, <strong>Rollovered Portfolios</strong>, <strong>Sas tables</strong>, <strong>Non XTG Portfolio</strong>, <strong>Rejected XTG Portfolio</strong>, <strong>FeedOut Extraction</strong>, <strong>Future Cash</strong>, <strong>Fact PV/CA Consistency</strong>, <strong>Multiple Feed Version</strong>, <strong>Daily Balance</strong>, and <strong>Adjustments</strong>
                         to validate monitored outputs for a selected PNL date and source-system scope.
                     </p>
                 </div>
