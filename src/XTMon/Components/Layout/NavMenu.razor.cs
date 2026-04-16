@@ -16,6 +16,8 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("mirrorization") ||
 		IsCurrentRoute("result-transfer") ||
 		IsCurrentRoute("rollovered-portfolios") ||
+		IsCurrentRoute("sas-tables") ||
+		IsCurrentRoute("non-xtg-portfolio") ||
 		IsCurrentRoute("daily-balance") ||
 		IsCurrentRoute("adjustments") ||
 		IsCurrentRoute("pricing");

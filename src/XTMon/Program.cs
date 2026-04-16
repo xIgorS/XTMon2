@@ -200,6 +200,24 @@ builder.Services
         "RolloveredPortfolios options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<SasTablesOptions>()
+    .Bind(builder.Configuration.GetSection(SasTablesOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.SasTablesStoredProcedure),
+        "SasTables options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
+    .AddOptions<NonXtgPortfolioOptions>()
+    .Bind(builder.Configuration.GetSection(NonXtgPortfolioOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.NonXtgPortfolioStoredProcedure),
+        "NonXtgPortfolio options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<DailyBalanceOptions>()
     .Bind(builder.Configuration.GetSection(DailyBalanceOptions.SectionName))
     .ValidateDataAnnotations()
@@ -240,6 +258,8 @@ builder.Services.AddScoped<IOutOfScopePortfolioRepository, OutOfScopePortfolioRe
 builder.Services.AddScoped<IMirrorizationRepository, MirrorizationRepository>();
 builder.Services.AddScoped<IResultTransferRepository, ResultTransferRepository>();
 builder.Services.AddScoped<IRolloveredPortfoliosRepository, RolloveredPortfoliosRepository>();
+builder.Services.AddScoped<ISasTablesRepository, SasTablesRepository>();
+builder.Services.AddScoped<INonXtgPortfolioRepository, NonXtgPortfolioRepository>();
 builder.Services.AddScoped<IDailyBalanceRepository, DailyBalanceRepository>();
 builder.Services.AddScoped<IAdjustmentsRepository, AdjustmentsRepository>();
 builder.Services.AddScoped<IPricingRepository, PricingRepository>();

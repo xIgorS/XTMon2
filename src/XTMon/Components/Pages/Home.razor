@@ -8,12 +8,12 @@
         <h1 class="text-3xl font-bold text-heading">Welcome to APS Actions</h1>
         <p class="text-sm text-body-secondary" style="max-width: 48rem;">
             A central monitoring and recovery dashboard for <strong>APS Actions / XTarget</strong> SQL Server processing.
-            Track database health, validate Pricing, Pricing File Reception, Out of Scope Portfolio, Mirrorization, Result Transfer, Rollovered Portfolios, Daily Balance, and Adjustments outputs, replay failed ETL flows, and run JV calculation checks from one place.
+            Track database health, validate Pricing, Pricing File Reception, Out of Scope Portfolio, Mirrorization, Result Transfer, Rollovered Portfolios, Sas tables, Non XTG Portfolio, Daily Balance, and Adjustments outputs, replay failed ETL flows, and run JV calculation checks from one place.
         </p>
     </div>
 
     <!-- Quick-access feature cards -->
-    <div class="grid sm:grid-cols-2 xl:grid-cols-12 gap-4">
+    <div class="grid sm:grid-cols-2 xl:grid-cols-13 gap-4">
         <a href="monitoring" class="stat-card" style="text-decoration: none; cursor: pointer;">
             <div class="stat-label">Database Space</div>
             <p class="mt-1.5 text-sm text-body-secondary">Monitor allocated space across all databases, grouped by métier.</p>
@@ -83,6 +83,24 @@
             <div class="stat-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h10.5m-10.5 4.5h10.5m-10.5 4.5h10.5m3-10.5 2.25 2.25M18 8.25l2.25-2.25m-2.25 9.75 2.25 2.25M18 17.25l2.25-2.25" />
+                </svg>
+            </div>
+        </a>
+        <a href="sas-tables" class="stat-card" style="text-decoration: none; cursor: pointer;">
+            <div class="stat-label">Sas tables</div>
+            <p class="mt-1.5 text-sm text-body-secondary">Review SAS monitoring output by PNL date from the staging monitoring procedure.</p>
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 5.25h15m-15 5.25h15M6 4.5v15m12-15v15" />
+                </svg>
+            </div>
+        </a>
+        <a href="non-xtg-portfolio" class="stat-card" style="text-decoration: none; cursor: pointer;">
+            <div class="stat-label">Non XTG Portfolio</div>
+            <p class="mt-1.5 text-sm text-body-secondary">Review flagged non-XTG portfolio output by PNL date from the staging monitoring procedure.</p>
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 7.5A2.25 2.25 0 0 1 6.75 5.25h10.5A2.25 2.25 0 0 1 19.5 7.5v9A2.25 2.25 0 0 1 17.25 18.75H6.75A2.25 2.25 0 0 1 4.5 16.5v-9Zm3.75 2.25h7.5m-7.5 3h7.5m-7.5 3h4.5m-9-12h15" />
                 </svg>
             </div>
         </a>
@@ -192,7 +210,7 @@
                 <div>
                     <p class="text-sm font-semibold text-heading">Run Data Validation</p>
                     <p class="text-xs text-body-secondary mt-1">
-                        Use <strong>Pricing</strong>, <strong>Pricing File Reception</strong>, <strong>Out of Scope Portfolio</strong>, <strong>Mirrorization</strong>, <strong>Result Transfer</strong>, <strong>Rollovered Portfolios</strong>, <strong>Daily Balance</strong>, and <strong>Adjustments</strong>
+                        Use <strong>Pricing</strong>, <strong>Pricing File Reception</strong>, <strong>Out of Scope Portfolio</strong>, <strong>Mirrorization</strong>, <strong>Result Transfer</strong>, <strong>Rollovered Portfolios</strong>, <strong>Sas tables</strong>, <strong>Non XTG Portfolio</strong>, <strong>Daily Balance</strong>, and <strong>Adjustments</strong>
                         to validate monitored outputs for a selected PNL date and source-system scope.
                     </p>
                 </div>
