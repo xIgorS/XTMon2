@@ -134,7 +134,7 @@
                         <tr>
                             @foreach (var column in gridColumns)
                             {
-                                <th class="db-grid__head @GetColumnAlignmentClass(column.Name)">@ToHeaderLabel(column.Name)</th>
+                                <th class="db-grid__head @GetColumnAlignmentClass(column.Name)">@column.Header</th>
                             }
                         </tr>
                     </thead>

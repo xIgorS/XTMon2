@@ -16,6 +16,22 @@ public partial class NonXtgPortfolio : ComponentBase
     private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string GridDateFormat = "dd-MM-yyyy";
     private const string LoadErrorMessage = "Unable to load Non XTG Portfolio right now. Please try again.";
+    private static readonly IReadOnlyList<(string Name, string Header)> PreferredColumns =
+    [
+        ("PnlGroup", "Pnl Group"),
+        ("SignOff", "Sign Off"),
+        ("Ptf_Name", "Portfolio Name"),
+        ("Ptf_Caption", "Portfolio Caption"),
+        ("skPortFolio", "Sk Portfolio"),
+        ("Init_Date", "Init Date"),
+        ("Validity_start", "Validity Start"),
+        ("Validity_end", "Validity End"),
+        ("Location", "Location"),
+        ("Region", "Region"),
+        ("Book_ID", "Book Id"),
+        ("skMoBook", "Sk Mo Book"),
+        ("Pnl_ReportingSystem", "PnL Reporting System")
+    ];
 
     private readonly HashSet<DateOnly> availableDates = [];
 
@@ -177,16 +193,34 @@ public partial class NonXtgPortfolio : ComponentBase
             return Array.Empty<GridColumn>();
         }
 
-        var columns = new List<GridColumn>(result.Columns.Count);
+        var sourceIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < result.Columns.Count; i++)
         {
-            columns.Add(new GridColumn(result.Columns[i], i));
+            sourceIndexes[result.Columns[i]] = i;
+        }
+
+        var columns = new List<GridColumn>(result.Columns.Count);
+        foreach (var (name, header) in PreferredColumns)
+        {
+            if (sourceIndexes.TryGetValue(name, out var index))
+            {
+                columns.Add(new GridColumn(name, header, index));
+            }
+        }
+
+        for (var i = 0; i < result.Columns.Count; i++)
+        {
+            var name = result.Columns[i];
+            if (PreferredColumns.Any(column => string.Equals(column.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            columns.Add(new GridColumn(name, JvCalculationHelper.ToHeaderLabel(name), i));
         }
 
         return columns;
     }
-
-    private static string ToHeaderLabel(string columnName) => JvCalculationHelper.ToHeaderLabel(columnName);
 
     private static string GetColumnAlignmentClass(string columnName) => JvCalculationHelper.GetColumnAlignmentClass(columnName);
 
@@ -206,5 +240,5 @@ public partial class NonXtgPortfolio : ComponentBase
         return value;
     }
 
-    private sealed record GridColumn(string Name, int Index);
+    private sealed record GridColumn(string Name, string Header, int Index);
 }
