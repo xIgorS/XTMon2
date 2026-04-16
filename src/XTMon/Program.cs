@@ -200,6 +200,15 @@ builder.Services
         "ColumnStoreCheck options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<TradingVsFivrCheckOptions>()
+    .Bind(builder.Configuration.GetSection(TradingVsFivrCheckOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.TradingVsFivrCheckStoredProcedure),
+        "TradingVsFivrCheck options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<MirrorizationOptions>()
     .Bind(builder.Configuration.GetSection(MirrorizationOptions.SectionName))
     .ValidateDataAnnotations()
@@ -330,6 +339,7 @@ builder.Services.AddScoped<IOutOfScopePortfolioRepository, OutOfScopePortfolioRe
 builder.Services.AddScoped<IMissingSogCheckRepository, MissingSogCheckRepository>();
 builder.Services.AddScoped<IAdjustmentLinksCheckRepository, AdjustmentLinksCheckRepository>();
 builder.Services.AddScoped<IColumnStoreCheckRepository, ColumnStoreCheckRepository>();
+builder.Services.AddScoped<ITradingVsFivrCheckRepository, TradingVsFivrCheckRepository>();
 builder.Services.AddScoped<IMirrorizationRepository, MirrorizationRepository>();
 builder.Services.AddScoped<IResultTransferRepository, ResultTransferRepository>();
 builder.Services.AddScoped<IRolloveredPortfoliosRepository, RolloveredPortfoliosRepository>();

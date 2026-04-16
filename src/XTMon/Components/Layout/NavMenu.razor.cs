@@ -16,6 +16,7 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("missing-sog-check") ||
 		IsCurrentRoute("adjustment-links-check") ||
 		IsCurrentRoute("column-store-check") ||
+		IsCurrentRoute("trading-vs-fivr-check") ||
 		IsCurrentRoute("mirrorization") ||
 		IsCurrentRoute("result-transfer") ||
 		IsCurrentRoute("rollovered-portfolios") ||
