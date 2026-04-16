@@ -7,7 +7,7 @@ public sealed class RolloveredPortfoliosOptions
     public const string SectionName = "RolloveredPortfolios";
 
     [Required]
-    public string ConnectionStringName { get; set; } = "StagingFiAlmt";
+    public string ConnectionStringName { get; set; } = "DtmFi";
 
     [Required]
     public string RolloveredPortfoliosStoredProcedure { get; set; } = "monitoring.UspXtgMonitoringPTFRolled";
