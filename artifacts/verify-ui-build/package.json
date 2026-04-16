@@ -1,0 +1,11 @@
+{
+  "name": "xtmon",
+  "private": true,
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  },
+  "scripts": {
+    "build:css": "tailwindcss -i ./Styles/tailwind.css -o ./wwwroot/app.css --minify",
+    "watch:css": "tailwindcss -i ./Styles/tailwind.css -o ./wwwroot/app.css --watch"
+  }
+}

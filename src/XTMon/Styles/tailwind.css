@@ -147,8 +147,8 @@
 
   .sidebar-card {
     @apply flex flex-col p-5 min-h-screen sticky top-0 self-start;
-    width: 15rem;
-    min-width: 15rem;
+    width: 21rem;
+    min-width: 21rem;
     background-color: var(--bg-sidebar);
     border-right: 1px solid var(--border-subtle);
   }
@@ -175,14 +175,25 @@
   }
 
   .submenu-group {
-    @apply ml-4 mt-1.5 flex flex-col gap-1 pl-4;
+    @apply mt-1 flex flex-col gap-0.5;
+    margin-left: 0.875rem;
+    padding-left: 0.875rem;
     border-left: 1px solid var(--nav-submenu-border);
   }
 
   .submenu-link {
-    @apply flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium whitespace-nowrap transition-colors;
+    @apply flex items-center rounded-md text-sm font-medium transition-colors;
+    column-gap: 0.625rem;
+    width: 100%;
+    padding: 0.3125rem 0.5rem;
+    line-height: 1.25;
+    white-space: nowrap;
     color: var(--nav-submenu-text);
     background-color: transparent;
+  }
+
+  .submenu-link > svg {
+    margin-top: 0;
   }
 
   .submenu-link:hover {
