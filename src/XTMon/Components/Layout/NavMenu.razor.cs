@@ -13,6 +13,7 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("market-data") ||
 		IsCurrentRoute("pricing-file-reception") ||
 		IsCurrentRoute("out-of-scope-portfolio") ||
+		IsCurrentRoute("missing-sog-check") ||
 		IsCurrentRoute("mirrorization") ||
 		IsCurrentRoute("result-transfer") ||
 		IsCurrentRoute("rollovered-portfolios") ||
