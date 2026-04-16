@@ -9,7 +9,7 @@
         <div>
             <p class="section-label">Deployment verification</p>
             <h1 class="text-2xl font-bold text-heading mt-1">System Diagnostics</h1>
-            <p class="muted mt-1">Checks database connections and stored procedure signatures for monitoring, pricing validation, out-of-scope portfolio, mirrorization, replay flows, JV calculation, logging, and UAM authorization.</p>
+            <p class="muted mt-1">Checks database connections and stored procedure signatures for monitoring, pricing validation, out-of-scope portfolio, mirrorization, result transfer, replay flows, JV calculation, logging, and UAM authorization.</p>
         </div>
         <button class="primary-button-filled" @onclick="RunCheckAsync" disabled="@isRunning">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
@@ -35,7 +35,7 @@
     else if (report is null)
     {
         <div class="surface">
-            <p class="muted">Click <strong>Run Diagnostics</strong> to verify all database connections and stored procedures, including Pricing, Pricing File Reception, Out of Scope Portfolio, Mirrorization, Daily Balance, and Adjustments data-validation checks.</p>
+            <p class="muted">Click <strong>Run Diagnostics</strong> to verify all database connections and stored procedures, including Pricing, Pricing File Reception, Out of Scope Portfolio, Mirrorization, Result Transfer, Daily Balance, and Adjustments data-validation checks.</p>
         </div>
     }
     else
@@ -45,7 +45,7 @@
                 <div>
                     <p class="stat-label">Coverage</p>
                     <p class="mt-1 text-sm text-heading">Monitoring and validation stack</p>
-                    <p class="muted mt-1 text-xs">Database Space, Database Backups, Pricing, Pricing File Reception, Out of Scope Portfolio, Mirrorization, Daily Balance, Adjustments, Replay Flows, JV Calculation, and UAM authorization.</p>
+                    <p class="muted mt-1 text-xs">Database Space, Database Backups, Pricing, Pricing File Reception, Out of Scope Portfolio, Mirrorization, Result Transfer, Daily Balance, Adjustments, Replay Flows, JV Calculation, and UAM authorization.</p>
                 </div>
                 <div>
                     <p class="stat-label">What Is Verified</p>
