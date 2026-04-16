@@ -31,6 +31,9 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
 
     [Inject]
+    private PnlDateState PnlDateState { get; set; } = default!;
+
+    [Inject]
     private IOptions<ReplayFlowsOptions> ReplayFlowsOptions { get; set; } = default!;
 
     [Inject]
@@ -118,6 +121,7 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     protected override async Task OnInitializedAsync()
     {
         await LoadPnlDatesAsync();
+        PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
         await LoadDataAsync(selectedPnlDate, replayFlowSet: null);
         await LoadStatusAsync();
         StartPollingIfNeeded();
@@ -127,23 +131,13 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     {
         try
         {
-            var response = await PnlDateRepository.GetJvPnlDatesAsync(disposeCts.Token);
+            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
+            selectedPnlDate = PnlDateState.SelectedDate;
 
             availableDates.Clear();
-            foreach (var date in response.AvailableDates)
+            foreach (var date in PnlDateState.AvailableDates)
             {
                 availableDates.Add(date);
-            }
-
-            var selectedDate = response.DefaultDate;
-            if (!selectedDate.HasValue && response.AvailableDates.Count > 0)
-            {
-                selectedDate = response.AvailableDates[0];
-            }
-
-            if (selectedDate.HasValue)
-            {
-                selectedPnlDate = selectedDate.Value;
             }
         }
         catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
@@ -153,6 +147,15 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
         {
             Logger.LogWarning(ex, "Unable to load default PNL dates for Replay Flows.");
         }
+    }
+
+    private void OnGlobalPnlDateChanged()
+    {
+        InvokeAsync(() =>
+        {
+            selectedPnlDate = PnlDateState.SelectedDate;
+            StateHasChanged();
+        });
     }
 
     private async Task ReloadAsync()
@@ -603,6 +606,7 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
         StopPolling();
         disposeCts.Cancel();
         disposeCts.Dispose();

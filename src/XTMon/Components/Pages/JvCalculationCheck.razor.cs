@@ -9,6 +9,7 @@ using XTMon.Infrastructure;
 using XTMon.Repositories;
 using XTMon.Models;
 using XTMon.Options;
+using XTMon.Services;
 
 namespace XTMon.Components.Pages;
 
@@ -33,6 +34,9 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
 
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
+
+    [Inject]
+    private PnlDateState PnlDateState { get; set; } = default!;
 
     [CascadingParameter]
     private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
@@ -88,6 +92,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     protected override async Task OnInitializedAsync()
     {
         await LoadCobDatesAsync();
+        PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
         await RestoreLatestJobAsync();
         StartPollingIfNeeded();
     }
@@ -100,23 +105,13 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
 
         try
         {
-            var response = await Repository.GetJvPnlDatesAsync(disposeCts.Token);
+            await PnlDateState.EnsureLoadedAsync(Repository, disposeCts.Token);
+            selectedCobDate = PnlDateState.SelectedDate;
 
             availableDates.Clear();
-            foreach (var date in response.AvailableDates)
+            foreach (var date in PnlDateState.AvailableDates)
             {
                 availableDates.Add(date);
-            }
-
-            var selectedDate = response.DefaultDate;
-            if (!selectedDate.HasValue && response.AvailableDates.Count > 0)
-            {
-                selectedDate = response.AvailableDates[0];
-            }
-
-            if (selectedDate.HasValue)
-            {
-                selectedCobDate = selectedDate.Value;
             }
         }
         catch (Exception ex)
@@ -128,6 +123,15 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         {
             isLoadingDates = false;
         }
+    }
+
+    private void OnGlobalPnlDateChanged()
+    {
+        InvokeAsync(() =>
+        {
+            selectedCobDate = PnlDateState.SelectedDate;
+            StateHasChanged();
+        });
     }
 
     private Task OnCobDateSelected(DateOnly date)
@@ -394,6 +398,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
         StopPolling();
         disposeCts.Cancel();
         disposeCts.Dispose();

@@ -356,6 +356,7 @@ builder.Services.AddScoped<IPricingRepository, PricingRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
 builder.Services.AddScoped<AuthorizationFeedbackState>();
+builder.Services.AddScoped<PnlDateState>();
 builder.Services.AddScoped<IAuthorizationHandler, UamPermissionHandler>();
 builder.Services.AddSingleton<IDeploymentCheckService, DeploymentCheckService>();
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();

@@ -1,0 +1,21 @@
+@rendermode InteractiveServer
+@using XTMon.Components.Shared
+
+<hr style="border-color: var(--border-subtle);" class="my-3" />
+<div class="px-3 py-2.5 rounded-lg" style="background-color: var(--bg-surface); border: 1px solid var(--border-subtle);">
+    <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 icon-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+            </svg>
+            <label class="text-[0.65rem] uppercase tracking-[0.15em] font-semibold" style="color: var(--text-muted);" for="globalPnlDate">Default PnL Date</label>
+        </div>
+    </div>
+    <DatePickerInput InputId="globalPnlDate"
+                     Value="PnlDateState.SelectedDate"
+                     ValueChanged="OnGlobalDateChanged"
+                     AvailableDates="PnlDateState.AvailableDates"
+                     IsDisabled="@(!PnlDateState.IsLoaded)"
+                     AriaLabel="Global default PNL DATE calendar" />
+</div>
+<hr style="border-color: var(--border-subtle);" class="my-3" />

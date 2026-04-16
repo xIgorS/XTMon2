@@ -7,10 +7,11 @@ using XTMon.Infrastructure;
 using XTMon.Models;
 using XTMon.Options;
 using XTMon.Repositories;
+using XTMon.Services;
 
 namespace XTMon.Components.Pages;
 
-public partial class RejectedXtgPortfolio : ComponentBase
+public partial class RejectedXtgPortfolio : ComponentBase, IDisposable
 {
     private const string DisplayDateFormat = "dd-MM-yyyy";
     private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
@@ -31,6 +32,9 @@ public partial class RejectedXtgPortfolio : ComponentBase
 
     [Inject]
     private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
+
+    [Inject]
+    private PnlDateState PnlDateState { get; set; } = default!;
 
     [Inject]
     private IOptions<RejectedXtgPortfolioOptions> RejectedXtgPortfolioOptions { get; set; } = default!;
@@ -66,35 +70,40 @@ public partial class RejectedXtgPortfolio : ComponentBase
     protected override async Task OnInitializedAsync()
     {
         await LoadPnlDatesAsync();
+        PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
     }
 
     private async Task LoadPnlDatesAsync()
     {
         try
         {
-            var response = await PnlDateRepository.GetJvPnlDatesAsync(CancellationToken.None);
+            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, CancellationToken.None);
+            selectedPnlDate = PnlDateState.SelectedDate;
 
             availableDates.Clear();
-            foreach (var date in response.AvailableDates)
+            foreach (var date in PnlDateState.AvailableDates)
             {
                 availableDates.Add(date);
-            }
-
-            var selectedDate = response.DefaultDate;
-            if (!selectedDate.HasValue && response.AvailableDates.Count > 0)
-            {
-                selectedDate = response.AvailableDates[0];
-            }
-
-            if (selectedDate.HasValue)
-            {
-                selectedPnlDate = selectedDate.Value;
             }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Unable to load default PNL dates for Rejected XTG Portfolio.");
+            Logger.LogWarning(ex, "Unable to load default PNL dates.");
         }
+    }
+
+    private void OnGlobalPnlDateChanged()
+    {
+        InvokeAsync(() =>
+        {
+            selectedPnlDate = PnlDateState.SelectedDate;
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
     }
 
     private Task OnPnlDateSelected(DateOnly date)
