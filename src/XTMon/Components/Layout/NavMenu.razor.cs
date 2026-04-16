@@ -15,6 +15,7 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("out-of-scope-portfolio") ||
 		IsCurrentRoute("missing-sog-check") ||
 		IsCurrentRoute("adjustment-links-check") ||
+		IsCurrentRoute("column-store-check") ||
 		IsCurrentRoute("mirrorization") ||
 		IsCurrentRoute("result-transfer") ||
 		IsCurrentRoute("rollovered-portfolios") ||
