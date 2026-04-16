@@ -58,6 +58,8 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     private string? copyFixMessage;
     private bool copyFixSucceeded;
     private bool showJobStatusDetails;
+    private bool showCheckQuery;
+    private bool showFixQuery;
     private PeriodicTimer? pollTimer;
     private CancellationTokenSource? pollCts;
     private readonly CancellationTokenSource disposeCts = new();
@@ -163,6 +165,8 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         checkError = null;
         copyMessage = null;
         copyFixMessage = null;
+        showCheckQuery = false;
+        showFixQuery = false;
 
         try
         {
@@ -353,6 +357,26 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     private void ToggleJobStatusDetails()
     {
         showJobStatusDetails = !showJobStatusDetails;
+    }
+
+    private void ToggleCheckQueryVisibility()
+    {
+        if (string.IsNullOrWhiteSpace(parsedQuery))
+        {
+            return;
+        }
+
+        showCheckQuery = !showCheckQuery;
+    }
+
+    private void ToggleFixQueryVisibility()
+    {
+        if (string.IsNullOrWhiteSpace(parsedFixQuery))
+        {
+            return;
+        }
+
+        showFixQuery = !showFixQuery;
     }
 
     private static MonitoringTableResult? DeserializeMonitoringTable(string? columnsJson, string? rowsJson) =>

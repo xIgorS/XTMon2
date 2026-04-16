@@ -19,9 +19,6 @@ public sealed class JvCalculationOptions
     public string CheckJvCalculationStoredProcedure { get; set; } = "monitoring.UspCheckJvCalculation";
 
     [Required]
-    public string DtmFiConnectionStringName { get; set; } = "DtmFi";
-
-    [Required]
     public string FixJvCalculationStoredProcedure { get; set; } = "Administration.UspCleanUpJvissue";
 
     [Required]

@@ -86,8 +86,8 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             // JV Calculation — check (Publication DB)
             (jv.PublicationConnectionStringName, jv.CheckJvCalculationStoredProcedure),
 
-            // JV Calculation — fix (DtmFi DB)
-            (jv.DtmFiConnectionStringName, jv.FixJvCalculationStoredProcedure),
+            // JV Calculation — fix (Publication DB)
+            (jv.PublicationConnectionStringName, jv.FixJvCalculationStoredProcedure),
 
             // JV Calculation — job orchestration (LogFiAlmt)
             (jv.JobConnectionStringName, jv.JobEnqueueStoredProcedure),

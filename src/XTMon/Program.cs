@@ -113,7 +113,6 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.PublicationConnectionStringName) &&
         !string.IsNullOrWhiteSpace(options.GetPnlDatesStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.CheckJvCalculationStoredProcedure) &&
-        !string.IsNullOrWhiteSpace(options.DtmFiConnectionStringName) &&
         !string.IsNullOrWhiteSpace(options.FixJvCalculationStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobConnectionStringName) &&
         !string.IsNullOrWhiteSpace(options.JobEnqueueStoredProcedure) &&

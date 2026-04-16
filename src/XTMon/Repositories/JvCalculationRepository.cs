@@ -195,7 +195,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.DtmFiConnectionStringName);
+            using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.PublicationConnectionStringName);
             using var command = connection.CreateCommand();
             command.CommandText = _jvCalculationOptions.FixJvCalculationStoredProcedure;
             command.CommandType = CommandType.StoredProcedure;
@@ -260,7 +260,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
         }
         catch (SqlException ex)
         {
-            LogSqlException(ex, operationName: nameof(FixJvCalculationAsync), _jvCalculationOptions.DtmFiConnectionStringName, _jvCalculationOptions.FixJvCalculationStoredProcedure, _jvCalculationOptions.CommandTimeoutSeconds,
+            LogSqlException(ex, operationName: nameof(FixJvCalculationAsync), _jvCalculationOptions.PublicationConnectionStringName, _jvCalculationOptions.FixJvCalculationStoredProcedure, _jvCalculationOptions.CommandTimeoutSeconds,
                 $"PnlDate={pnlDate:yyyy-MM-dd}, ExecuteCatchup={executeCatchup}");
             throw;
         }
@@ -268,7 +268,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
         {
             _logger.LogError(AppLogEvents.RepositoryJvSqlTimeout, ex,
                 "JV timeout detected for operation {Operation}, connection {ConnectionName}, stored procedure {StoredProcedure}, timeout seconds {TimeoutSeconds}, PnlDate {PnlDate}, ExecuteCatchup {ExecuteCatchup}.",
-                nameof(FixJvCalculationAsync), _jvCalculationOptions.DtmFiConnectionStringName, _jvCalculationOptions.FixJvCalculationStoredProcedure, _jvCalculationOptions.CommandTimeoutSeconds, pnlDate, executeCatchup);
+                nameof(FixJvCalculationAsync), _jvCalculationOptions.PublicationConnectionStringName, _jvCalculationOptions.FixJvCalculationStoredProcedure, _jvCalculationOptions.CommandTimeoutSeconds, pnlDate, executeCatchup);
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

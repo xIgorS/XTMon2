@@ -123,27 +123,52 @@
 
     <div class="surface">
         <div class="flex items-center justify-between gap-3">
-            <p class="stat-label">Query - Check</p>
-            <button class="primary-button" @onclick="CopySqlToClipboardAsync" disabled="@string.IsNullOrWhiteSpace(parsedQuery)">
-                Copy SQL to Clipboard
+            <button class="primary-button" @onclick="ToggleCheckQueryVisibility" disabled="@(!activeJobId.HasValue || string.IsNullOrWhiteSpace(parsedQuery))">
+                @(showCheckQuery ? "Hide Check Query" : "Show Check Query")
             </button>
+            @if (showCheckQuery)
+            {
+                <button class="primary-button" @onclick="CopySqlToClipboardAsync" disabled="@string.IsNullOrWhiteSpace(parsedQuery)">
+                    Copy SQL to Clipboard
+                </button>
+            }
         </div>
         @if (!string.IsNullOrWhiteSpace(copyMessage))
         {
             <p class="mt-2 text-sm @(copySucceeded ? "text-success" : "text-error")">@copyMessage</p>
         }
-        <textarea class="jv-query-textarea" readonly>@parsedQuery</textarea>
-        <div class="mt-2 flex items-center justify-between gap-3">
-            <p class="stat-label">Query - fix</p>
-            <button class="primary-button" @onclick="CopyFixSqlToClipboardAsync" disabled="@string.IsNullOrWhiteSpace(parsedFixQuery)">
-                Copy SQL to Clipboard
+        @if (activeJobId.HasValue && string.IsNullOrWhiteSpace(parsedQuery))
+        {
+            <p class="mt-3 muted">No check SQL output was returned by the procedure.</p>
+        }
+        @if (showCheckQuery && !string.IsNullOrWhiteSpace(parsedQuery))
+        {
+            <textarea class="jv-query-textarea" readonly>@parsedQuery</textarea>
+        }
+
+        <div class="mt-3 flex items-center justify-between gap-3">
+            <button class="primary-button" @onclick="ToggleFixQueryVisibility" disabled="@(!activeJobId.HasValue || string.IsNullOrWhiteSpace(parsedFixQuery))">
+                @(showFixQuery ? "Hide Fix Query" : "Show Fix Query")
             </button>
+            @if (showFixQuery)
+            {
+                <button class="primary-button" @onclick="CopyFixSqlToClipboardAsync" disabled="@string.IsNullOrWhiteSpace(parsedFixQuery)">
+                    Copy SQL to Clipboard
+                </button>
+            }
         </div>
         @if (!string.IsNullOrWhiteSpace(copyFixMessage))
         {
             <p class="mt-2 text-sm @(copyFixSucceeded ? "text-success" : "text-error")">@copyFixMessage</p>
         }
-        <textarea class="jv-query-textarea" readonly>@parsedFixQuery</textarea>
+        @if (activeJobId.HasValue && string.IsNullOrWhiteSpace(parsedFixQuery))
+        {
+            <p class="mt-3 muted">No fix SQL output was returned by the procedure.</p>
+        }
+        @if (showFixQuery && !string.IsNullOrWhiteSpace(parsedFixQuery))
+        {
+            <textarea class="jv-query-textarea" readonly>@parsedFixQuery</textarea>
+        }
     </div>
 
     @if (result is null)
