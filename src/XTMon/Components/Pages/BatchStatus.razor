@@ -107,9 +107,10 @@
                         <tr>
                             <th class="db-grid__head db-grid__cell--text">Status</th>
                             <th class="db-grid__head db-grid__cell--text">Pnl Date</th>
+                            <th class="db-grid__head db-grid__cell--text">Source System Name</th>
                             <th class="db-grid__head db-grid__cell--text">Calculation Date</th>
-                            <th class="db-grid__head db-grid__cell--text">Calculation End Time</th>
-                            <th class="db-grid__head db-grid__cell--text">Extraction End Time</th>
+                            <th class="db-grid__head db-grid__cell--text">End Calc. Lnd Time</th>
+                            <th class="db-grid__head db-grid__cell--text">Extraction Lnd Time</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -118,6 +119,7 @@
                             <tr class="db-grid__row">
                                 <td class="db-grid__cell db-grid__cell--text">@row.Status</td>
                                 <td class="db-grid__cell db-grid__cell--text">@row.PnlDate</td>
+                                <td class="db-grid__cell db-grid__cell--text">@row.SourceSystemName</td>
                                 <td class="db-grid__cell db-grid__cell--text">@row.CalculationDate</td>
                                 <td class="db-grid__cell db-grid__cell--text">@row.CalculationEndTime</td>
                                 <td class="db-grid__cell db-grid__cell--text">@row.ExtractionEndTime</td>

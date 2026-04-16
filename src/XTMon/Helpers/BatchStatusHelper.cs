@@ -18,6 +18,7 @@ internal static class BatchStatusHelper
         var columnMap = BuildColumnMap(table.Columns);
 
         EnsureRequiredColumn(columnMap, "pnldate");
+        EnsureRequiredColumn(columnMap, "SourceSystemName");
         EnsureRequiredColumn(columnMap, "ConsoIsDone");
         EnsureRequiredColumn(columnMap, "CalculationIsDone");
         EnsureRequiredColumn(columnMap, "DatetimeEndCalculation");
@@ -34,12 +35,14 @@ internal static class BatchStatusHelper
             var consoIsDone = ReadIntegerValue(row, columnMap["consoisdone"]);
             var calculationIsDone = ReadIntegerValue(row, columnMap["calculationisdone"]);
             var pnlDate = ReadDateValue(row, columnMap["pnldate"]);
+            var sourceSystemName = ReadTextValue(row, columnMap["sourcesystemname"]);
             var endCalculation = ReadDateTimeValue(row, columnMap["datetimeendcalculation"]);
             var endExtraction = ReadDateTimeValue(row, columnMap["datetimeendextraction"]);
 
             rows.Add(new BatchStatusGridRow(
                 Status: consoIsDone == 1 && calculationIsDone == 1 ? "OK" : "KO",
                 PnlDate: FormatDate(pnlDate),
+                SourceSystemName: FormatText(sourceSystemName),
                 CalculationDate: FormatDate(endCalculation),
                 CalculationEndTime: FormatTime(endCalculation),
                 ExtractionEndTime: FormatTime(endExtraction)));
@@ -136,6 +139,11 @@ internal static class BatchStatusHelper
         return null;
     }
 
+    private static string? ReadTextValue(IReadOnlyList<string?> row, int index)
+    {
+        return ReadCell(row, index)?.Trim();
+    }
+
     private static string? ReadCell(IReadOnlyList<string?> row, int index)
     {
         return index >= 0 && index < row.Count ? row[index] : null;
@@ -160,5 +168,10 @@ internal static class BatchStatusHelper
         return value.HasValue
             ? TimeOnly.FromDateTime(value.Value).ToString(DisplayTimeFormat, CultureInfo.InvariantCulture)
             : "-";
+    }
+
+    private static string FormatText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value;
     }
 }
