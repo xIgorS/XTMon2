@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="APS Actions icon">
+  <defs>
+    <linearGradient id="bg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14b8a6" />
+      <stop offset="1" stop-color="#0f766e" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)" />
+  <rect x="13" y="14" width="38" height="24" rx="5.5" fill="none" stroke="#ecfeff" stroke-width="4" />
+  <path d="M22 46h20" fill="none" stroke="#ecfeff" stroke-linecap="round" stroke-width="4" />
+  <path d="M28 38v8" fill="none" stroke="#ecfeff" stroke-linecap="round" stroke-width="4" />
+  <path d="M36 38v8" fill="none" stroke="#ecfeff" stroke-linecap="round" stroke-width="4" />
+  <path d="M20 23h9" fill="none" stroke="#99f6e4" stroke-linecap="round" stroke-width="4" />
+  <path d="M20 29h18" fill="none" stroke="#99f6e4" stroke-linecap="round" stroke-width="4" />
+  <circle cx="45" cy="23" r="3" fill="#99f6e4" />
+</svg>
