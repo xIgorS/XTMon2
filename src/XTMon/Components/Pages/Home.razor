@@ -8,12 +8,12 @@
         <h1 class="text-3xl font-bold text-heading">Welcome to APS Actions</h1>
         <p class="text-sm text-body-secondary" style="max-width: 48rem;">
             A central monitoring and recovery dashboard for <strong>APS Actions / XTarget</strong> SQL Server processing.
-            Track database health, validate Pricing, Pricing File Reception, Daily Balance, and Adjustments outputs, replay failed ETL flows, and run JV calculation checks from one place.
+            Track database health, validate Pricing, Pricing File Reception, Out of Scope Portfolio, Mirrorization, Daily Balance, and Adjustments outputs, replay failed ETL flows, and run JV calculation checks from one place.
         </p>
     </div>
 
     <!-- Quick-access feature cards -->
-    <div class="grid sm:grid-cols-2 xl:grid-cols-9 gap-4">
+    <div class="grid sm:grid-cols-2 xl:grid-cols-10 gap-4">
         <a href="monitoring" class="stat-card" style="text-decoration: none; cursor: pointer;">
             <div class="stat-label">Database Space</div>
             <p class="mt-1.5 text-sm text-body-secondary">Monitor allocated space across all databases, grouped by métier.</p>
@@ -56,6 +56,15 @@
             <div class="stat-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.5h16.5M6 8.25h12m-12 4.5h5.25m-5.25 4.5h8.25M3.75 6A1.5 1.5 0 0 1 5.25 4.5h13.5A1.5 1.5 0 0 1 20.25 6v12A1.5 1.5 0 0 1 18.75 19.5H5.25A1.5 1.5 0 0 1 3.75 18V6Z" />
+                </svg>
+            </div>
+        </a>
+        <a href="mirrorization" class="stat-card" style="text-decoration: none; cursor: pointer;">
+            <div class="stat-label">Mirrorization</div>
+            <p class="mt-1.5 text-sm text-body-secondary">Review carry spread output by PNL date from the staging monitoring procedure.</p>
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 4.5h15m-15 4.5h15M6.75 3.75v16.5m10.5-16.5v16.5" />
                 </svg>
             </div>
         </a>
@@ -165,7 +174,7 @@
                 <div>
                     <p class="text-sm font-semibold text-heading">Run Data Validation</p>
                     <p class="text-xs text-body-secondary mt-1">
-                        Use <strong>Pricing</strong>, <strong>Pricing File Reception</strong>, <strong>Daily Balance</strong>, and <strong>Adjustments</strong>
+                        Use <strong>Pricing</strong>, <strong>Pricing File Reception</strong>, <strong>Out of Scope Portfolio</strong>, <strong>Mirrorization</strong>, <strong>Daily Balance</strong>, and <strong>Adjustments</strong>
                         to validate monitored outputs for a selected PNL date and source-system scope.
                     </p>
                 </div>

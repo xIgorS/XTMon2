@@ -13,6 +13,7 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("market-data") ||
 		IsCurrentRoute("pricing-file-reception") ||
 		IsCurrentRoute("out-of-scope-portfolio") ||
+		IsCurrentRoute("mirrorization") ||
 		IsCurrentRoute("daily-balance") ||
 		IsCurrentRoute("adjustments") ||
 		IsCurrentRoute("pricing");

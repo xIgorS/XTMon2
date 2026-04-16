@@ -173,6 +173,15 @@ builder.Services
         "OutOfScopePortfolio options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<MirrorizationOptions>()
+    .Bind(builder.Configuration.GetSection(MirrorizationOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.MirrorizationStoredProcedure),
+        "Mirrorization options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<DailyBalanceOptions>()
     .Bind(builder.Configuration.GetSection(DailyBalanceOptions.SectionName))
     .ValidateDataAnnotations()
@@ -210,6 +219,7 @@ builder.Services.AddScoped<IReferentialDataRepository, ReferentialDataRepository
 builder.Services.AddScoped<IMarketDataRepository, MarketDataRepository>();
 builder.Services.AddScoped<IPricingFileReceptionRepository, PricingFileReceptionRepository>();
 builder.Services.AddScoped<IOutOfScopePortfolioRepository, OutOfScopePortfolioRepository>();
+builder.Services.AddScoped<IMirrorizationRepository, MirrorizationRepository>();
 builder.Services.AddScoped<IDailyBalanceRepository, DailyBalanceRepository>();
 builder.Services.AddScoped<IAdjustmentsRepository, AdjustmentsRepository>();
 builder.Services.AddScoped<IPricingRepository, PricingRepository>();
