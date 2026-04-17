@@ -374,6 +374,15 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.PrecalcMonitoringStoredProcedure),
         "PrecalcMonitoring options must define the required connection and stored procedure names.")
     .ValidateOnStart();
+builder.Services
+    .AddOptions<VrdbStatusOptions>()
+    .Bind(builder.Configuration.GetSection(VrdbStatusOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.VrdbStatusStoredProcedure),
+        "VrdbStatus options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
 builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
@@ -404,6 +413,7 @@ builder.Services.AddScoped<IPublicationConsistencyRepository, PublicationConsist
 builder.Services.AddScoped<IJvBalanceConsistencyRepository, JvBalanceConsistencyRepository>();
 builder.Services.AddScoped<IMissingWorkflowCheckRepository, MissingWorkflowCheckRepository>();
 builder.Services.AddScoped<IPrecalcMonitoringRepository, PrecalcMonitoringRepository>();
+builder.Services.AddScoped<IVrdbStatusRepository, VrdbStatusRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
 builder.Services.AddScoped<AuthorizationFeedbackState>();

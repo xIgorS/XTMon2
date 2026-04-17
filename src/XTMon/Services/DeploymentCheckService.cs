@@ -46,6 +46,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IOptions<JvBalanceConsistencyOptions> jvBalanceConsistencyOptions,
         IOptions<MissingWorkflowCheckOptions> missingWorkflowCheckOptions,
         IOptions<PrecalcMonitoringOptions> precalcMonitoringOptions,
+        IOptions<VrdbStatusOptions> vrdbStatusOptions,
         IOptions<UamAuthorizationOptions> uamOptions)
     {
         _connectionFactory = connectionFactory;
@@ -81,6 +82,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             jvBalanceConsistencyOptions.Value,
             missingWorkflowCheckOptions.Value,
             precalcMonitoringOptions.Value,
+            vrdbStatusOptions.Value,
             uamOptions.Value);
     }
 
@@ -116,6 +118,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         JvBalanceConsistencyOptions jvBalanceConsistency,
         MissingWorkflowCheckOptions missingWorkflowCheck,
         PrecalcMonitoringOptions precalcMonitoring,
+        VrdbStatusOptions vrdbStatus,
         UamAuthorizationOptions uam)
     {
         var checks = new List<(string, string)>
@@ -190,6 +193,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (jvBalanceConsistency.ConnectionStringName, jvBalanceConsistency.JvBalanceConsistencyStoredProcedure),
             (missingWorkflowCheck.ConnectionStringName, missingWorkflowCheck.MissingWorkflowCheckStoredProcedure),
             (precalcMonitoring.ConnectionStringName, precalcMonitoring.PrecalcMonitoringStoredProcedure),
+            (vrdbStatus.ConnectionStringName, vrdbStatus.VrdbStatusStoredProcedure),
 
             // UAM authorization
             (uam.ConnectionStringName, uam.GetAdminUserStoredProcedure),

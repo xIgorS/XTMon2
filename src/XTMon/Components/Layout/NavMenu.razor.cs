@@ -34,7 +34,8 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("publication-consistency") ||
 		IsCurrentRoute("jv-balance-consistency") ||
 		IsCurrentRoute("missing-workflow-check") ||
-		IsCurrentRoute("precalc-monitoring");
+		IsCurrentRoute("precalc-monitoring") ||
+		IsCurrentRoute("vrdb-status");
 
 	private bool IsCurrentRoute(string route)
 	{
