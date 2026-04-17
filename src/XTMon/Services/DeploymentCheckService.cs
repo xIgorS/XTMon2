@@ -44,6 +44,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IOptions<ReverseConsoFileOptions> reverseConsoFileOptions,
         IOptions<PublicationConsistencyOptions> publicationConsistencyOptions,
         IOptions<JvBalanceConsistencyOptions> jvBalanceConsistencyOptions,
+        IOptions<MissingWorkflowCheckOptions> missingWorkflowCheckOptions,
         IOptions<UamAuthorizationOptions> uamOptions)
     {
         _connectionFactory = connectionFactory;
@@ -77,6 +78,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             reverseConsoFileOptions.Value,
             publicationConsistencyOptions.Value,
             jvBalanceConsistencyOptions.Value,
+            missingWorkflowCheckOptions.Value,
             uamOptions.Value);
     }
 
@@ -110,6 +112,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         ReverseConsoFileOptions reverseConsoFile,
         PublicationConsistencyOptions publicationConsistency,
         JvBalanceConsistencyOptions jvBalanceConsistency,
+        MissingWorkflowCheckOptions missingWorkflowCheck,
         UamAuthorizationOptions uam)
     {
         var checks = new List<(string, string)>
@@ -182,6 +185,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (reverseConsoFile.ConnectionStringName, reverseConsoFile.GetAllSourceSystemsStoredProcedure),
             (publicationConsistency.ConnectionStringName, publicationConsistency.PublicationConsistencyStoredProcedure),
             (jvBalanceConsistency.ConnectionStringName, jvBalanceConsistency.JvBalanceConsistencyStoredProcedure),
+            (missingWorkflowCheck.ConnectionStringName, missingWorkflowCheck.MissingWorkflowCheckStoredProcedure),
 
             // UAM authorization
             (uam.ConnectionStringName, uam.GetAdminUserStoredProcedure),
