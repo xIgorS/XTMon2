@@ -220,3 +220,144 @@ BEGIN
     DEALLOCATE flow_cursor;
 END;
 GO
+/****** Object:  StoredProcedure [monitoring].[UspXtgMonitoringGetAllrevConSourceSystem]    Script Date: 4/17/2026 12:00:00 PM ******/
+DROP PROCEDURE IF EXISTS [monitoring].[UspXtgMonitoringGetAllrevConSourceSystem]
+GO
+/****** Object:  StoredProcedure [monitoring].[UspXtgMTRevConWorkflowCheck]    Script Date: 4/17/2026 12:00:00 PM ******/
+DROP PROCEDURE IF EXISTS [monitoring].[UspXtgMTRevConWorkflowCheck]
+GO
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [monitoring].[UspXtgMonitoringGetAllrevConSourceSystem]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        SkSourceSystem,
+        SourceSystemCode = SourceSystem,
+        SourceSystem
+    FROM
+    (
+        VALUES
+            (6, 'CALB'),
+            (7, 'EQPB'),
+            (8, 'FXO'),
+            (9, 'FXDIAS'),
+            (10, 'ICIU'),
+            (11, 'IPB')
+    ) AS SourceData(SkSourceSystem, SourceSystem)
+    ORDER BY SourceSystem;
+END
+GO
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [monitoring].[UspXtgMTRevConWorkflowCheck]
+(
+    @PnlDate DATE,
+    @SourceSystemCodes AS VARCHAR(4000) = NULL,
+    @Execute BIT = 1,
+    @Query NVARCHAR(MAX) = '' OUTPUT,
+    @BookNames AS VARCHAR(4000) = NULL
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @NormalizedSourceSystemCodes VARCHAR(4000) = NULLIF(LTRIM(RTRIM(@SourceSystemCodes)), '');
+    DECLARE @NormalizedBookNames VARCHAR(4000) = NULLIF(LTRIM(RTRIM(@BookNames)), '');
+
+    SET @Query = N'DECLARE @PnlDate DATE = ''' + CONVERT(NVARCHAR(10), @PnlDate, 120) + N''';'
+        + CHAR(13) + CHAR(10)
+        + N'DECLARE @SourceSystemCodes VARCHAR(4000) = '
+        + CASE
+            WHEN @NormalizedSourceSystemCodes IS NULL THEN N'NULL'
+            ELSE N'''' + REPLACE(@NormalizedSourceSystemCodes, '''', '''''') + N''''
+          END
+        + N';'
+        + CHAR(13) + CHAR(10)
+        + N'DECLARE @BookNames VARCHAR(4000) = '
+        + CASE
+            WHEN @NormalizedBookNames IS NULL THEN N'NULL'
+            ELSE N'''' + REPLACE(@NormalizedBookNames, '''', '''''') + N''''
+          END
+        + N';'
+        + CHAR(13) + CHAR(10)
+        + N'SELECT'
+        + CHAR(13) + CHAR(10)
+        + N'    [STATUS] AS [Status],'
+        + CHAR(13) + CHAR(10)
+        + N'    [FeedSourceName] AS [FeedSourceName],'
+        + CHAR(13) + CHAR(10)
+        + N'    [BusinessDataTypeName] AS [BusinessDataTypeName],'
+        + CHAR(13) + CHAR(10)
+        + N'    [CurrentStep] AS [CurrentStep],'
+        + CHAR(13) + CHAR(10)
+        + N'    [flowId] AS [FlowId],'
+        + CHAR(13) + CHAR(10)
+        + N'    [FlowIdDerivedFrom] AS [FlowIdDerivedFrom],'
+        + CHAR(13) + CHAR(10)
+        + N'    [pnlDate] AS [PnlDate],'
+        + CHAR(13) + CHAR(10)
+        + N'    [ArrivalDate] AS [ArrivalDateTime],'
+        + CHAR(13) + CHAR(10)
+        + N'    [IsFailed] AS [IsFailed]'
+        + CHAR(13) + CHAR(10)
+        + N'FROM [monitoring].[RevCon]'
+        + CHAR(13) + CHAR(10)
+        + N'WHERE TRY_CONVERT(date, [pnlDate], 112) = @PnlDate';
+
+    IF @NormalizedSourceSystemCodes IS NOT NULL
+    BEGIN
+        SET @Query += CHAR(13) + CHAR(10)
+            + N'  AND EXISTS ('
+            + CHAR(13) + CHAR(10)
+            + N'      SELECT 1'
+            + CHAR(13) + CHAR(10)
+            + N'      FROM STRING_SPLIT(@SourceSystemCodes, '','') AS SourceSystems'
+            + CHAR(13) + CHAR(10)
+            + N'      WHERE LTRIM(RTRIM(SourceSystems.value)) = [FeedSourceName])';
+    END;
+
+    IF @NormalizedBookNames IS NOT NULL
+    BEGIN
+        SET @Query += CHAR(13) + CHAR(10)
+            + N'-- @BookNames is currently accepted for compatibility but is not applied because [monitoring].[RevCon] does not expose a book-name column.';
+    END;
+
+    SET @Query += CHAR(13) + CHAR(10) + N'ORDER BY [ArrivalDate] DESC, [flowId] DESC;';
+
+    IF ISNULL(@Execute, 1) = 0
+    BEGIN
+        RETURN;
+    END;
+
+    SELECT
+        [STATUS] AS [Status],
+        [FeedSourceName] AS [FeedSourceName],
+        [BusinessDataTypeName] AS [BusinessDataTypeName],
+        [CurrentStep] AS [CurrentStep],
+        [flowId] AS [FlowId],
+        [FlowIdDerivedFrom] AS [FlowIdDerivedFrom],
+        [pnlDate] AS [PnlDate],
+        [ArrivalDate] AS [ArrivalDateTime],
+        [IsFailed] AS [IsFailed]
+    FROM [monitoring].[RevCon] AS RevCon
+    WHERE TRY_CONVERT(date, RevCon.[pnlDate], 112) = @PnlDate
+      AND
+      (
+          @NormalizedSourceSystemCodes IS NULL
+          OR EXISTS
+          (
+              SELECT 1
+              FROM STRING_SPLIT(@NormalizedSourceSystemCodes, ',') AS SourceSystems
+              WHERE LTRIM(RTRIM(SourceSystems.value)) = RevCon.[FeedSourceName]
+          )
+      )
+    ORDER BY RevCon.[ArrivalDate] DESC, RevCon.[flowId] DESC;
+END
+GO

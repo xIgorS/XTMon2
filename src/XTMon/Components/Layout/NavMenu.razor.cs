@@ -29,7 +29,8 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("multiple-feed-version") ||
 		IsCurrentRoute("daily-balance") ||
 		IsCurrentRoute("adjustments") ||
-		IsCurrentRoute("pricing");
+		IsCurrentRoute("pricing") ||
+		IsCurrentRoute("reverse-conso-file");
 
 	private bool IsCurrentRoute(string route)
 	{

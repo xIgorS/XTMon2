@@ -41,6 +41,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IOptions<DailyBalanceOptions> dailyBalanceOptions,
         IOptions<AdjustmentsOptions> adjustmentsOptions,
         IOptions<PricingOptions> pricingOptions,
+        IOptions<ReverseConsoFileOptions> reverseConsoFileOptions,
         IOptions<UamAuthorizationOptions> uamOptions)
     {
         _connectionFactory = connectionFactory;
@@ -71,6 +72,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             dailyBalanceOptions.Value,
             adjustmentsOptions.Value,
             pricingOptions.Value,
+                reverseConsoFileOptions.Value,
             uamOptions.Value);
     }
 
@@ -101,6 +103,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         DailyBalanceOptions dailyBalance,
         AdjustmentsOptions adjustments,
         PricingOptions pricing,
+        ReverseConsoFileOptions reverseConsoFile,
         UamAuthorizationOptions uam)
     {
         var checks = new List<(string, string)>
@@ -169,6 +172,8 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (adjustments.ConnectionStringName, adjustments.GetAllSourceSystemsStoredProcedure),
             (pricing.ConnectionStringName, pricing.PricingStoredProcedure),
             (pricing.ConnectionStringName, pricing.GetAllSourceSystemsStoredProcedure),
+            (reverseConsoFile.ConnectionStringName, reverseConsoFile.ReverseConsoFileStoredProcedure),
+            (reverseConsoFile.ConnectionStringName, reverseConsoFile.GetAllSourceSystemsStoredProcedure),
 
             // UAM authorization
             (uam.ConnectionStringName, uam.GetAdminUserStoredProcedure),
