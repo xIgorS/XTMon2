@@ -45,6 +45,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IOptions<PublicationConsistencyOptions> publicationConsistencyOptions,
         IOptions<JvBalanceConsistencyOptions> jvBalanceConsistencyOptions,
         IOptions<MissingWorkflowCheckOptions> missingWorkflowCheckOptions,
+        IOptions<PrecalcMonitoringOptions> precalcMonitoringOptions,
         IOptions<UamAuthorizationOptions> uamOptions)
     {
         _connectionFactory = connectionFactory;
@@ -79,6 +80,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             publicationConsistencyOptions.Value,
             jvBalanceConsistencyOptions.Value,
             missingWorkflowCheckOptions.Value,
+            precalcMonitoringOptions.Value,
             uamOptions.Value);
     }
 
@@ -113,6 +115,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         PublicationConsistencyOptions publicationConsistency,
         JvBalanceConsistencyOptions jvBalanceConsistency,
         MissingWorkflowCheckOptions missingWorkflowCheck,
+        PrecalcMonitoringOptions precalcMonitoring,
         UamAuthorizationOptions uam)
     {
         var checks = new List<(string, string)>
@@ -186,6 +189,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (publicationConsistency.ConnectionStringName, publicationConsistency.PublicationConsistencyStoredProcedure),
             (jvBalanceConsistency.ConnectionStringName, jvBalanceConsistency.JvBalanceConsistencyStoredProcedure),
             (missingWorkflowCheck.ConnectionStringName, missingWorkflowCheck.MissingWorkflowCheckStoredProcedure),
+            (precalcMonitoring.ConnectionStringName, precalcMonitoring.PrecalcMonitoringStoredProcedure),
 
             // UAM authorization
             (uam.ConnectionStringName, uam.GetAdminUserStoredProcedure),

@@ -33,7 +33,8 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("reverse-conso-file") ||
 		IsCurrentRoute("publication-consistency") ||
 		IsCurrentRoute("jv-balance-consistency") ||
-		IsCurrentRoute("missing-workflow-check");
+		IsCurrentRoute("missing-workflow-check") ||
+		IsCurrentRoute("precalc-monitoring");
 
 	private bool IsCurrentRoute(string route)
 	{
