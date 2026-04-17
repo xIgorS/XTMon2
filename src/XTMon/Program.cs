@@ -347,6 +347,15 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.PublicationConsistencyStoredProcedure),
         "PublicationConsistency options must define the required connection and stored procedure names.")
     .ValidateOnStart();
+builder.Services
+    .AddOptions<JvBalanceConsistencyOptions>()
+    .Bind(builder.Configuration.GetSection(JvBalanceConsistencyOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.JvBalanceConsistencyStoredProcedure),
+        "JvBalanceConsistency options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
 builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
@@ -374,6 +383,7 @@ builder.Services.AddScoped<IAdjustmentsRepository, AdjustmentsRepository>();
 builder.Services.AddScoped<IPricingRepository, PricingRepository>();
 builder.Services.AddScoped<IReverseConsoFileRepository, ReverseConsoFileRepository>();
 builder.Services.AddScoped<IPublicationConsistencyRepository, PublicationConsistencyRepository>();
+builder.Services.AddScoped<IJvBalanceConsistencyRepository, JvBalanceConsistencyRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
 builder.Services.AddScoped<AuthorizationFeedbackState>();

@@ -31,7 +31,8 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("adjustments") ||
 		IsCurrentRoute("pricing") ||
 		IsCurrentRoute("reverse-conso-file") ||
-		IsCurrentRoute("publication-consistency");
+		IsCurrentRoute("publication-consistency") ||
+		IsCurrentRoute("jv-balance-consistency");
 
 	private bool IsCurrentRoute(string route)
 	{
