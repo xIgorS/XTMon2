@@ -30,7 +30,8 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("daily-balance") ||
 		IsCurrentRoute("adjustments") ||
 		IsCurrentRoute("pricing") ||
-		IsCurrentRoute("reverse-conso-file");
+		IsCurrentRoute("reverse-conso-file") ||
+		IsCurrentRoute("publication-consistency");
 
 	private bool IsCurrentRoute(string route)
 	{
