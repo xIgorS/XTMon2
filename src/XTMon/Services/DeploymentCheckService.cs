@@ -19,6 +19,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IOptions<MonitoringOptions> monitoringOptions,
         IOptions<ReplayFlowsOptions> replayFlowsOptions,
         IOptions<JvCalculationOptions> jvOptions,
+        IOptions<MonitoringJobsOptions> monitoringJobsOptions,
         IOptions<BatchStatusOptions> batchStatusOptions,
         IOptions<ReferentialDataOptions> referentialDataOptions,
         IOptions<MarketDataOptions> marketDataOptions,
@@ -56,6 +57,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             monitoringOptions.Value,
             replayFlowsOptions.Value,
             jvOptions.Value,
+            monitoringJobsOptions.Value,
             batchStatusOptions.Value,
             referentialDataOptions.Value,
             marketDataOptions.Value,
@@ -93,6 +95,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         MonitoringOptions monitoring,
         ReplayFlowsOptions replay,
         JvCalculationOptions jv,
+        MonitoringJobsOptions monitoringJobs,
         BatchStatusOptions batchStatus,
         ReferentialDataOptions referentialData,
         MarketDataOptions marketData,
@@ -162,6 +165,17 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (jv.JobConnectionStringName, jv.JobGetByIdStoredProcedure),
             (jv.JobConnectionStringName, jv.JobGetLatestStoredProcedure),
             (jv.JobConnectionStringName, jv.JobExpireStaleStoredProcedure),
+
+            // Shared monitoring jobs
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobEnqueueStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobTakeNextStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobHeartbeatStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobSaveResultStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobMarkCompletedStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobMarkFailedStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetByIdStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetLatestStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobExpireStaleStoredProcedure),
 
             // Data validation
             (batchStatus.ConnectionStringName, batchStatus.CheckBatchStatusStoredProcedure),

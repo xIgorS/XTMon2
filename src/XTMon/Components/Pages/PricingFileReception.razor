@@ -58,11 +58,11 @@
             <div class="pricing-file-reception-controls__divider"></div>
 
             <div class="pricing-file-reception-controls__section pricing-file-reception-controls__section--actions">
-                <button class="primary-button-filled pricing-file-reception-run-btn" @onclick="RunAsync" disabled="@(isLoading || !selectedPnlDate.HasValue)">
+                <button class="primary-button-filled pricing-file-reception-run-btn" @onclick="RunAsync" disabled="@(isLoading || IsJobActive || !selectedPnlDate.HasValue)">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
                     </svg>
-                    @(isLoading ? "Running..." : "Run Pricing File Reception")
+                    @(IsJobActive ? "Running..." : "Run Pricing File Reception")
                 </button>
             </div>
         </div>
@@ -91,7 +91,8 @@
             </svg>
             <p class="stat-label">Trace all versions</p>
             <p class="stat-value">@TraceAllVersionsText</p>
-            <p class="muted mt-1">Checkbox option</p>
+            <p class="muted mt-1">Current: Trace all versions: @TraceAllVersionsText</p>
+            <p class="muted">Saved result: @SavedParameterSummaryText</p>
         </div>
         <div class="stat-card">
             <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -107,7 +108,7 @@
             </svg>
             <p class="stat-label">Last run</p>
             <p class="stat-value">@LastRunText</p>
-            <p class="muted mt-1">Local session state</p>
+            <p class="muted mt-1">Shared monitoring state</p>
         </div>
     </div>
 
@@ -140,7 +141,13 @@
     @if (!hasRun)
     {
         <div class="surface">
-            <p class="muted">Choose a PNL DATE, set Trace all versions if needed, and run Pricing File Reception to load results.</p>
+            <p class="muted">Choose a PNL DATE to restore the latest saved result or run Pricing File Reception with the current option.</p>
+        </div>
+    }
+    else if (IsJobActive && (result is null || result.Rows.Count == 0))
+    {
+        <div class="surface">
+            <p class="muted">Pricing File Reception is currently running for the selected PNL DATE. Results will appear when the background job finishes.</p>
         </div>
     }
     else if (result is null || result.Rows.Count == 0)

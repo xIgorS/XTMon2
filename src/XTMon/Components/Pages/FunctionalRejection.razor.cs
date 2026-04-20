@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
@@ -26,6 +27,9 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     private IFunctionalRejectionRepository Repository { get; set; } = default!;
 
     [Inject]
+    private IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
+
+    [Inject]
     private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
 
     [Inject]
@@ -33,6 +37,9 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
 
     [Inject]
     private IOptions<FunctionalRejectionOptions> FunctionalRejectionOptions { get; set; } = default!;
+
+    [Inject]
+    private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
     [Inject]
     private ILogger<FunctionalRejection> Logger { get; set; } = default!;
@@ -76,6 +83,15 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     private DateTime? lastRunAt;
     private TechnicalRejectResult? result;
     private string? lastAutoLoadKey;
+    private string? activeJobStatus;
+    private long? activeJobId;
+    private DateTime? activeJobEnqueuedAt;
+    private DateTime? activeJobStartedAt;
+    private DateTime? activeJobCompletedAt;
+    private string? savedParameterSummary;
+    private PeriodicTimer? pollTimer;
+    private CancellationTokenSource? pollCts;
+    private readonly CancellationTokenSource disposeCts = new();
 
     private bool HasValidSelection =>
         BusinessDataTypeId.HasValue &&
@@ -84,6 +100,7 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         !string.IsNullOrWhiteSpace(SourceSystemBusinessDataTypeCode);
 
     private bool CanRun => HasValidSelection && selectedPnlDate.HasValue;
+    private bool IsJobActive => MonitoringJobHelper.IsActiveStatus(activeJobStatus);
     private string MenuProcedureName => FunctionalRejectionOptions.Value.SourceSystemTechnicalRejectStoredProcedure;
     private string ProcedureName => FunctionalRejectionOptions.Value.TechnicalRejectStoredProcedure;
     private string FullyQualifiedMenuProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(FunctionalRejectionOptions.Value.MenuConnectionStringName, MenuProcedureName);
@@ -104,6 +121,8 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     private string SelectedBusinessDataTypeIdText => BusinessDataTypeId.HasValue
         ? BusinessDataTypeId.Value.ToString(CultureInfo.InvariantCulture)
         : "-";
+    private string JobStatusText => string.IsNullOrWhiteSpace(activeJobStatus) ? "-" : activeJobStatus;
+    private string SavedParameterSummaryText => string.IsNullOrWhiteSpace(savedParameterSummary) ? "Current submenu selection" : savedParameterSummary;
 
     protected override async Task OnInitializedAsync()
     {
@@ -124,6 +143,10 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
             result = null;
             parsedQuery = string.Empty;
             lastAutoLoadKey = null;
+            savedParameterSummary = null;
+            activeJobStatus = null;
+            activeJobId = null;
+            StopPolling();
             return;
         }
 
@@ -168,6 +191,9 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     public void Dispose()
     {
         PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
+        StopPolling();
+        disposeCts.Cancel();
+        disposeCts.Dispose();
     }
 
     private Task OnPnlDateSelected(DateOnly date)
@@ -181,7 +207,85 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
 
     private async Task RunAsync()
     {
-        await EnsureLoadedForCurrentSelectionAsync(force: true);
+        if (!CanRun || !selectedPnlDate.HasValue)
+        {
+            validationError = "PNL DATE is required.";
+            return;
+        }
+
+        var businessDataTypeId = BusinessDataTypeId ?? 0;
+
+        isLoading = true;
+        hasRun = true;
+        validationError = null;
+        runError = null;
+        copyMessage = null;
+        showQuery = false;
+
+        try
+        {
+            var parameters = BuildCurrentParameters();
+            var enqueueResult = await MonitoringJobRepository.EnqueueMonitoringJobAsync(
+                MonitoringJobHelper.FunctionalRejectionCategory,
+                BuildCurrentSubmenuKey(),
+                SourceSystemBusinessDataTypeCode,
+                selectedPnlDate.Value,
+                MonitoringJobHelper.SerializeParameters(parameters),
+                MonitoringJobHelper.BuildFunctionalRejectionParameterSummary(parameters),
+                disposeCts.Token);
+
+            activeJobId = enqueueResult.JobId;
+            await RefreshActiveJobAsync(disposeCts.Token);
+            StartPollingIfNeeded();
+        }
+        catch (SqlException ex) when (SqlDataHelper.IsMissingStoredProcedure(ex))
+        {
+            Logger.LogWarning(ex,
+                "Monitoring job procedures are unavailable. Falling back to direct Functional Rejection execution for DbConnection {DbConnection}, PnlDate {PnlDate}, BusinessDataTypeId {BusinessDataTypeId}, SourceSystemName {SourceSystemName}.",
+                DbConnection,
+                selectedPnlDate.Value,
+                businessDataTypeId,
+                SourceSystemName);
+
+            await LoadDirectResultAsync(selectedPnlDate.Value, businessDataTypeId, disposeCts.Token);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(
+                AppLogEvents.MonitoringLoadFailed,
+                ex,
+                "Failed to enqueue Functional Rejection for DbConnection {DbConnection}, PnlDate {PnlDate}, BusinessDataTypeId {BusinessDataTypeId}, SourceSystemName {SourceSystemName}.",
+                DbConnection,
+                selectedPnlDate.Value,
+                businessDataTypeId,
+                SourceSystemName);
+            runError = LoadErrorMessage;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadDirectResultAsync(DateOnly pnlDate, int businessDataTypeId, CancellationToken cancellationToken)
+    {
+        var directResult = await Repository.GetTechnicalRejectAsync(
+            pnlDate,
+            businessDataTypeId,
+            DbConnection ?? string.Empty,
+            SourceSystemName ?? string.Empty,
+            cancellationToken);
+
+        activeJobId = null;
+        activeJobStatus = null;
+        activeJobEnqueuedAt = null;
+        activeJobStartedAt = null;
+        activeJobCompletedAt = null;
+        savedParameterSummary = MonitoringJobHelper.BuildFunctionalRejectionParameterSummary(BuildCurrentParameters());
+        parsedQuery = directResult.ParsedQuery;
+        result = directResult;
+        lastRunAt = DateTime.Now;
+        runError = null;
     }
 
     private async Task EnsureLoadedForCurrentSelectionAsync(bool force)
@@ -207,59 +311,171 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         }
 
         lastAutoLoadKey = requestKey;
-        await ExecuteLoadAsync();
+        await RestoreLatestJobForCurrentSelectionAsync();
     }
 
-    private async Task ExecuteLoadAsync()
+    private async Task RestoreLatestJobForCurrentSelectionAsync()
     {
+        StopPolling();
+
         if (!selectedPnlDate.HasValue)
         {
-            validationError = "PNL DATE is required.";
+            ClearLoadedState();
             return;
         }
 
         if (!BusinessDataTypeId.HasValue || string.IsNullOrWhiteSpace(SourceSystemName) || string.IsNullOrWhiteSpace(DbConnection))
         {
-            selectionError = "Choose a Functional Rejection submenu item from the navigation menu.";
+            ClearLoadedState();
             return;
         }
 
-        isLoading = true;
-        hasRun = true;
-        validationError = null;
-        runError = null;
-        copyMessage = null;
-        showQuery = false;
-
         try
         {
-            result = await Repository.GetTechnicalRejectAsync(
+            var latestJob = await MonitoringJobRepository.GetLatestMonitoringJobAsync(
+                MonitoringJobHelper.FunctionalRejectionCategory,
+                BuildCurrentSubmenuKey(),
                 selectedPnlDate.Value,
-                BusinessDataTypeId.Value,
-                DbConnection,
-                SourceSystemName,
-                CancellationToken.None);
-            parsedQuery = result.ParsedQuery;
-            lastRunAt = DateTime.Now;
+                disposeCts.Token);
+
+            if (latestJob is null)
+            {
+                ClearLoadedState();
+                return;
+            }
+
+            ApplyJob(latestJob);
+            StartPollingIfNeeded();
+        }
+        catch (SqlException ex) when (SqlDataHelper.IsMissingStoredProcedure(ex))
+        {
+            ClearLoadedState();
         }
         catch (Exception ex)
         {
-            Logger.LogError(
-                AppLogEvents.MonitoringLoadFailed,
-                ex,
-                "Failed to load Functional Rejection for DbConnection {DbConnection}, PnlDate {PnlDate}, BusinessDataTypeId {BusinessDataTypeId}, SourceSystemName {SourceSystemName}.",
+            Logger.LogWarning(ex,
+                "Unable to restore latest Functional Rejection job for DbConnection {DbConnection}, PnlDate {PnlDate}, BusinessDataTypeId {BusinessDataTypeId}, SourceSystemName {SourceSystemName}.",
                 DbConnection,
                 selectedPnlDate.Value,
                 BusinessDataTypeId.Value,
                 SourceSystemName);
-            runError = LoadErrorMessage;
-            parsedQuery = string.Empty;
+        }
+    }
+
+    private void StartPollingIfNeeded()
+    {
+        StopPolling();
+
+        if (!activeJobId.HasValue || !IsJobActive)
+        {
+            return;
+        }
+
+        pollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
+        pollTimer = new PeriodicTimer(TimeSpan.FromSeconds(MonitoringJobsOptions.Value.JobPollIntervalSeconds));
+        _ = PollJobAsync(pollTimer, pollCts.Token);
+    }
+
+    private async Task PollJobAsync(PeriodicTimer timer, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshActiveJobAsync(cancellationToken);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private async Task RefreshActiveJobAsync(CancellationToken cancellationToken)
+    {
+        if (!activeJobId.HasValue)
+        {
+            return;
+        }
+
+        var job = await MonitoringJobRepository.GetMonitoringJobByIdAsync(activeJobId.Value, cancellationToken);
+        if (job is null)
+        {
+            return;
+        }
+
+        ApplyJob(job);
+        if (!IsJobActive)
+        {
+            StopPolling();
+        }
+    }
+
+    private void ApplyJob(MonitoringJobRecord job)
+    {
+        activeJobId = job.JobId;
+        activeJobStatus = job.Status;
+        activeJobEnqueuedAt = job.EnqueuedAt;
+        activeJobStartedAt = job.StartedAt;
+        activeJobCompletedAt = job.CompletedAt;
+        savedParameterSummary = job.ParameterSummary;
+
+        var table = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
+        var columns = MonitoringJobHelper.DeserializeTechnicalRejectColumns(job.MetadataJson);
+        if (table is null)
+        {
             result = null;
         }
-        finally
+        else
         {
-            isLoading = false;
+            var effectiveColumns = columns.Count == table.Columns.Count
+                ? columns
+                : table.Columns.Select(static columnName => new TechnicalRejectColumn(columnName, string.Empty)).ToArray();
+            result = new TechnicalRejectResult(job.ParsedQuery ?? string.Empty, effectiveColumns, table.Rows);
         }
+
+        parsedQuery = job.ParsedQuery ?? string.Empty;
+        hasRun = true;
+
+        var latestExecution = job.CompletedAt ?? job.StartedAt ?? job.EnqueuedAt;
+        lastRunAt = JvCalculationHelper.ToUtc(latestExecution).ToLocalTime();
+
+        if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
+        {
+            runError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? LoadErrorMessage : job.ErrorMessage;
+        }
+        else
+        {
+            runError = null;
+        }
+    }
+
+    private void ClearLoadedState()
+    {
+        activeJobId = null;
+        activeJobStatus = null;
+        activeJobEnqueuedAt = null;
+        activeJobStartedAt = null;
+        activeJobCompletedAt = null;
+        savedParameterSummary = null;
+        hasRun = false;
+        lastRunAt = null;
+        parsedQuery = string.Empty;
+        result = null;
+        runError = null;
+    }
+
+    private void StopPolling()
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+        pollCts = null;
+
+        pollTimer?.Dispose();
+        pollTimer = null;
     }
 
     private void ToggleQueryVisibility()
@@ -330,6 +546,24 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
 
         var targetUri = QueryHelpers.AddQueryString("functional-rejection", queryParameters);
         NavigationManager.NavigateTo(targetUri, replace: true);
+    }
+
+    private string BuildCurrentSubmenuKey()
+    {
+        return MonitoringJobHelper.BuildFunctionalRejectionSubmenuKey(
+            BusinessDataTypeId ?? 0,
+            SourceSystemName ?? string.Empty,
+            DbConnection ?? string.Empty,
+            SourceSystemBusinessDataTypeCode);
+    }
+
+    private FunctionalRejectionJobParameters BuildCurrentParameters()
+    {
+        return new FunctionalRejectionJobParameters(
+            SourceSystemBusinessDataTypeCode,
+            BusinessDataTypeId ?? 0,
+            SourceSystemName ?? string.Empty,
+            DbConnection ?? string.Empty);
     }
 
     private IReadOnlyList<GridColumn> GetGridColumns()

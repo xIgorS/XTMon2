@@ -27,11 +27,17 @@ public static class AppLogEvents
     public static readonly EventId RepositoryJvSqlTimeout = new(3007, nameof(RepositoryJvSqlTimeout));
     public static readonly EventId RepositoryJvConnectionFailed = new(3008, nameof(RepositoryJvConnectionFailed));
     public static readonly EventId RepositoryJvSlowOperation = new(3009, nameof(RepositoryJvSlowOperation));
+    public static readonly EventId RepositoryMonitoringJobSqlTimeout = new(3010, nameof(RepositoryMonitoringJobSqlTimeout));
+    public static readonly EventId RepositoryMonitoringJobConnectionFailed = new(3011, nameof(RepositoryMonitoringJobConnectionFailed));
+    public static readonly EventId RepositoryMonitoringJobSlowOperation = new(3012, nameof(RepositoryMonitoringJobSlowOperation));
 
     public static readonly EventId ReplayProcessorBackgroundFailed = new(4001, nameof(ReplayProcessorBackgroundFailed));
     public static readonly EventId JvProcessorSqlTimeout = new(4002, nameof(JvProcessorSqlTimeout));
     public static readonly EventId JvProcessorConnectionFailed = new(4003, nameof(JvProcessorConnectionFailed));
     public static readonly EventId JvProcessorBackgroundFailed = new(4004, nameof(JvProcessorBackgroundFailed));
+    public static readonly EventId MonitoringProcessorSqlTimeout = new(4005, nameof(MonitoringProcessorSqlTimeout));
+    public static readonly EventId MonitoringProcessorConnectionFailed = new(4006, nameof(MonitoringProcessorConnectionFailed));
+    public static readonly EventId MonitoringProcessorBackgroundFailed = new(4007, nameof(MonitoringProcessorBackgroundFailed));
 
     public static readonly EventId DiagnosticsCheckFailed = new(5001, nameof(DiagnosticsCheckFailed));
 }

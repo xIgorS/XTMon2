@@ -1,0 +1,444 @@
+using System.Data;
+using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
+using XTMon.Helpers;
+using XTMon.Infrastructure;
+using XTMon.Models;
+using XTMon.Options;
+
+namespace XTMon.Repositories;
+
+public sealed class MonitoringJobRepository : IMonitoringJobRepository
+{
+    private const long SlowOperationThresholdMilliseconds = 1000;
+
+    private readonly SqlConnectionFactory _connectionFactory;
+    private readonly MonitoringJobsOptions _options;
+    private readonly ILogger<MonitoringJobRepository> _logger;
+
+    public MonitoringJobRepository(
+        SqlConnectionFactory connectionFactory,
+        IOptions<MonitoringJobsOptions> options,
+        ILogger<MonitoringJobRepository> logger)
+    {
+        _connectionFactory = connectionFactory;
+        _options = options.Value;
+        _logger = logger;
+    }
+
+    public async Task<MonitoringJobEnqueueResult> EnqueueMonitoringJobAsync(
+        string category,
+        string submenuKey,
+        string? displayName,
+        DateOnly pnlDate,
+        string? parametersJson,
+        string? parameterSummary,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _options.JobEnqueueStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+
+            command.Parameters.Add(new SqlParameter("@Category", SqlDbType.VarChar, 64) { Value = category });
+            command.Parameters.Add(new SqlParameter("@SubmenuKey", SqlDbType.NVarChar, 512) { Value = submenuKey });
+            command.Parameters.Add(new SqlParameter("@DisplayName", SqlDbType.NVarChar, 256) { Value = string.IsNullOrWhiteSpace(displayName) ? DBNull.Value : displayName });
+            command.Parameters.Add(new SqlParameter("@PnlDate", SqlDbType.Date) { Value = pnlDate.ToDateTime(TimeOnly.MinValue) });
+            command.Parameters.Add(new SqlParameter("@ParametersJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(parametersJson) ? DBNull.Value : parametersJson });
+            command.Parameters.Add(new SqlParameter("@ParameterSummary", SqlDbType.NVarChar, 1024) { Value = string.IsNullOrWhiteSpace(parameterSummary) ? DBNull.Value : parameterSummary });
+
+            var jobIdParameter = new SqlParameter("@JobId", SqlDbType.BigInt) { Direction = ParameterDirection.Output };
+            command.Parameters.Add(jobIdParameter);
+
+            var alreadyActiveParameter = new SqlParameter("@AlreadyActive", SqlDbType.Bit) { Direction = ParameterDirection.Output };
+            command.Parameters.Add(alreadyActiveParameter);
+
+            await connection.OpenAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+
+            var jobId = Convert.ToInt64(jobIdParameter.Value, CultureInfo.InvariantCulture);
+            var alreadyActive = alreadyActiveParameter.Value is bool boolValue
+                ? boolValue
+                : Convert.ToInt32(alreadyActiveParameter.Value, CultureInfo.InvariantCulture) != 0;
+
+            return new MonitoringJobEnqueueResult(jobId, alreadyActive);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(EnqueueMonitoringJobAsync), _options.JobEnqueueStoredProcedure, $"Category={category}, SubmenuKey={submenuKey}, PnlDate={pnlDate:yyyy-MM-dd}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex,
+                "Monitoring job enqueue failed for category {Category}, submenu {SubmenuKey}, pnl date {PnlDate}.",
+                category,
+                submenuKey,
+                pnlDate);
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(EnqueueMonitoringJobAsync), _options.JobEnqueueStoredProcedure, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    public async Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(string workerId, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _options.JobTakeNextStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@WorkerId", SqlDbType.VarChar, 100) { Value = workerId });
+
+            await connection.OpenAsync(cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            return ReadMonitoringJobRecord(reader);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(TryTakeNextMonitoringJobAsync), _options.JobTakeNextStoredProcedure, $"WorkerId={workerId}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring job take next failed.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(TryTakeNextMonitoringJobAsync), _options.JobTakeNextStoredProcedure, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    public async Task<MonitoringJobRecord?> GetMonitoringJobByIdAsync(long jobId, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _options.JobGetByIdStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt) { Value = jobId });
+
+            await connection.OpenAsync(cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            return ReadMonitoringJobRecord(reader);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(GetMonitoringJobByIdAsync), _options.JobGetByIdStoredProcedure, $"JobId={jobId}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring job get-by-id failed for JobId {JobId}.", jobId);
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(GetMonitoringJobByIdAsync), _options.JobGetByIdStoredProcedure, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    public async Task<MonitoringJobRecord?> GetLatestMonitoringJobAsync(string category, string submenuKey, DateOnly pnlDate, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _options.JobGetLatestStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@Category", SqlDbType.VarChar, 64) { Value = category });
+            command.Parameters.Add(new SqlParameter("@SubmenuKey", SqlDbType.NVarChar, 512) { Value = submenuKey });
+            command.Parameters.Add(new SqlParameter("@PnlDate", SqlDbType.Date) { Value = pnlDate.ToDateTime(TimeOnly.MinValue) });
+
+            await connection.OpenAsync(cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            return ReadMonitoringJobRecord(reader);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(GetLatestMonitoringJobAsync), _options.JobGetLatestStoredProcedure, $"Category={category}, SubmenuKey={submenuKey}, PnlDate={pnlDate:yyyy-MM-dd}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex,
+                "Monitoring latest job query failed for category {Category}, submenu {SubmenuKey}, pnl date {PnlDate}.",
+                category,
+                submenuKey,
+                pnlDate);
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(GetLatestMonitoringJobAsync), _options.JobGetLatestStoredProcedure, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    public async Task SaveMonitoringJobResultAsync(long jobId, MonitoringJobResultPayload payload, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _options.JobSaveResultStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+
+            var columnsJson = payload.Table is null ? null : JsonSerializer.Serialize(payload.Table.Columns);
+            var rowsJson = payload.Table is null ? null : JsonSerializer.Serialize(payload.Table.Rows);
+
+            command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt) { Value = jobId });
+            command.Parameters.Add(new SqlParameter("@ParsedQuery", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(payload.ParsedQuery) ? DBNull.Value : payload.ParsedQuery });
+            command.Parameters.Add(new SqlParameter("@GridColumnsJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(columnsJson) ? DBNull.Value : columnsJson });
+            command.Parameters.Add(new SqlParameter("@GridRowsJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(rowsJson) ? DBNull.Value : rowsJson });
+            command.Parameters.Add(new SqlParameter("@MetadataJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(payload.MetadataJson) ? DBNull.Value : payload.MetadataJson });
+
+            await connection.OpenAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(SaveMonitoringJobResultAsync), _options.JobSaveResultStoredProcedure, $"JobId={jobId}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring job save result failed for JobId {JobId}.", jobId);
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(SaveMonitoringJobResultAsync), _options.JobSaveResultStoredProcedure, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    public Task MarkMonitoringJobCompletedAsync(long jobId, CancellationToken cancellationToken)
+    {
+        return ExecuteMonitoringJobStateProcedureAsync(_options.JobMarkCompletedStoredProcedure, jobId, null, cancellationToken);
+    }
+
+    public Task MarkMonitoringJobFailedAsync(long jobId, string errorMessage, CancellationToken cancellationToken)
+    {
+        return ExecuteMonitoringJobStateProcedureAsync(_options.JobMarkFailedStoredProcedure, jobId, errorMessage, cancellationToken);
+    }
+
+    public Task HeartbeatMonitoringJobAsync(long jobId, CancellationToken cancellationToken)
+    {
+        return ExecuteMonitoringJobStateProcedureAsync(_options.JobHeartbeatStoredProcedure, jobId, null, cancellationToken);
+    }
+
+    public async Task<int> ExpireStaleRunningMonitoringJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _options.JobExpireStaleStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+
+            command.Parameters.Add(new SqlParameter("@StaleTimeoutSeconds", SqlDbType.Int)
+            {
+                Value = Math.Max(1, Convert.ToInt32(staleAfter.TotalSeconds, CultureInfo.InvariantCulture))
+            });
+            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
+            {
+                Value = string.IsNullOrWhiteSpace(errorMessage)
+                    ? "Monitoring background job timed out while in Running status."
+                    : errorMessage
+            });
+
+            await connection.OpenAsync(cancellationToken);
+            return await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring stale job expiration failed.");
+            throw;
+        }
+    }
+
+    private async Task ExecuteMonitoringJobStateProcedureAsync(string procedureName, long jobId, string? errorMessage, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = procedureName;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt) { Value = jobId });
+
+            if (errorMessage is not null)
+            {
+                command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
+                {
+                    Value = string.IsNullOrWhiteSpace(errorMessage) ? "Unknown monitoring job failure." : errorMessage
+                });
+            }
+
+            await connection.OpenAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(ExecuteMonitoringJobStateProcedureAsync), procedureName, $"JobId={jobId}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex,
+                "Monitoring job state update failed for procedure {StoredProcedure} and JobId {JobId}.",
+                procedureName,
+                jobId);
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(ExecuteMonitoringJobStateProcedureAsync), procedureName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    private void LogOperationDuration(string operationName, string commandName, long elapsedMilliseconds)
+    {
+        if (elapsedMilliseconds >= SlowOperationThresholdMilliseconds)
+        {
+            _logger.LogWarning(AppLogEvents.RepositoryMonitoringJobSlowOperation,
+                "Monitoring job data operation {Operation} with command {CommandName} is slow. ElapsedMs={ElapsedMs}.",
+                operationName,
+                commandName,
+                elapsedMilliseconds);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "Monitoring job data operation {Operation} with command {CommandName} completed in {ElapsedMs} ms.",
+                operationName,
+                commandName,
+                elapsedMilliseconds);
+        }
+    }
+
+    private void LogSqlException(SqlException ex, string operationName, string commandName, string? context = null)
+    {
+        if (SqlDataHelper.IsSqlTimeout(ex))
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringJobSqlTimeout, ex,
+                "Monitoring job SQL timeout in operation {Operation}, connection {ConnectionName}, command {CommandName}, timeout seconds {TimeoutSeconds}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
+                operationName,
+                _options.JobConnectionStringName,
+                commandName,
+                _options.CommandTimeoutSeconds,
+                ex.Number,
+                ex.State,
+                ex.Class,
+                context ?? "N/A");
+            return;
+        }
+
+        if (SqlDataHelper.IsSqlConnectionFailure(ex))
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringJobConnectionFailed, ex,
+                "Monitoring job SQL connection problem in operation {Operation}, connection {ConnectionName}, command {CommandName}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
+                operationName,
+                _options.JobConnectionStringName,
+                commandName,
+                ex.Number,
+                ex.State,
+                ex.Class,
+                context ?? "N/A");
+            return;
+        }
+
+        _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex,
+            "Monitoring job SQL error in operation {Operation}, connection {ConnectionName}, command {CommandName}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
+            operationName,
+            _options.JobConnectionStringName,
+            commandName,
+            ex.Number,
+            ex.State,
+            ex.Class,
+            context ?? "N/A");
+    }
+
+    private static MonitoringJobRecord ReadMonitoringJobRecord(IDataRecord reader)
+    {
+        var jobId = Convert.ToInt64(reader["JobId"], CultureInfo.InvariantCulture);
+        var category = Convert.ToString(reader["Category"], CultureInfo.InvariantCulture) ?? string.Empty;
+        var submenuKey = Convert.ToString(reader["SubmenuKey"], CultureInfo.InvariantCulture) ?? string.Empty;
+        var displayName = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "DisplayName"));
+        var pnlDate = DateOnly.FromDateTime(Convert.ToDateTime(reader["PnlDate"], CultureInfo.InvariantCulture));
+        var status = Convert.ToString(reader["Status"], CultureInfo.InvariantCulture) ?? string.Empty;
+        var workerId = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "WorkerId"));
+        var parametersJson = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "ParametersJson"));
+        var parameterSummary = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "ParameterSummary"));
+        var enqueuedAt = Convert.ToDateTime(reader["EnqueuedAt"], CultureInfo.InvariantCulture);
+        var startedAt = SqlDataHelper.ReadNullableDateTime(reader, SqlDataHelper.FindOrdinal(reader, "StartedAt"));
+        var heartbeatAt = SqlDataHelper.ReadNullableDateTime(reader, SqlDataHelper.FindOrdinal(reader, "LastHeartbeatAt"));
+        var completedAt = SqlDataHelper.ReadNullableDateTime(reader, SqlDataHelper.FindOrdinal(reader, "CompletedAt"));
+        var failedAt = SqlDataHelper.ReadNullableDateTime(reader, SqlDataHelper.FindOrdinal(reader, "FailedAt"));
+        var errorMessage = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "ErrorMessage"));
+        var parsedQuery = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "ParsedQuery"));
+        var gridColumnsJson = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "GridColumnsJson"));
+        var gridRowsJson = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "GridRowsJson"));
+        var metadataJson = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "MetadataJson"));
+        var savedAt = SqlDataHelper.ReadNullableDateTime(reader, SqlDataHelper.FindOrdinal(reader, "SavedAt"));
+
+        return new MonitoringJobRecord(
+            jobId,
+            category,
+            submenuKey,
+            displayName,
+            pnlDate,
+            status,
+            workerId,
+            parametersJson,
+            parameterSummary,
+            enqueuedAt,
+            startedAt,
+            heartbeatAt,
+            completedAt,
+            failedAt,
+            errorMessage,
+            parsedQuery,
+            gridColumnsJson,
+            gridRowsJson,
+            metadataJson,
+            savedAt);
+    }
+}

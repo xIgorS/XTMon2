@@ -17,6 +17,7 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
     private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string GridDateFormat = "dd-MM-yyyy";
     private const string LoadErrorMessage = "Unable to load FeedOut Extraction right now. Please try again.";
+    private const string MonitoringSubmenuKey = "feedout-extraction";
     private static readonly IReadOnlyList<(string Name, string Header)> PreferredColumns =
     [
         ("Status", "Status"),
@@ -49,6 +50,9 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
     private IFeedOutExtractionRepository Repository { get; set; } = default!;
 
     [Inject]
+    private IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
+
+    [Inject]
     private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
 
     [Inject]
@@ -56,6 +60,9 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
 
     [Inject]
     private IOptions<FeedOutExtractionOptions> FeedOutExtractionOptions { get; set; } = default!;
+
+    [Inject]
+    private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
     [Inject]
     private ILogger<FeedOutExtraction> Logger { get; set; } = default!;
@@ -74,6 +81,11 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
     private DateTime? lastRunAt;
     private MonitoringTableResult? result;
     private bool showQuery;
+    private long? activeJobId;
+    private string? activeJobStatus;
+    private PeriodicTimer? pollTimer;
+    private CancellationTokenSource? pollCts;
+    private readonly CancellationTokenSource disposeCts = new();
 
     private string ProcedureName => FeedOutExtractionOptions.Value.FeedOutExtractionStoredProcedure;
     private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(FeedOutExtractionOptions.Value.ConnectionStringName, ProcedureName);
@@ -84,11 +96,14 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
     private string LastRunText => lastRunAt.HasValue
         ? lastRunAt.Value.ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture)
         : "-";
+    private bool IsJobActive => MonitoringJobHelper.IsActiveStatus(activeJobStatus);
 
     protected override async Task OnInitializedAsync()
     {
         await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await RestoreLatestJobAsync();
+        StartPollingIfNeeded();
     }
 
     private async Task LoadPnlDatesAsync()
@@ -112,9 +127,10 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
 
     private void OnGlobalPnlDateChanged()
     {
-        InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             selectedPnlDate = PnlDateState.SelectedDate;
+            await RestoreLatestJobAsync();
             StateHasChanged();
         });
     }
@@ -122,14 +138,17 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
     public void Dispose()
     {
         PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
+        StopPolling();
+        disposeCts.Cancel();
+        disposeCts.Dispose();
     }
 
-    private Task OnPnlDateSelected(DateOnly date)
+    private async Task OnPnlDateSelected(DateOnly date)
     {
         selectedPnlDate = date;
         validationError = null;
         runError = null;
-        return Task.CompletedTask;
+        await RestoreLatestJobAsync();
     }
 
     private async Task RunAsync()
@@ -149,10 +168,18 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
 
         try
         {
-            var response = await Repository.GetFeedOutExtractionAsync(selectedPnlDate.Value, CancellationToken.None);
-            parsedQuery = response.ParsedQuery;
-            result = response.Table;
-            lastRunAt = DateTime.Now;
+            var enqueueResult = await MonitoringJobRepository.EnqueueMonitoringJobAsync(
+                MonitoringJobHelper.DataValidationCategory,
+                MonitoringSubmenuKey,
+                "FeedOut Extraction",
+                selectedPnlDate.Value,
+                parametersJson: null,
+                parameterSummary: null,
+                disposeCts.Token);
+
+            activeJobId = enqueueResult.JobId;
+            await RefreshActiveJobAsync(disposeCts.Token);
+            StartPollingIfNeeded();
         }
         catch (Exception ex)
         {
@@ -169,6 +196,133 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
         {
             isLoading = false;
         }
+    }
+
+    private async Task RestoreLatestJobAsync()
+    {
+        StopPolling();
+
+        if (!selectedPnlDate.HasValue)
+        {
+            ClearLoadedState();
+            return;
+        }
+
+        try
+        {
+            var latestJob = await MonitoringJobRepository.GetLatestMonitoringJobAsync(
+                MonitoringJobHelper.DataValidationCategory,
+                MonitoringSubmenuKey,
+                selectedPnlDate.Value,
+                disposeCts.Token);
+
+            if (latestJob is null)
+            {
+                ClearLoadedState();
+                return;
+            }
+
+            ApplyJob(latestJob);
+            StartPollingIfNeeded();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to restore latest FeedOut Extraction job for PnlDate {PnlDate}.", selectedPnlDate.Value);
+        }
+    }
+
+    private void StartPollingIfNeeded()
+    {
+        StopPolling();
+
+        if (!activeJobId.HasValue || !IsJobActive)
+        {
+            return;
+        }
+
+        pollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
+        pollTimer = new PeriodicTimer(TimeSpan.FromSeconds(MonitoringJobsOptions.Value.JobPollIntervalSeconds));
+        _ = PollJobAsync(pollTimer, pollCts.Token);
+    }
+
+    private async Task PollJobAsync(PeriodicTimer timer, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshActiveJobAsync(cancellationToken);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private async Task RefreshActiveJobAsync(CancellationToken cancellationToken)
+    {
+        if (!activeJobId.HasValue)
+        {
+            return;
+        }
+
+        var job = await MonitoringJobRepository.GetMonitoringJobByIdAsync(activeJobId.Value, cancellationToken);
+        if (job is null)
+        {
+            return;
+        }
+
+        ApplyJob(job);
+        if (!IsJobActive)
+        {
+            StopPolling();
+        }
+    }
+
+    private void ApplyJob(MonitoringJobRecord job)
+    {
+        activeJobId = job.JobId;
+        activeJobStatus = job.Status;
+        parsedQuery = job.ParsedQuery ?? string.Empty;
+        result = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
+        hasRun = true;
+
+        var latestExecution = job.CompletedAt ?? job.StartedAt ?? job.EnqueuedAt;
+        lastRunAt = JvCalculationHelper.ToUtc(latestExecution).ToLocalTime();
+
+        if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
+        {
+            runError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? LoadErrorMessage : job.ErrorMessage;
+        }
+        else
+        {
+            runError = null;
+        }
+    }
+
+    private void ClearLoadedState()
+    {
+        activeJobId = null;
+        activeJobStatus = null;
+        hasRun = false;
+        parsedQuery = string.Empty;
+        result = null;
+        lastRunAt = null;
+        runError = null;
+    }
+
+    private void StopPolling()
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+        pollCts = null;
+
+        pollTimer?.Dispose();
+        pollTimer = null;
     }
 
     private void ToggleQueryVisibility()

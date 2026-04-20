@@ -127,6 +127,23 @@ builder.Services
         "JvCalculation options must define all required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<MonitoringJobsOptions>()
+    .Bind(builder.Configuration.GetSection(MonitoringJobsOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.JobConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.JobEnqueueStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobTakeNextStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobHeartbeatStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobSaveResultStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobMarkCompletedStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobMarkFailedStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobGetByIdStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobGetLatestStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobExpireStaleStoredProcedure),
+        "MonitoringJobs options must define all required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<BatchStatusOptions>()
     .Bind(builder.Configuration.GetSection(BatchStatusOptions.SectionName))
     .ValidateDataAnnotations()
@@ -397,6 +414,7 @@ builder.Services
 builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
+builder.Services.AddScoped<IMonitoringJobRepository, MonitoringJobRepository>();
 builder.Services.AddScoped<IBatchStatusRepository, BatchStatusRepository>();
 builder.Services.AddScoped<IReferentialDataRepository, ReferentialDataRepository>();
 builder.Services.AddScoped<IMarketDataRepository, MarketDataRepository>();
@@ -428,6 +446,9 @@ builder.Services.AddScoped<IPrecalcMonitoringRepository, PrecalcMonitoringReposi
 builder.Services.AddScoped<IVrdbStatusRepository, VrdbStatusRepository>();
 builder.Services.AddScoped<IReplayFlowRepository, ReplayFlowRepository>();
 builder.Services.AddScoped<IUamAuthorizationRepository, UamAuthorizationRepository>();
+builder.Services.AddScoped<IMonitoringJobExecutor, BatchStatusMonitoringJobExecutor>();
+builder.Services.AddScoped<IMonitoringJobExecutor, DataValidationMonitoringJobExecutor>();
+builder.Services.AddScoped<IMonitoringJobExecutor, FunctionalRejectionMonitoringJobExecutor>();
 builder.Services.AddScoped<AuthorizationFeedbackState>();
 builder.Services.AddScoped<PnlDateState>();
 builder.Services.AddScoped<IAuthorizationHandler, UamPermissionHandler>();
@@ -435,6 +456,7 @@ builder.Services.AddSingleton<IDeploymentCheckService, DeploymentCheckService>()
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();
 builder.Services.AddHostedService<ReplayFlowProcessingService>();
 builder.Services.AddHostedService<JvCalculationProcessingService>();
+builder.Services.AddHostedService<MonitoringJobProcessingService>();
 
 // Use default authentication scheme (Negotiate)
 builder.Services.AddAuthorization(options =>

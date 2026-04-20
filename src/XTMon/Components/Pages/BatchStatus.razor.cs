@@ -23,6 +23,9 @@ public partial class BatchStatus : ComponentBase, IDisposable
     private IBatchStatusRepository Repository { get; set; } = default!;
 
     [Inject]
+    private IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
+
+    [Inject]
     private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
 
     [Inject]
@@ -30,6 +33,9 @@ public partial class BatchStatus : ComponentBase, IDisposable
 
     [Inject]
     private IOptions<BatchStatusOptions> BatchStatusOptions { get; set; } = default!;
+
+    [Inject]
+    private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
     [Inject]
     private ILogger<BatchStatus> Logger { get; set; } = default!;
@@ -41,6 +47,15 @@ public partial class BatchStatus : ComponentBase, IDisposable
     private string? loadError;
     private DateTime? lastRunAt;
     private IReadOnlyList<BatchStatusGridRow> gridRows = Array.Empty<BatchStatusGridRow>();
+    private long? activeJobId;
+    private string? activeJobStatus;
+    private DateTime? activeJobEnqueuedAt;
+    private DateTime? activeJobStartedAt;
+    private DateTime? activeJobCompletedAt;
+    private string? activeJobError;
+    private PeriodicTimer? pollTimer;
+    private CancellationTokenSource? pollCts;
+    private readonly CancellationTokenSource disposeCts = new();
 
     private string ProcedureName => BatchStatusOptions.Value.CheckBatchStatusStoredProcedure;
     private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(BatchStatusOptions.Value.ConnectionStringName, ProcedureName);
@@ -50,11 +65,15 @@ public partial class BatchStatus : ComponentBase, IDisposable
     private string LastRunText => lastRunAt.HasValue
         ? lastRunAt.Value.ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture)
         : "-";
+    private bool IsJobActive => MonitoringJobHelper.IsActiveStatus(activeJobStatus);
+    private string JobStatusText => string.IsNullOrWhiteSpace(activeJobStatus) ? "-" : activeJobStatus;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await RestoreLatestJobAsync();
+        StartPollingIfNeeded();
     }
 
     private async Task LoadPnlDatesAsync()
@@ -78,9 +97,10 @@ public partial class BatchStatus : ComponentBase, IDisposable
 
     private void OnGlobalPnlDateChanged()
     {
-        InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             selectedPnlDate = PnlDateState.SelectedDate;
+            await RestoreLatestJobAsync();
             StateHasChanged();
         });
     }
@@ -88,14 +108,17 @@ public partial class BatchStatus : ComponentBase, IDisposable
     public void Dispose()
     {
         PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
+        StopPolling();
+        disposeCts.Cancel();
+        disposeCts.Dispose();
     }
 
-    private Task OnPnlDateSelected(DateOnly date)
+    private async Task OnPnlDateSelected(DateOnly date)
     {
         selectedPnlDate = date;
         validationError = null;
         loadError = null;
-        return Task.CompletedTask;
+        await RestoreLatestJobAsync();
     }
 
     private async Task RunAsync()
@@ -113,9 +136,18 @@ public partial class BatchStatus : ComponentBase, IDisposable
 
         try
         {
-            var table = await Repository.GetBatchStatusAsync(selectedPnlDate.Value, CancellationToken.None);
-            gridRows = BatchStatusHelper.BuildGridRows(table);
-            lastRunAt = DateTime.Now;
+            var enqueueResult = await MonitoringJobRepository.EnqueueMonitoringJobAsync(
+                MonitoringJobHelper.DataValidationCategory,
+                MonitoringJobHelper.BatchStatusSubmenuKey,
+                "Batch Status",
+                selectedPnlDate.Value,
+                parametersJson: null,
+                parameterSummary: null,
+                disposeCts.Token);
+
+            activeJobId = enqueueResult.JobId;
+            await RefreshActiveJobAsync(disposeCts.Token);
+            StartPollingIfNeeded();
         }
         catch (Exception ex)
         {
@@ -125,12 +157,146 @@ public partial class BatchStatus : ComponentBase, IDisposable
                 "Failed to load batch status for PnlDate {PnlDate}.",
                 selectedPnlDate.Value);
             loadError = LoadErrorMessage;
-            gridRows = Array.Empty<BatchStatusGridRow>();
         }
         finally
         {
             isLoading = false;
         }
+    }
+
+    private async Task RestoreLatestJobAsync()
+    {
+        StopPolling();
+
+        if (!selectedPnlDate.HasValue)
+        {
+            ClearLoadedState();
+            return;
+        }
+
+        try
+        {
+            var latestJob = await MonitoringJobRepository.GetLatestMonitoringJobAsync(
+                MonitoringJobHelper.DataValidationCategory,
+                MonitoringJobHelper.BatchStatusSubmenuKey,
+                selectedPnlDate.Value,
+                disposeCts.Token);
+
+            if (latestJob is null)
+            {
+                ClearLoadedState();
+                return;
+            }
+
+            ApplyJob(latestJob);
+            StartPollingIfNeeded();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to restore latest Batch Status job for PnlDate {PnlDate}.", selectedPnlDate.Value);
+        }
+    }
+
+    private void StartPollingIfNeeded()
+    {
+        StopPolling();
+
+        if (!activeJobId.HasValue || !IsJobActive)
+        {
+            return;
+        }
+
+        pollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
+        pollTimer = new PeriodicTimer(TimeSpan.FromSeconds(MonitoringJobsOptions.Value.JobPollIntervalSeconds));
+        _ = PollJobAsync(pollTimer, pollCts.Token);
+    }
+
+    private async Task PollJobAsync(PeriodicTimer timer, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshActiveJobAsync(cancellationToken);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private async Task RefreshActiveJobAsync(CancellationToken cancellationToken)
+    {
+        if (!activeJobId.HasValue)
+        {
+            return;
+        }
+
+        var job = await MonitoringJobRepository.GetMonitoringJobByIdAsync(activeJobId.Value, cancellationToken);
+        if (job is null)
+        {
+            return;
+        }
+
+        ApplyJob(job);
+        if (!IsJobActive)
+        {
+            StopPolling();
+        }
+    }
+
+    private void ApplyJob(MonitoringJobRecord job)
+    {
+        activeJobId = job.JobId;
+        activeJobStatus = job.Status;
+        activeJobEnqueuedAt = job.EnqueuedAt;
+        activeJobStartedAt = job.StartedAt;
+        activeJobCompletedAt = job.CompletedAt;
+        activeJobError = job.ErrorMessage;
+
+        var table = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
+        gridRows = BatchStatusHelper.BuildGridRows(table);
+        hasRun = true;
+
+        var latestExecution = job.CompletedAt ?? job.StartedAt ?? job.EnqueuedAt;
+        lastRunAt = JvCalculationHelper.ToUtc(latestExecution).ToLocalTime();
+
+        if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && gridRows.Count == 0)
+        {
+            loadError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? LoadErrorMessage : job.ErrorMessage;
+        }
+        else
+        {
+            loadError = null;
+        }
+    }
+
+    private void ClearLoadedState()
+    {
+        activeJobId = null;
+        activeJobStatus = null;
+        activeJobEnqueuedAt = null;
+        activeJobStartedAt = null;
+        activeJobCompletedAt = null;
+        activeJobError = null;
+        hasRun = false;
+        lastRunAt = null;
+        gridRows = Array.Empty<BatchStatusGridRow>();
+        loadError = null;
+    }
+
+    private void StopPolling()
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+        pollCts = null;
+
+        pollTimer?.Dispose();
+        pollTimer = null;
     }
 
 }

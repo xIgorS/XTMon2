@@ -18,11 +18,15 @@ public partial class DailyBalance : ComponentBase, IDisposable
     private const string GridDateFormat = "dd-MM-yyyy";
     private const string SourceSystemsLoadErrorMessage = "Unable to load Daily Balance source systems right now. Please try again.";
     private const string DailyBalanceLoadErrorMessage = "Unable to load Daily Balance right now. Please try again.";
+    private const string MonitoringSubmenuKey = "daily-balance";
 
     private readonly HashSet<DateOnly> availableDates = [];
 
     [Inject]
     private IDailyBalanceRepository Repository { get; set; } = default!;
+
+    [Inject]
+    private IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
 
     [Inject]
     private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
@@ -32,6 +36,9 @@ public partial class DailyBalance : ComponentBase, IDisposable
 
     [Inject]
     private IOptions<DailyBalanceOptions> DailyBalanceOptions { get; set; } = default!;
+
+    [Inject]
+    private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
     [Inject]
     private ILogger<DailyBalance> Logger { get; set; } = default!;
@@ -53,6 +60,12 @@ public partial class DailyBalance : ComponentBase, IDisposable
     private DateTime? lastRunAt;
     private MonitoringTableResult? result;
     private bool showQuery;
+    private string? savedParameterSummary;
+    private long? activeJobId;
+    private string? activeJobStatus;
+    private PeriodicTimer? pollTimer;
+    private CancellationTokenSource? pollCts;
+    private readonly CancellationTokenSource disposeCts = new();
 
     private string ProcedureName => DailyBalanceOptions.Value.DailyBalanceStoredProcedure;
     private string SourceSystemsProcedureName => DailyBalanceOptions.Value.GetAllSourceSystemsStoredProcedure;
@@ -65,6 +78,8 @@ public partial class DailyBalance : ComponentBase, IDisposable
     private string LastRunText => lastRunAt.HasValue
         ? lastRunAt.Value.ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture)
         : "-";
+    private string SavedParameterSummaryText => string.IsNullOrWhiteSpace(savedParameterSummary) ? "Current source system selection" : savedParameterSummary;
+    private bool IsJobActive => MonitoringJobHelper.IsActiveStatus(activeJobStatus);
     private bool AreAllSourceSystemsSelected => sourceSystems.Count > 0 && sourceSystems.All(static sourceSystem => sourceSystem.IsSelected);
     private int SelectedSourceSystemsCount => sourceSystems.Count(static sourceSystem => sourceSystem.IsSelected);
     private string SelectedSourceSystemsCountText => sourceSystems.Count == 0
@@ -77,6 +92,8 @@ public partial class DailyBalance : ComponentBase, IDisposable
         await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
         await LoadSourceSystemsAsync();
+        await RestoreLatestJobAsync();
+        StartPollingIfNeeded();
     }
 
     private async Task LoadPnlDatesAsync()
@@ -100,9 +117,10 @@ public partial class DailyBalance : ComponentBase, IDisposable
 
     private void OnGlobalPnlDateChanged()
     {
-        InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             selectedPnlDate = PnlDateState.SelectedDate;
+            await RestoreLatestJobAsync();
             StateHasChanged();
         });
     }
@@ -110,6 +128,9 @@ public partial class DailyBalance : ComponentBase, IDisposable
     public void Dispose()
     {
         PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
+        StopPolling();
+        disposeCts.Cancel();
+        disposeCts.Dispose();
     }
 
     private async Task LoadSourceSystemsAsync()
@@ -139,12 +160,12 @@ public partial class DailyBalance : ComponentBase, IDisposable
         }
     }
 
-    private Task OnPnlDateSelected(DateOnly date)
+    private async Task OnPnlDateSelected(DateOnly date)
     {
         selectedPnlDate = date;
         validationError = null;
         runError = null;
-        return Task.CompletedTask;
+        await RestoreLatestJobAsync();
     }
 
     private void OnAllSourceSystemsChanged(ChangeEventArgs args)
@@ -184,10 +205,18 @@ public partial class DailyBalance : ComponentBase, IDisposable
 
         try
         {
-            var response = await Repository.GetDailyBalanceAsync(selectedPnlDate.Value, GetSelectedSourceSystemCodes(), CancellationToken.None);
-            parsedQuery = response.ParsedQuery;
-            result = response.Table;
-            lastRunAt = DateTime.Now;
+            var enqueueResult = await MonitoringJobRepository.EnqueueMonitoringJobAsync(
+                MonitoringJobHelper.DataValidationCategory,
+                MonitoringSubmenuKey,
+                "Daily Balance",
+                selectedPnlDate.Value,
+                MonitoringJobHelper.SerializeParameters(BuildCurrentParameters()),
+                SelectedSourceSystemsSummary,
+                disposeCts.Token);
+
+            activeJobId = enqueueResult.JobId;
+            await RefreshActiveJobAsync(disposeCts.Token);
+            StartPollingIfNeeded();
         }
         catch (Exception ex)
         {
@@ -204,6 +233,137 @@ public partial class DailyBalance : ComponentBase, IDisposable
         {
             isLoading = false;
         }
+    }
+
+    private DataValidationJobParameters BuildCurrentParameters() => new(GetSelectedSourceSystemCodes());
+
+    private async Task RestoreLatestJobAsync()
+    {
+        StopPolling();
+
+        if (!selectedPnlDate.HasValue)
+        {
+            ClearLoadedState();
+            return;
+        }
+
+        try
+        {
+            var latestJob = await MonitoringJobRepository.GetLatestMonitoringJobAsync(
+                MonitoringJobHelper.DataValidationCategory,
+                MonitoringSubmenuKey,
+                selectedPnlDate.Value,
+                disposeCts.Token);
+
+            if (latestJob is null)
+            {
+                ClearLoadedState();
+                return;
+            }
+
+            ApplyJob(latestJob);
+            StartPollingIfNeeded();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to restore latest Daily Balance job for PnlDate {PnlDate}.", selectedPnlDate.Value);
+        }
+    }
+
+    private void StartPollingIfNeeded()
+    {
+        StopPolling();
+
+        if (!activeJobId.HasValue || !IsJobActive)
+        {
+            return;
+        }
+
+        pollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
+        pollTimer = new PeriodicTimer(TimeSpan.FromSeconds(MonitoringJobsOptions.Value.JobPollIntervalSeconds));
+        _ = PollJobAsync(pollTimer, pollCts.Token);
+    }
+
+    private async Task PollJobAsync(PeriodicTimer timer, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshActiveJobAsync(cancellationToken);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private async Task RefreshActiveJobAsync(CancellationToken cancellationToken)
+    {
+        if (!activeJobId.HasValue)
+        {
+            return;
+        }
+
+        var job = await MonitoringJobRepository.GetMonitoringJobByIdAsync(activeJobId.Value, cancellationToken);
+        if (job is null)
+        {
+            return;
+        }
+
+        ApplyJob(job);
+        if (!IsJobActive)
+        {
+            StopPolling();
+        }
+    }
+
+    private void ApplyJob(MonitoringJobRecord job)
+    {
+        activeJobId = job.JobId;
+        activeJobStatus = job.Status;
+        savedParameterSummary = job.ParameterSummary;
+        parsedQuery = job.ParsedQuery ?? string.Empty;
+        result = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
+        hasRun = true;
+
+        var latestExecution = job.CompletedAt ?? job.StartedAt ?? job.EnqueuedAt;
+        lastRunAt = JvCalculationHelper.ToUtc(latestExecution).ToLocalTime();
+
+        if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
+        {
+            runError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? DailyBalanceLoadErrorMessage : job.ErrorMessage;
+        }
+        else
+        {
+            runError = null;
+        }
+    }
+
+    private void ClearLoadedState()
+    {
+        activeJobId = null;
+        activeJobStatus = null;
+        savedParameterSummary = null;
+        hasRun = false;
+        parsedQuery = string.Empty;
+        result = null;
+        lastRunAt = null;
+        runError = null;
+    }
+
+    private void StopPolling()
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+        pollCts = null;
+
+        pollTimer?.Dispose();
+        pollTimer = null;
     }
 
     private void ToggleQueryVisibility()

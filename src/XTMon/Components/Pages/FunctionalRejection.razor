@@ -11,11 +11,11 @@
             <p class="muted mt-1">Menu procedure: @FullyQualifiedMenuProcedureName</p>
             <p class="muted mt-1">Detail procedure: @FullyQualifiedProcedureName</p>
         </div>
-        <button class="primary-button-filled" @onclick="RunAsync" disabled="@(isLoading || !CanRun)">
+        <button class="primary-button-filled" @onclick="RunAsync" disabled="@(isLoading || IsJobActive || !CanRun)">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
             </svg>
-            @(isLoading ? "Running..." : "Run Functional Rejection")
+            @(IsJobActive ? "Running..." : "Run Functional Rejection")
         </button>
     </div>
 
@@ -58,7 +58,7 @@
         </div>
     }
 
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div class="stat-card">
             <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
@@ -81,8 +81,21 @@
             </svg>
             <p class="stat-label">Last run</p>
             <p class="stat-value">@LastRunText</p>
-            <p class="muted mt-1">Local session state</p>
+            <p class="muted mt-1">Shared job state</p>
         </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m5.25 2.25a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="stat-label">Status</p>
+            <p class="stat-value">@JobStatusText</p>
+            <p class="muted mt-1">Visible to all users for this submenu/date</p>
+        </div>
+    </div>
+
+    <div class="surface">
+        <p class="stat-label">Saved selection</p>
+        <p class="muted mt-2">@SavedParameterSummaryText</p>
     </div>
 
     <div class="surface">
@@ -116,7 +129,13 @@
         if (!hasRun)
         {
             <div class="surface">
-                <p class="muted">Select a Functional Rejection submenu item to load results.</p>
+                <p class="muted">Select a Functional Rejection submenu item to restore the latest saved result or start a new run.</p>
+            </div>
+        }
+        else if (IsJobActive && (result is null || result.Rows.Count == 0))
+        {
+            <div class="surface">
+                <p class="muted">Functional Rejection is currently @JobStatusText for the selected submenu and PNL DATE. Results will appear when the background job finishes.</p>
             </div>
         }
         else if (result is null || result.Columns.Count == 0)
