@@ -70,6 +70,10 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
     private string GetItemHref(FunctionalRejectionMenuItem item)
     {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        query.TryGetValue("pnlDate", out var pnlDate);
+
         return QueryHelpers.AddQueryString(
             "functional-rejection",
             new Dictionary<string, string?>
@@ -77,7 +81,8 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
                 ["code"] = item.SourceSystemBusinessDataTypeCode,
                 ["businessDatatypeId"] = item.BusinessDataTypeId.ToString(CultureInfo.InvariantCulture),
                 ["sourceSystemName"] = item.SourceSystemName,
-                ["dbConnection"] = item.DbConnection
+                ["dbConnection"] = item.DbConnection,
+                ["pnlDate"] = pnlDate.ToString()
             });
     }
 

@@ -20,8 +20,8 @@
     </div>
 
     <div class="surface functional-rejection-controls">
-        <div class="functional-rejection-controls__grid flex flex-col gap-6 xl:flex-row xl:items-end">
-            <div class="functional-rejection-controls__section flex-1">
+        <div class="functional-rejection-controls__grid">
+            <div class="functional-rejection-controls__section">
                 <div class="functional-rejection-controls__section-header flex items-center gap-2">
                     <svg class="w-4 h-4 icon-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
@@ -39,13 +39,6 @@
                 {
                     <p class="text-xs text-error mt-1">@validationError</p>
                 }
-            </div>
-
-            <div class="functional-rejection-controls__section flex-1">
-                <p class="stat-label">Selected submenu item</p>
-                <p class="mt-2 text-lg font-semibold text-heading">@SelectedCodeText</p>
-                <p class="muted mt-1">Source system: @SelectedSourceSystemText</p>
-                <p class="muted mt-1">Business data type id: @SelectedBusinessDataTypeIdText</p>
             </div>
         </div>
     </div>
@@ -65,7 +58,7 @@
         </div>
     }
 
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <div class="stat-card">
             <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
@@ -73,22 +66,6 @@
             <p class="stat-label">Selected PNL Date</p>
             <p class="stat-value">@SelectedPnlDateText</p>
             <p class="muted mt-1">Calendar input</p>
-        </div>
-        <div class="stat-card">
-            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 5.25h15m-15 5.25h10.5" />
-            </svg>
-            <p class="stat-label">Menu Item</p>
-            <p class="stat-value">@SelectedCodeText</p>
-            <p class="muted mt-1">Visible submenu label</p>
-        </div>
-        <div class="stat-card">
-            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M7.5 12h9m-9 5.25h9" />
-            </svg>
-            <p class="stat-label">Source System</p>
-            <p class="stat-value text-base xl:text-xl">@SelectedSourceSystemText</p>
-            <p class="muted mt-1">Hidden loader-proc value</p>
         </div>
         <div class="stat-card">
             <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -130,7 +107,7 @@
         }
         @if (showQuery && !string.IsNullOrWhiteSpace(parsedQuery))
         {
-            <textarea class="rejected-xtg-portfolio-query-textarea" readonly>@QueryDisplayText</textarea>
+            <textarea class="functional-rejection-query-textarea" readonly>@QueryDisplayText</textarea>
         }
     </div>
 

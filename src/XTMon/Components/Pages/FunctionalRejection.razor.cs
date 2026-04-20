@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.JSInterop;
 using XTMon.Helpers;
@@ -39,6 +40,9 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
 
+    [Inject]
+    private NavigationManager NavigationManager { get; set; } = default!;
+
     [Parameter]
     [SupplyParameterFromQuery(Name = "code")]
     public string? SourceSystemBusinessDataTypeCode { get; set; }
@@ -54,6 +58,10 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     [Parameter]
     [SupplyParameterFromQuery(Name = "dbConnection")]
     public string? DbConnection { get; set; }
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "pnlDate")]
+    public string? PnlDate { get; set; }
 
     private DateOnly? selectedPnlDate;
     private bool isLoading;
@@ -105,6 +113,8 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
 
     protected override async Task OnParametersSetAsync()
     {
+        selectedPnlDate = ResolveSelectedPnlDate();
+
         if (!HasValidSelection)
         {
             selectionError = "Choose a Functional Rejection submenu item from the navigation menu.";
@@ -144,6 +154,11 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     {
         _ = InvokeAsync(async () =>
         {
+            if (!string.IsNullOrWhiteSpace(PnlDate))
+            {
+                return;
+            }
+
             selectedPnlDate = PnlDateState.SelectedDate;
             await EnsureLoadedForCurrentSelectionAsync(force: true);
             StateHasChanged();
@@ -160,6 +175,7 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         selectedPnlDate = date;
         validationError = null;
         runError = null;
+        UpdatePnlDateQuery(date);
         return Task.CompletedTask;
     }
 
@@ -277,6 +293,43 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
             copyMessage = "Failed to copy SQL to clipboard.";
             copySucceeded = false;
         }
+    }
+
+    private DateOnly? ResolveSelectedPnlDate()
+    {
+        if (DateOnly.TryParseExact(PnlDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var routeDate))
+        {
+            return routeDate;
+        }
+
+        return PnlDateState.SelectedDate;
+    }
+
+    private void UpdatePnlDateQuery(DateOnly date)
+    {
+        var currentUri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var currentQuery = QueryHelpers.ParseQuery(currentUri.Query);
+        var currentPnlDate = currentQuery.TryGetValue("pnlDate", out var pnlDateValue)
+            ? pnlDateValue.ToString()
+            : null;
+        var nextPnlDate = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        if (string.Equals(currentPnlDate, nextPnlDate, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var queryParameters = new Dictionary<string, string?>
+        {
+            ["code"] = SourceSystemBusinessDataTypeCode,
+            ["businessDatatypeId"] = BusinessDataTypeId?.ToString(CultureInfo.InvariantCulture),
+            ["sourceSystemName"] = SourceSystemName,
+            ["dbConnection"] = DbConnection,
+            ["pnlDate"] = nextPnlDate
+        };
+
+        var targetUri = QueryHelpers.AddQueryString("functional-rejection", queryParameters);
+        NavigationManager.NavigateTo(targetUri, replace: true);
     }
 
     private IReadOnlyList<GridColumn> GetGridColumns()
