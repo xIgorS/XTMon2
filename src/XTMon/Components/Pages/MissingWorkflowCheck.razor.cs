@@ -18,8 +18,8 @@ public partial class MissingWorkflowCheck : ComponentBase, IDisposable
     private const string LoadErrorMessage = "Unable to load Missing Workflow Check right now. Please try again.";
     private static readonly IReadOnlyList<GridColumnDefinition> PreferredColumns =
     [
-        new("Portfolio Id", ["PortfolioId", "Portfolio Id"]),
-        new("Sk Portfolio", ["SkPortfolio", "Sk Portfolio"]),
+        new("Porfolio Id", ["PortfolioId", "Portfolio Id"]),
+        new("Sk Porfolio", ["SkPortfolio", "Sk Portfolio"]),
         new("Book Id", ["BookId", "Book Id"]),
         new("Book Name", ["BookName", "Book Name"]),
         new("Is Daily Asset", ["DailyValidatedAsset", "Is Daily Asset"])

@@ -21,8 +21,8 @@ public partial class TradingVsFivrCheck : ComponentBase, IDisposable
     [
         new("Pnl Group", ["PnlGroup", "Pnl Group"]),
         new("Sign Off", ["SignOff", "Sign Off"]),
-        new("Portfolio Id", ["Portfolioid", "PortfolioId", "Portfolio Id"]),
-        new("FIVR Portfolio Id", ["FIVR_Portfolioid", "FIVRPortfolioId", "FivrPortfolioId", "FIVR Portfolio Id", "Fivr Portfolio Id"]),
+        new("Porfolio Id", ["Portfolioid", "PortfolioId", "Portfolio Id"]),
+        new("FIVR Porfolio Id", ["FIVR_Portfolioid", "FIVRPortfolioId", "FivrPortfolioId", "FIVR Portfolio Id", "Fivr Portfolio Id"]),
         new("Book Pnl Reporting System", ["bookPnLReportingSystem", "BookPnlReportingSystem", "BookPnl_ReportingSystem", "Book Pnl Reporting System", "Book PnL Reporting System"]),
         new("Legal Entity Code", ["LegalEntityCode", "Legal Entity Code"]),
         new("FIVR Legal Entity Code", ["FIVR_LegalEntityCode", "FIVRLegalEntityCode", "FivrLegalEntityCode", "FIVR Legal Entity Code", "Fivr Legal Entity Code"]),

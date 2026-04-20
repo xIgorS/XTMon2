@@ -20,9 +20,9 @@ public partial class AdjustmentLinksCheck : ComponentBase, IDisposable
     private static readonly IReadOnlyList<GridColumnDefinition> PreferredColumns =
     [
         new("Flow Id", ["FlowId", "Flow Id"]),
-        new("Portfolio Flow Id Prior Balance", ["PortfolioFlowIdPriorBalance", "Portfolio Flow Id Prior Balance"]),
+        new("Porfolio Flow Id Prior Balance", ["PortfolioFlowIdPriorBalance", "Portfolio Flow Id Prior Balance"]),
         new("Flow Id Derived From", ["FlowIdDerivedfrom", "FlowIdDerivedFrom", "Flow Id Derived From"]),
-        new("Portfolio Id", ["Portfolioid", "PortfolioId", "Portfolio Id"]),
+        new("Porfolio Id", ["Portfolioid", "PortfolioId", "Portfolio Id"]),
         new("Feed Source Name", ["FeedSourceName", "Feed Source Name"]),
         new("Business Data Type", ["BusinessDataTypeId", "BusinessDataType", "Business Data Type"]),
         new("Pnl Date", ["PnlDate", "Pnl Date"])

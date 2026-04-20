@@ -292,7 +292,7 @@ public class SqlDataHelperTests
     /// Creates a SqlException with the given error number via reflection (SqlException has no public ctor).
     /// Adapts to the actual internal constructor signatures of the installed SqlClient version.
     /// </summary>
-    private static SqlException MakeSqlException(int number)
+    private static SqlException MakeSqlException(int number, string message = "msg")
     {
         const System.Reflection.BindingFlags nonPublicInstance =
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
@@ -303,7 +303,7 @@ public class SqlDataHelperTests
         {
             [typeof(int)]    = number,
             [typeof(byte)]   = (byte)0,
-            [typeof(string)] = "msg",
+            [typeof(string)] = message,
             [typeof(uint)]   = (uint)0,
             [typeof(Exception)] = null,
         });
@@ -322,7 +322,7 @@ public class SqlDataHelperTests
         var exCtor = typeof(SqlException).GetConstructors(nonPublicInstance)[0];
         var exArgs = BuildArgs(exCtor.GetParameters(), new Dictionary<Type, object?>
         {
-            [typeof(string)]           = "msg",
+            [typeof(string)]           = message,
             [typeof(SqlErrorCollection)] = errors,
             [typeof(Exception)]        = null,
             [typeof(Guid)]             = Guid.NewGuid(),

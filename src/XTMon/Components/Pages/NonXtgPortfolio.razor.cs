@@ -21,9 +21,9 @@ public partial class NonXtgPortfolio : ComponentBase, IDisposable
     [
         ("PnlGroup", "Pnl Group"),
         ("SignOff", "Sign Off"),
-        ("Ptf_Name", "Portfolio Name"),
-        ("Ptf_Caption", "Portfolio Caption"),
-        ("skPortFolio", "Sk Portfolio"),
+        ("Ptf_Name", "Porfolio Name"),
+        ("Ptf_Caption", "Porfolio Caption"),
+        ("skPortFolio", "Sk Porfolio"),
         ("Init_Date", "Init Date"),
         ("Validity_start", "Validity Start"),
         ("Validity_end", "Validity End"),

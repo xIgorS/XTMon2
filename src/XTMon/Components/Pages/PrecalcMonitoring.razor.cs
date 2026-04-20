@@ -23,7 +23,7 @@ public partial class PrecalcMonitoring : ComponentBase, IDisposable
         new("Pnl Date", ["PnlDate", "Pnl Date"]),
         new("Parent Correlation Id", ["ParentCorrelationId", "Parent Correlation Id"]),
         new("Type of Calculation", ["TypeOfCalculation", "Type of Calculation"]),
-        new("Portfolio Id", ["PortfolioId", "Portfolio Id"]),
+        new("Porfolio Id", ["PortfolioId", "Portfolio Id"]),
         new("FeedSource Id", ["FeedSourceId", "FeedSource Id"]),
         new("Business Data Type", ["BusinessDataType", "Business Data Type"]),
         new("Flow Id", ["FlowId", "Flow Id"]),

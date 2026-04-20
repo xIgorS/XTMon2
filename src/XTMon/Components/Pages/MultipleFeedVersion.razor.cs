@@ -19,11 +19,11 @@ public partial class MultipleFeedVersion : ComponentBase, IDisposable
     private const string LoadErrorMessage = "Unable to load Multiple Feed Version right now. Please try again.";
     private static readonly IReadOnlyList<(string Name, string Header)> PreferredColumns =
     [
-        ("Portfolioid", "Portfolio Id"),
+        ("Portfolioid", "Porfolio Id"),
         ("BusinessDataTypeId", "Business Data Type"),
         ("FeedSourceName", "Feed Source Name"),
         ("PnlDate", "Pnl Date"),
-        ("PortfolioFlowIdPriorBalance", "Portfolio Flow Id Prior Balance"),
+        ("PortfolioFlowIdPriorBalance", "Porfolio Flow Id Prior Balance"),
         ("FeedVersion", "Feed Version"),
         ("RecordCount", "Record Count")
     ];

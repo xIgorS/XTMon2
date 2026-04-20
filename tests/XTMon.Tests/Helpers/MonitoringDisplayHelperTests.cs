@@ -127,6 +127,26 @@ public class MonitoringDisplayHelperTests
         Assert.Equal("0", MonitoringDisplayHelper.FormatWithSpaces(0m));
     }
 
+    // ─── FormatCurrencyWithSpaces ──────────────────────────────────────────────
+
+    [Fact]
+    public void FormatCurrencyWithSpaces_WholeNumber_KeepsTwoDecimals()
+    {
+        Assert.Equal("1 000.00", MonitoringDisplayHelper.FormatCurrencyWithSpaces(1000m));
+    }
+
+    [Fact]
+    public void FormatCurrencyWithSpaces_OneDecimal_KeepsTrailingZero()
+    {
+        Assert.Equal("1 234.50", MonitoringDisplayHelper.FormatCurrencyWithSpaces(1234.5m));
+    }
+
+    [Fact]
+    public void FormatCurrencyWithSpaces_TwoDecimals_KeepsTwoDecimals()
+    {
+        Assert.Equal("99.99", MonitoringDisplayHelper.FormatCurrencyWithSpaces(99.99m));
+    }
+
     // ─── FindLastUpdatedColumnIndex ───────────────────────────────────────────────
 
     [Fact]

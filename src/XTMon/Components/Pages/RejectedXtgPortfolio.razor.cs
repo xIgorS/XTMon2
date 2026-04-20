@@ -21,7 +21,7 @@ public partial class RejectedXtgPortfolio : ComponentBase, IDisposable
     [
         ("PnlGroup", "Pnl Group"),
         ("SignOff", "Sign Off"),
-        ("Portfolio_Name", "Portfolio Name"),
+        ("Portfolio_Name", "Porfolio Name"),
         ("Reject_Description", "Rejection Description")
     ];
 

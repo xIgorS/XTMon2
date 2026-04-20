@@ -92,6 +92,18 @@ public class JvCalculationHelperTests
     }
 
     [Fact]
+    public void ToHeaderLabel_PortfolioWord_IsNormalizedToPorfolio()
+    {
+        Assert.Equal("Porfolio Id", JvCalculationHelper.ToHeaderLabel("PortfolioId"));
+    }
+
+    [Fact]
+    public void ToHeaderLabel_PortFolioWord_IsNormalizedToPorfolio()
+    {
+        Assert.Equal("Porfolio Id", JvCalculationHelper.ToHeaderLabel("PortFolioId"));
+    }
+
+    [Fact]
     public void ToHeaderLabel_AcronymFollowedByWord_InsertsSpaceBeforeLower()
     {
         // "XMLParser" → "XMLParser" (no split in acronym, but space before "P" since prev=L upper, next=a lower)

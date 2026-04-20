@@ -20,7 +20,7 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
     private static readonly IReadOnlyList<GridColumnDefinition> PreferredColumns =
     [
         new("Pnl Date", ["PnlDate", "Pnl Date"]),
-        new("Sk Portfolio", ["SkPortfolio", "portfolioid", "PortfolioId"]),
+        new("Sk Porfolio", ["SkPortfolio", "portfolioid", "PortfolioId"]),
         new("Mtd Amount HO", ["MtdAmountHO", "Mtd Amount HO"]),
         new("Ytd Amount HO", ["YtdAmountHO", "Ytd Amount HO"]),
         new("Mtd Amount Paradigm", ["MtdAmountParadigm", "Mtd Amount Paradigm"]),

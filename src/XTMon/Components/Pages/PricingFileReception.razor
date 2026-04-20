@@ -4,19 +4,12 @@
 <PageTitle>Pricing File Reception</PageTitle>
 
 <div class="space-y-5">
-    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div class="flex flex-col gap-3">
         <div>
             <p class="section-label">Monitoring</p>
             <h1 class="text-2xl font-bold text-heading mt-1">Pricing File Reception</h1>
             <p class="muted mt-1">Procedure: @FullyQualifiedProcedureName</p>
-            <p class="muted mt-1">Source systems: @FullyQualifiedSourceSystemsProcedureName</p>
         </div>
-        <button class="primary-button" @onclick="LoadSourceSystemsAsync" disabled="@isLoading">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
-            </svg>
-            @(isLoadingSourceSystems ? "Loading..." : "Reload source systems")
-        </button>
     </div>
 
     <div class="surface pricing-file-reception-controls">
@@ -42,53 +35,24 @@
 
             <div class="pricing-file-reception-controls__divider"></div>
 
-            <div class="pricing-file-reception-controls__section pricing-file-reception-controls__section--filters">
+            <div class="pricing-file-reception-controls__section">
                 <div class="pricing-file-reception-controls__section-header">
                     <svg class="w-4 h-4 icon-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m5.25 2.25a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                     </svg>
-                    <span class="stat-label">Source systems</span>
+                    <span class="stat-label">Options</span>
                 </div>
-                <details class="pricing-file-reception-source-systems">
-                    <summary class="pricing-file-reception-source-systems__summary">
-                        <span class="pricing-file-reception-source-systems__summary-text">@SelectedSourceSystemsSummary</span>
-                        <span class="pill">@SelectedSourceSystemsCountText</span>
-                    </summary>
-                    <div class="pricing-file-reception-source-systems__list" role="group" aria-label="Source systems checklist">
-                        @if (sourceSystems.Count == 0)
-                        {
-                            <p class="muted">@(isLoadingSourceSystems ? "Loading source systems..." : "No source systems available.")</p>
-                        }
-                        else
-                        {
-                            <label class="pricing-file-reception-source-systems__option pricing-file-reception-source-systems__option--all">
-                                <input type="checkbox"
-                                       class="pricing-file-reception-checkbox"
-                                       checked="@AreAllSourceSystemsSelected"
-                                       @onchange="OnAllSourceSystemsChanged"
-                                       disabled="@isLoading" />
-                                <span>Select all</span>
-                            </label>
-
-                            @foreach (var sourceSystem in sourceSystems)
-                            {
-                                <label class="pricing-file-reception-source-systems__option">
-                                    <input type="checkbox"
-                                           class="pricing-file-reception-checkbox"
-                                           checked="@sourceSystem.IsSelected"
-                                           @onchange="@(e => OnSourceSystemChanged(sourceSystem.Code, (bool)(e.Value ?? false)))"
-                                           disabled="@isLoading" />
-                                    <span>@sourceSystem.Code</span>
-                                </label>
-                            }
-                        }
-                    </div>
-                </details>
-                <p class="muted mt-1.5">@sourceSystems.Count source system(s) loaded.</p>
-                @if (!string.IsNullOrWhiteSpace(sourceSystemsError))
-                {
-                    <p class="text-xs text-error mt-1">@sourceSystemsError</p>
-                }
+                <label class="pricing-file-reception-toggle" for="pricingFileReceptionTraceAllVersions">
+                    <span class="pricing-file-reception-toggle__content">
+                        <span class="pricing-file-reception-toggle__label">Trace all versions</span>
+                        <span class="muted">@TraceAllVersionsText</span>
+                    </span>
+                    <input id="pricingFileReceptionTraceAllVersions"
+                           type="checkbox"
+                           class="pricing-file-reception-checkbox"
+                           @bind="traceAllVersions"
+                           disabled="@isLoading" />
+                </label>
             </div>
 
             <div class="pricing-file-reception-controls__divider"></div>
@@ -123,11 +87,11 @@
         </div>
         <div class="stat-card">
             <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m5.25 2.25a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
-            <p class="stat-label">Source systems</p>
-            <p class="stat-value">@SelectedSourceSystemsCountText</p>
-            <p class="muted mt-1">@SelectedSourceSystemsSummary</p>
+            <p class="stat-label">Trace all versions</p>
+            <p class="stat-value">@TraceAllVersionsText</p>
+            <p class="muted mt-1">Checkbox option</p>
         </div>
         <div class="stat-card">
             <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -176,7 +140,7 @@
     @if (!hasRun)
     {
         <div class="surface">
-            <p class="muted">Choose a PNL DATE, adjust source systems if needed, and run Pricing File Reception to load results.</p>
+            <p class="muted">Choose a PNL DATE, set Trace all versions if needed, and run Pricing File Reception to load results.</p>
         </div>
     }
     else if (result is null || result.Rows.Count == 0)

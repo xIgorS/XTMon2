@@ -322,7 +322,8 @@ public partial class ReverseConsoFile : ComponentBase, IDisposable
         return PricingHelper.BuildSourceSystemCodes(
             sourceSystems
                 .Where(static sourceSystem => sourceSystem.IsSelected)
-                .Select(static sourceSystem => sourceSystem.Code));
+                .Select(static sourceSystem => sourceSystem.Code),
+            quoteEachValue: true);
     }
 
     private static string GetColumnAlignmentClass(string columnName) => JvCalculationHelper.GetColumnAlignmentClass(columnName);

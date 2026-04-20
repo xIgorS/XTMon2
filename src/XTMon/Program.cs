@@ -159,8 +159,7 @@ builder.Services
     .ValidateDataAnnotations()
     .Validate(options =>
         !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
-        !string.IsNullOrWhiteSpace(options.PricingFileReceptionStoredProcedure) &&
-        !string.IsNullOrWhiteSpace(options.GetAllSourceSystemsStoredProcedure),
+        !string.IsNullOrWhiteSpace(options.PricingFileReceptionStoredProcedure),
         "PricingFileReception options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services

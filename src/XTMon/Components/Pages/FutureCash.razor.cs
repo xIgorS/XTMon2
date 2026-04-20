@@ -20,7 +20,7 @@ public partial class FutureCash : ComponentBase, IDisposable
     private static readonly IReadOnlyList<(string Name, string Header)> PreferredColumns =
     [
         ("ValueDate", "Value Date"),
-        ("PortfolioId", "Portfolio Id"),
+        ("PortfolioId", "Porfolio Id"),
         ("FlowId", "Flow Id"),
         ("FlowIdDerivedfrom", "Flow Id Derived From"),
         ("FeedSource", "Feed Source"),

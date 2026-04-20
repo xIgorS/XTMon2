@@ -60,6 +60,11 @@ internal static class MonitoringDisplayHelper
         return formatted;
     }
 
+    public static string FormatCurrencyWithSpaces(decimal value)
+    {
+        return value.ToString("N2", CultureInfo.InvariantCulture).Replace(",", " ");
+    }
+
     public static int FindLastUpdatedColumnIndex(IReadOnlyList<string> columns)
     {
         for (var i = 0; i < columns.Count; i++)

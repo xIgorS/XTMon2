@@ -35,4 +35,20 @@ public class PricingHelperTests
 
         Assert.Equal("XT1,XT2", result);
     }
+
+    [Fact]
+    public void BuildSourceSystemCodes_WhenQuoteEachValue_QuotesEachCode()
+    {
+        var result = PricingHelper.BuildSourceSystemCodes([" PAR1 ", "PaR2"], quoteEachValue: true);
+
+        Assert.Equal("'PAR1','PaR2'", result);
+    }
+
+    [Fact]
+    public void BuildSourceSystemCodes_WhenQuoteEachValue_EscapesEmbeddedQuotes()
+    {
+        var result = PricingHelper.BuildSourceSystemCodes(["PA'R1"], quoteEachValue: true);
+
+        Assert.Equal("'PA''R1'", result);
+    }
 }

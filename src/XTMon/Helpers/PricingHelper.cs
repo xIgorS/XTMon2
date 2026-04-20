@@ -2,7 +2,7 @@ namespace XTMon.Helpers;
 
 internal static class PricingHelper
 {
-    public static string? BuildSourceSystemCodes(IEnumerable<string?> sourceSystemCodes)
+    public static string? BuildSourceSystemCodes(IEnumerable<string?> sourceSystemCodes, bool quoteEachValue = false)
     {
         var normalizedCodes = new List<string>();
         var seenCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -15,7 +15,7 @@ internal static class PricingHelper
                 continue;
             }
 
-            normalizedCodes.Add(trimmedCode);
+            normalizedCodes.Add(quoteEachValue ? $"'{trimmedCode.Replace("'", "''")}'" : trimmedCode);
         }
 
         return normalizedCodes.Count == 0

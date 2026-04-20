@@ -165,7 +165,6 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (referentialData.ConnectionStringName, referentialData.CheckReferentialDataStoredProcedure),
             (marketData.ConnectionStringName, marketData.MarketDataStoredProcedure),
             (pricingFileReception.ConnectionStringName, pricingFileReception.PricingFileReceptionStoredProcedure),
-            (pricingFileReception.ConnectionStringName, pricingFileReception.GetAllSourceSystemsStoredProcedure),
             (outOfScopePortfolio.ConnectionStringName, outOfScopePortfolio.OutOfScopePortfolioStoredProcedure),
             (missingSogCheck.ConnectionStringName, missingSogCheck.MissingSogCheckStoredProcedure),
             (adjustmentLinksCheck.ConnectionStringName, adjustmentLinksCheck.AdjustmentLinksCheckStoredProcedure),

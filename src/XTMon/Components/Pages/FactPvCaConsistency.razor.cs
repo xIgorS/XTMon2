@@ -219,6 +219,12 @@ public partial class FactPvCaConsistency : ComponentBase, IDisposable
             return "-";
         }
 
+        if (MonitoringDisplayHelper.NormalizeColumnName(columnName) == "diffamount" &&
+            decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsedAmount))
+        {
+            return MonitoringDisplayHelper.FormatCurrencyWithSpaces(parsedAmount);
+        }
+
         return value;
     }
 

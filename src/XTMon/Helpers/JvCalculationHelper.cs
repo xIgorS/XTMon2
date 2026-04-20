@@ -65,7 +65,9 @@ internal static class JvCalculationHelper
             builder.Append(current);
         }
 
-        return builder.ToString();
+        return builder.ToString()
+            .Replace("Portfolio", "Porfolio", StringComparison.OrdinalIgnoreCase)
+            .Replace("Port Folio", "Porfolio", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
