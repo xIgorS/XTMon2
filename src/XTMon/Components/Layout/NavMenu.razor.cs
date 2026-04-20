@@ -2,10 +2,15 @@ using Microsoft.AspNetCore.Components;
 
 namespace XTMon.Components.Layout;
 
-public partial class NavMenu : ComponentBase
+public partial class NavMenu : ComponentBase, IDisposable
 {
 	[Inject]
 	private NavigationManager NavigationManager { get; set; } = default!;
+
+	protected override void OnInitialized()
+	{
+		NavigationManager.LocationChanged += OnLocationChanged;
+	}
 
 	private bool IsDataValidationRoute =>
 		IsCurrentRoute("batch-status") ||
@@ -37,9 +42,22 @@ public partial class NavMenu : ComponentBase
 		IsCurrentRoute("precalc-monitoring") ||
 		IsCurrentRoute("vrdb-status");
 
+	private bool IsFunctionalRejectionRoute => IsCurrentRoute("functional-rejection");
+
+	public void Dispose()
+	{
+		NavigationManager.LocationChanged -= OnLocationChanged;
+	}
+
+	private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+	{
+		_ = InvokeAsync(StateHasChanged);
+	}
+
 	private bool IsCurrentRoute(string route)
 	{
-		var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
-		return string.Equals(relativePath, route, StringComparison.OrdinalIgnoreCase);
+		var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+		var pathOnly = relativePath.Split('?', 2)[0].TrimEnd('/');
+		return string.Equals(pathOnly, route, StringComparison.OrdinalIgnoreCase);
 	}
 }

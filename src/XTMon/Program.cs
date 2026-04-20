@@ -262,6 +262,18 @@ builder.Services
         "RejectedXtgPortfolio options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<FunctionalRejectionOptions>()
+    .Bind(builder.Configuration.GetSection(FunctionalRejectionOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.MenuConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.StagingConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.DtmConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.SourceSystemTechnicalRejectStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.TechnicalRejectStoredProcedure),
+        "FunctionalRejection options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<FeedOutExtractionOptions>()
     .Bind(builder.Configuration.GetSection(FeedOutExtractionOptions.SectionName))
     .ValidateDataAnnotations()
@@ -400,6 +412,7 @@ builder.Services.AddScoped<IRolloveredPortfoliosRepository, RolloveredPortfolios
 builder.Services.AddScoped<ISasTablesRepository, SasTablesRepository>();
 builder.Services.AddScoped<INonXtgPortfolioRepository, NonXtgPortfolioRepository>();
 builder.Services.AddScoped<IRejectedXtgPortfolioRepository, RejectedXtgPortfolioRepository>();
+builder.Services.AddScoped<IFunctionalRejectionRepository, FunctionalRejectionRepository>();
 builder.Services.AddScoped<IFeedOutExtractionRepository, FeedOutExtractionRepository>();
 builder.Services.AddScoped<IFutureCashRepository, FutureCashRepository>();
 builder.Services.AddScoped<IFactPvCaConsistencyRepository, FactPvCaConsistencyRepository>();
