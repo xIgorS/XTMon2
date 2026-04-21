@@ -33,7 +33,9 @@ public partial class NavMenu : ComponentBase, IDisposable
 		IsCurrentRoute(DataValidationCheckCatalog.BatchRunRoute) ||
 		DataValidationCheckCatalog.Routes.Any(IsCurrentRoute);
 
-	private bool IsFunctionalRejectionRoute => IsCurrentRoute("functional-rejection");
+	private bool IsFunctionalRejectionRoute =>
+		IsCurrentRoute("functional-rejection") ||
+		IsCurrentRoute("functional-rejection-runner");
 
 	public void Dispose()
 	{
@@ -77,6 +79,35 @@ public partial class NavMenu : ComponentBase, IDisposable
 	private DataValidationNavRunState GetDataValidationRunState(string route)
 	{
 		return DataValidationNavAlertState.GetStatus(route);
+	}
+
+	private DataValidationNavRunState GetDataValidationAggregateState()
+	{
+		return DataValidationNavAlertState.GetAggregateStatus();
+	}
+
+	private static string GetMainMenuIndicatorClass(DataValidationNavRunState status)
+	{
+		return status switch
+		{
+			DataValidationNavRunState.Failed => "submenu-status-indicator submenu-status-badge--failed",
+			DataValidationNavRunState.Alert => "submenu-status-indicator submenu-status-badge--failed",
+			DataValidationNavRunState.Succeeded => "submenu-status-indicator submenu-status-badge--succeeded",
+			DataValidationNavRunState.Running => "submenu-status-indicator submenu-status-badge--running",
+			_ => "submenu-status-indicator submenu-status-badge--not-run"
+		};
+	}
+
+	private static string GetMainMenuIndicatorDescription(DataValidationNavRunState status)
+	{
+		return status switch
+		{
+			DataValidationNavRunState.Failed => "One or more checks failed or raised alerts",
+			DataValidationNavRunState.Alert => "One or more checks raised alerts",
+			DataValidationNavRunState.Succeeded => "All checks completed successfully",
+			DataValidationNavRunState.Running => "A check is currently running",
+			_ => "No checks have been run for the selected PNL date"
+		};
 	}
 
 	private bool IsCurrentRoute(string route)

@@ -1,15 +1,18 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.WebUtilities;
+using XTMon.Helpers;
 using XTMon.Infrastructure;
 using XTMon.Models;
 using XTMon.Repositories;
+using XTMon.Services;
 
 namespace XTMon.Components.Layout;
 
 public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 {
     private readonly List<FunctionalRejectionMenuItem> menuItems = [];
+    private readonly CancellationTokenSource disposeCts = new();
 
     [Inject]
     private IFunctionalRejectionRepository Repository { get; set; } = default!;
@@ -20,6 +23,12 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
     [Inject]
     private ILogger<FunctionalRejectionNav> Logger { get; set; } = default!;
 
+    [Inject]
+    private FunctionalRejectionNavAlertState FunctionalRejectionNavAlertState { get; set; } = default!;
+
+    [Inject]
+    private PnlDateState PnlDateState { get; set; } = default!;
+
     [Parameter]
     public bool IsOpen { get; set; }
 
@@ -29,12 +38,20 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
     protected override async Task OnInitializedAsync()
     {
         NavigationManager.LocationChanged += OnLocationChanged;
+        FunctionalRejectionNavAlertState.StatusesChanged += OnStatusesChanged;
+        PnlDateState.OnDateChanged += OnPnlDateChanged;
+
         await LoadMenuItemsAsync();
+        await RefreshAlertsAsync();
     }
 
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
+        FunctionalRejectionNavAlertState.StatusesChanged -= OnStatusesChanged;
+        PnlDateState.OnDateChanged -= OnPnlDateChanged;
+        disposeCts.Cancel();
+        disposeCts.Dispose();
     }
 
     private async Task LoadMenuItemsAsync()
@@ -44,9 +61,13 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
         try
         {
-            var items = await Repository.GetMenuItemsAsync(CancellationToken.None);
+            var items = await Repository.GetMenuItemsAsync(disposeCts.Token);
             menuItems.Clear();
             menuItems.AddRange(items);
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+            return;
         }
         catch (Exception ex)
         {
@@ -63,9 +84,68 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
         }
     }
 
+    private async Task RefreshAlertsAsync()
+    {
+        try
+        {
+            await FunctionalRejectionNavAlertState.RefreshAsync(disposeCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnStatusesChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnPnlDateChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await RefreshAlertsAsync();
+            StateHasChanged();
+        });
+    }
+
+    private DataValidationNavRunState GetItemRunState(FunctionalRejectionMenuItem item)
+    {
+        return FunctionalRejectionNavAlertState.GetStatus(item);
+    }
+
+    private DataValidationNavRunState GetAggregateStatus()
+    {
+        return FunctionalRejectionNavAlertState.GetAggregateStatus(menuItems);
+    }
+
+    private static string GetAggregateIndicatorClass(DataValidationNavRunState status)
+    {
+        return status switch
+        {
+            DataValidationNavRunState.Failed => "submenu-status-indicator submenu-status-badge--failed",
+            DataValidationNavRunState.Alert => "submenu-status-indicator submenu-status-badge--failed",
+            DataValidationNavRunState.Succeeded => "submenu-status-indicator submenu-status-badge--succeeded",
+            DataValidationNavRunState.Running => "submenu-status-indicator submenu-status-badge--running",
+            _ => "submenu-status-indicator submenu-status-badge--not-run"
+        };
+    }
+
+    private static string GetAggregateIndicatorDescription(DataValidationNavRunState status)
+    {
+        return status switch
+        {
+            DataValidationNavRunState.Failed => "One or more Functional Rejection checks failed or raised alerts",
+            DataValidationNavRunState.Alert => "One or more Functional Rejection checks raised alerts",
+            DataValidationNavRunState.Succeeded => "All Functional Rejection checks completed successfully",
+            DataValidationNavRunState.Running => "A Functional Rejection check is currently running",
+            _ => "No Functional Rejection checks have been run for the selected PNL date"
+        };
     }
 
     private string GetItemHref(FunctionalRejectionMenuItem item)

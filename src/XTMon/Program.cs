@@ -453,6 +453,7 @@ builder.Services.AddScoped<IMonitoringJobExecutor, FunctionalRejectionMonitoring
 builder.Services.AddScoped<AuthorizationFeedbackState>();
 builder.Services.AddScoped<PnlDateState>();
 builder.Services.AddScoped<DataValidationNavAlertState>();
+builder.Services.AddScoped<FunctionalRejectionNavAlertState>();
 builder.Services.AddScoped<IAuthorizationHandler, UamPermissionHandler>();
 builder.Services.AddSingleton<IDeploymentCheckService, DeploymentCheckService>();
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();

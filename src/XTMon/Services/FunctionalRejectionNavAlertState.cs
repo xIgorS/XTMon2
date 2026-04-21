@@ -4,40 +4,48 @@ using XTMon.Repositories;
 
 namespace XTMon.Services;
 
-public sealed class DataValidationNavAlertState
+public sealed class FunctionalRejectionNavAlertState
 {
     private readonly PnlDateState _pnlDateState;
     private readonly IJvCalculationRepository _pnlDateRepository;
     private readonly IMonitoringJobRepository _monitoringJobRepository;
-    private readonly ILogger<DataValidationNavAlertState> _logger;
+    private readonly ILogger<FunctionalRejectionNavAlertState> _logger;
     private readonly Dictionary<string, DataValidationNavRunState> _statuses = new(StringComparer.OrdinalIgnoreCase);
 
     public event Action? StatusesChanged;
 
-    public DataValidationNavAlertState(
+    public FunctionalRejectionNavAlertState(
         PnlDateState pnlDateState,
         IJvCalculationRepository pnlDateRepository,
         IMonitoringJobRepository monitoringJobRepository,
-        ILogger<DataValidationNavAlertState> logger)
+        ILogger<FunctionalRejectionNavAlertState> logger)
     {
         _pnlDateState = pnlDateState;
         _pnlDateRepository = pnlDateRepository;
         _monitoringJobRepository = monitoringJobRepository;
         _logger = logger;
-        ResetStatuses();
     }
 
-    public DataValidationNavRunState GetStatus(string route)
+    public DataValidationNavRunState GetStatus(FunctionalRejectionMenuItem item)
     {
-        var normalizedRoute = MonitoringJobHelper.BuildDataValidationSubmenuKey(route);
-        return _statuses.TryGetValue(normalizedRoute, out var status)
+        var key = MonitoringJobHelper.BuildFunctionalRejectionSubmenuKey(
+            item.BusinessDataTypeId,
+            item.SourceSystemName,
+            item.DbConnection,
+            item.SourceSystemBusinessDataTypeCode);
+        return GetStatus(key);
+    }
+
+    public DataValidationNavRunState GetStatus(string submenuKey)
+    {
+        return _statuses.TryGetValue(submenuKey, out var status)
             ? status
             : DataValidationNavRunState.NotRun;
     }
 
-    public DataValidationNavRunState GetAggregateStatus()
+    public DataValidationNavRunState GetAggregateStatus(IEnumerable<FunctionalRejectionMenuItem> menuItems)
     {
-        return NavRunStateAggregator.Aggregate(_statuses.Values);
+        return NavRunStateAggregator.Aggregate(menuItems.Select(GetStatus));
     }
 
     public async Task RefreshAsync(CancellationToken cancellationToken)
@@ -53,7 +61,7 @@ public sealed class DataValidationNavAlertState
             }
 
             var jobs = await _monitoringJobRepository.GetLatestMonitoringJobsByCategoryAsync(
-                MonitoringJobHelper.DataValidationCategory,
+                MonitoringJobHelper.FunctionalRejectionCategory,
                 _pnlDateState.SelectedDate.Value,
                 cancellationToken);
 
@@ -65,15 +73,15 @@ public sealed class DataValidationNavAlertState
         }
         catch (Exception ex)
         {
-            ResetStatuses();
+            _statuses.Clear();
             NotifyStatusesChanged();
-            _logger.LogWarning(ex, "Unable to refresh data-validation nav statuses.");
+            _logger.LogWarning(ex, "Unable to refresh Functional Rejection nav statuses.");
         }
     }
 
     public void ApplyStatuses(DateOnly? pnlDate, IReadOnlyCollection<MonitoringJobRecord> jobs)
     {
-        ResetStatuses();
+        _statuses.Clear();
 
         if (!pnlDate.HasValue)
         {
@@ -83,32 +91,16 @@ public sealed class DataValidationNavAlertState
 
         foreach (var job in jobs)
         {
-            if (!string.Equals(job.Category, MonitoringJobHelper.DataValidationCategory, StringComparison.OrdinalIgnoreCase)
+            if (!string.Equals(job.Category, MonitoringJobHelper.FunctionalRejectionCategory, StringComparison.OrdinalIgnoreCase)
                 || job.PnlDate != pnlDate.Value)
             {
                 continue;
             }
 
-            var route = MonitoringJobHelper.BuildDataValidationSubmenuKey(job.SubmenuKey);
-            if (!_statuses.ContainsKey(route))
-            {
-                continue;
-            }
-
-            _statuses[route] = DataValidationNavAlertHelper.GetRunState(job);
+            _statuses[job.SubmenuKey] = FunctionalRejectionNavAlertHelper.GetRunState(job);
         }
 
         NotifyStatusesChanged();
-    }
-
-    private void ResetStatuses()
-    {
-        _statuses.Clear();
-
-        foreach (var route in DataValidationNavAlertHelper.SupportedRoutes)
-        {
-            _statuses[route] = DataValidationNavRunState.NotRun;
-        }
     }
 
     private void NotifyStatusesChanged()

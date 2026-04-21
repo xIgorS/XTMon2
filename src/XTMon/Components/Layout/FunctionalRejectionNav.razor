@@ -5,6 +5,11 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h10.5m-10.5 4.5h16.5m-16.5 4.5h10.5M15 5.25l6 6-6 6" />
             </svg>
             Functional Rejection
+            @{
+                var aggregateStatus = GetAggregateStatus();
+            }
+            <span class="@GetAggregateIndicatorClass(aggregateStatus)" aria-hidden="true"></span>
+            <span class="sr-only">@GetAggregateIndicatorDescription(aggregateStatus)</span>
         </span>
         <svg xmlns="http://www.w3.org/2000/svg"
              fill="none"
@@ -16,6 +21,12 @@
         </svg>
     </summary>
     <div class="submenu-group">
+        <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="functional-rejection-runner">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h9.75m-6.75 4.5h10.5M17.25 13.5l1.5 1.5 3-3" />
+            </svg>
+            Run Checks
+        </NavLink>
         @if (isLoading)
         {
             <span class="submenu-link" aria-live="polite">
@@ -54,7 +65,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5h7.5A2.25 2.25 0 0 1 18 6.75v10.5A2.25 2.25 0 0 1 15.75 19.5h-7.5A2.25 2.25 0 0 1 6 17.25V6.75A2.25 2.25 0 0 1 8.25 4.5Z" />
                     </svg>
-                    @item.SourceSystemBusinessDataTypeCode
+                    <DataValidationNavLabel Text="@item.SourceSystemBusinessDataTypeCode" Status="@GetItemRunState(item)" />
                 </a>
             }
         }

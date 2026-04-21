@@ -47,19 +47,19 @@ The app follows a layered architecture:
 
 ### Repository Interfaces
 
-Each repository has a corresponding interface in `src/XTMon/Repositories/`:
-- `IReplayFlowRepository` — implemented by `ReplayFlowRepository`
-- `IJvCalculationRepository` — implemented by `JvCalculationRepository`
-- `IUamAuthorizationRepository` — implemented by `UamAuthorizationRepository`
+One `I<Feature>Repository` + `<Feature>Repository` pair per monitoring/data-validation page, plus `IReplayFlowRepository`, `IJvCalculationRepository`, `IMonitoringJobRepository`, `IUamAuthorizationRepository`. All registered in DI (`src/XTMon/Program.cs`) as `AddScoped<IInterface, Concrete>()`. Background services and the authorization handler depend on the interfaces (not the concrete classes), enabling unit testing with mocks.
 
-Interfaces are registered in DI (`src/XTMon/Program.cs`) as `AddScoped<IInterface, Concrete>()`. Background services and the authorization handler depend on the interfaces, not the concrete classes, enabling unit testing with mocks.
+When adding a new monitoring page, follow the existing pattern: new `I<Feature>Repository`/`<Feature>Repository` pair, `<Feature>Options` bound from `appsettings.json`, registration in `Program.cs`, and a `(ConnectionStringName, StoredProcedure)` entry in `DeploymentCheckService.BuildChecks` so startup validates it.
 
 ### Internal Helper Classes
 
-Pure-logic methods extracted from Blazor code-behind files into testable `internal static` classes in `src/XTMon/Helpers/`:
-- `ReplayFlowsHelper` — `TryNormalizeReplayFlowSet`, `GetStatusKind`, `FormatDate`, `FormatNumber`, `FormatDuration`, plus the `ReplayStatusKind` enum
-- `JvCalculationHelper` — `IsStaleRunningJob`, `ToUtc`, `ToHeaderLabel`, `GetColumnAlignmentClass`, `DeserializeMonitoringTable`
-- `MonitoringDisplayHelper` — display formatting helpers for monitoring pages
+Pure-logic methods extracted from Blazor code-behind into testable `internal static` classes in `src/XTMon/Helpers/`:
+- `SqlDataHelper` — SQL reader helpers, `IsSqlTimeout`/`IsSqlConnectionFailure` classification
+- `ReplayFlowsHelper` — replay flow set normalization, status mapping (`ReplayStatusKind` enum), date/number/duration formatting
+- `JvCalculationHelper` — stale-job detection, UTC conversion, camelCase header labels, column alignment, JSON deserialization
+- `MonitoringDisplayHelper` — shared display formatting for monitoring pages
+- `MonitoringJobHelper` — serialization/parameterization for shared monitoring-job payloads
+- `BatchStatusHelper`, `DataValidationBatchRunHelper`, `DataValidationCheckCatalog`, `DataValidationNavAlertHelper`, `PricingHelper` — per-feature display/logic helpers
 
 The test project accesses these via `[assembly: InternalsVisibleTo("XTMon.Tests")]` declared in `src/XTMon/XTMon.csproj`.
 
@@ -71,12 +71,24 @@ The test project accesses these via `[assembly: InternalsVisibleTo("XTMon.Tests"
 
 **JV Calculation Check:** Blazor page → `JvCalculationRepository` (enqueue job) → `JvCalculationProcessingService` (polls DB every 5s, maintains heartbeat) → result stored in DB → page polls for completion
 
+**Shared Monitoring Jobs (Batch Status, Data Validation, Functional Rejection, …):** Blazor page → `IMonitoringJobRepository.EnqueueAsync` → row in `LogFiAlmt` monitoring-jobs table → `MonitoringJobProcessingService` (hosted service, 5s idle poll) claims the next job → resolves a matching `IMonitoringJobExecutor` via `CanExecute(job)` (executors are scoped, multi-registered) → `ExecuteAsync` returns a `MonitoringJobResultPayload` → repository persists the result and marks complete/failed → page polls for completion. Stale "Running" jobs are auto-failed by the service on each tick using `MonitoringJobsOptions.JobRunningStaleTimeoutSeconds`.
+
+To add a new monitoring-job-backed page, implement `IMonitoringJobExecutor` (see `BatchStatusMonitoringJobExecutor`, `DataValidationMonitoringJobExecutor`, `FunctionalRejectionMonitoringJobExecutor`) and register it with `AddScoped<IMonitoringJobExecutor, YourExecutor>()` — the processing service resolves all executors and dispatches by `CanExecute`.
+
+### Scoped UI State Services
+
+Registered as `AddScoped<T>()` so they share state within a Blazor circuit:
+- `PnlDateState` — selected P&L date surfaced by `GlobalPnlDatePicker` in the sidebar, consumed by monitoring pages
+- `DataValidationNavAlertState` — drives the red-dot badge on the Data Validation nav item
+- `AuthorizationFeedbackState` — surfaces last UAM-denied action to the UI
+
 ### Authentication & Authorization
 
 - **Authentication:** Windows Authentication via Negotiate (NTLM locally, Kerberos on IIS)
-- **Development:** UAM check bypassed — any authenticated Windows user can access all pages
-- **Production:** `RequiresUamPermission` policy enforced on `/replay-flows` and `/jv-calculation-check` — user must exist in `[uam].[UspGetAdminUserByBnpId]` with Name "APS"
+- **Policy:** `"UamRestricted"` — in Production it adds `RequiresUamPermissionRequirement` (checked against `[uam].[UspGetAdminUserByBnpId]`, user must have Name "APS"); in Development it only calls `RequireAuthenticatedUser()`, bypassing the DB check
+- **Applied via `[Authorize(Policy = "UamRestricted")]`** on: `/replay-flows`, `/jv-calculation-check`, `/batch-status`, `/system-diagnostics`. `DataValidationRunner` invokes the policy imperatively via `IAuthorizationService` before running destructive actions. `Home.razor` uses `<AuthorizeView Policy="UamRestricted">` to conditionally render UAM-gated links
 - Environment is detected via `ASPNETCORE_ENVIRONMENT`; the sidebar shows a **DEV** (amber) or **PROD** (rose) badge
+- **Middleware order (`Program.cs`):** `UseAuthentication` → `UseAuthorization` → `UseStatusCodePagesWithReExecute`. Do not reorder — `StatusCodePages` placed before auth will swallow the 401 Negotiate challenge and break the NTLM handshake (there is an inline comment reminding of this)
 
 ### Databases
 
@@ -89,7 +101,9 @@ Five SQL Server databases configured in `appsettings.json`:
 | `DtmFi` | JV fix operations |
 | `MainUam` | UAM authorization |
 
-All stored procedure names are configured as options (not hardcoded) and validated at startup.
+All stored procedure names are configured as options (not hardcoded) and validated at startup by `DeploymentCheckService` (singleton). The `/system-diagnostics` page runs the same check on demand: it connects to every configured DB and queries `sys.objects`/`sys.parameters` to verify each stored procedure exists and reports its signature. When adding a new stored procedure, add a `(ConnectionStringName, StoredProcedure)` entry to `DeploymentCheckService.BuildChecks` so it participates in this validation.
+
+DDL for each database lives in `src/XTMon/Sql/` (`001_STAGING_FI_ALMT_Setup.sql`, `002_LOG_FI_ALMT_Logging_Setup.sql`, `003_LOG_FI_ALMT_JvJob_Orchestration.sql`, `004_LOG_FI_ALMT_MonitoringJob_Orchestration.sql`, and `<DB>.sql` snapshots). The `00N_*.sql` scripts are idempotent and safe to re-run.
 
 ### Logging
 
@@ -109,17 +123,13 @@ Structured log event IDs are defined in `src/XTMon/Infrastructure/AppLogEvents.c
 
 The `XTMon.Tests` project contains xUnit unit tests that run without a live SQL Server or browser.
 
-**What is tested:**
-| Area | File | Coverage |
-|------|------|----------|
-| `SqlDataHelper` | `Helpers/SqlDataHelperTests.cs` | All 8 methods; SQL error number classification via reflection-built `SqlException` |
-| `ReplayFlowsHelper` | `Helpers/ReplayFlowsHelperTests.cs` | Replay flow set normalization, all 12+ status string mappings, date/number/duration formatting |
-| `MonitoringDisplayHelper` | `Helpers/MonitoringDisplayHelperTests.cs` | Display formatting for monitoring pages |
-| `JvCalculationHelper` | `Helpers/JvCalculationHelperTests.cs` | Stale detection, UTC conversion, camelCase header labels, column alignment, JSON deserialization |
-| `ReplayFlowProcessingQueue` | `Queue/ReplayFlowProcessingQueueTests.cs` | Enqueue/dequeue, cancellation, drop-on-full (capacity 10) |
-| `ReplayFlowProcessingService` | `Services/ReplayFlowProcessingServiceTests.cs` | Item processing, error resilience (service continues after exception) |
-| `JvCalculationProcessingService` | `Services/JvCalculationProcessingServiceTests.cs` | CheckOnly vs FixAndCheck routing, failure marking, stale expiry, heartbeat ordering |
-| `UamPermissionHandler` | `Security/UamPermissionHandlerTests.cs` | Authorized/unauthorized/unauthenticated users, repository exception handling |
+**What is tested** (see `tests/XTMon.Tests/`):
+- Helpers — `SqlDataHelper`, `ReplayFlowsHelper`, `MonitoringDisplayHelper`, `JvCalculationHelper`, `MonitoringJobHelper`, `BatchStatusHelper`, `DataValidationBatchRunHelper`, `DataValidationCheckCatalog`, `DataValidationNavAlertHelper`, `PricingHelper`
+- Queue — `ReplayFlowProcessingQueue` (enqueue/dequeue, cancellation, drop-on-full at capacity 10)
+- Services — `ReplayFlowProcessingService` (item processing, error resilience), `JvCalculationProcessingService` (CheckOnly vs FixAndCheck routing, failure marking, stale expiry, heartbeat ordering), `MonitoringJobProcessingService` (executor dispatch, stale expiry, failure marking), `DataValidationNavAlertState`
+- Security — `UamPermissionHandler` (authorized/unauthorized/unauthenticated, repository exception handling)
+
+Run a single test with `dotnet test tests/XTMon.Tests/XTMon.Tests.csproj --filter "FullyQualifiedName~<TestClass>.<TestMethod>"`.
 
 **What is not tested (and why):**
 - Blazor `.razor` markup — requires a browser (no Playwright)
