@@ -52,11 +52,11 @@
             <div class="jv-balance-controls__divider"></div>
 
             <div class="jv-balance-controls__section jv-balance-controls__section--actions">
-                <button class="primary-button-filled jv-balance-run-btn" @onclick="RunAsync" disabled="@(isLoading || !selectedPnlDate.HasValue)">
+                <button class="primary-button-filled jv-balance-run-btn" @onclick="RunAsync" disabled="@(isLoading || IsJobActive || !selectedPnlDate.HasValue)">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
                     </svg>
-                    @(isLoading ? "Running..." : "Run JV Balance Consistency")
+                    @(IsJobActive ? "Running..." : "Run JV Balance Consistency")
                 </button>
             </div>
         </div>
@@ -91,9 +91,9 @@
             <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
-            <p class="stat-label">Last run</p>
-            <p class="stat-value">@LastRunText</p>
-            <p class="muted mt-1">Local session state</p>
+            <p class="stat-label">Status</p>
+            <p class="stat-value">@JobStatusText</p>
+            <p class="muted mt-1">Last run: @LastRunText</p>
         </div>
     </div>
 
@@ -126,7 +126,13 @@
     @if (!hasRun)
     {
         <div class="surface">
-            <p class="muted">Choose a PNL DATE and run JV Balance Consistency to load results.</p>
+            <p class="muted">Choose a PNL DATE to restore the latest saved result or run JV Balance Consistency.</p>
+        </div>
+    }
+    else if (IsJobActive && (result is null || result.Rows.Count == 0))
+    {
+        <div class="surface">
+            <p class="muted">JV Balance Consistency is currently @JobStatusText for the selected PNL DATE. Results will appear when the background job finishes.</p>
         </div>
     }
     else if (result is null || result.Columns.Count == 0)
@@ -143,6 +149,7 @@
             <div class="flex items-center justify-between gap-3">
                 <p class="stat-label">JV Balance Consistency result</p>
             </div>
+            <p class="muted mt-2">Saved result: @SavedParameterSummaryText</p>
             @if (gridColumns.Count == 0)
             {
                 <p class="muted mt-3">The procedure returned rows, but none of the expected JV Balance columns were present.</p>

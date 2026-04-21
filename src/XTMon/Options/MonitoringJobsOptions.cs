@@ -34,6 +34,9 @@ public sealed class MonitoringJobsOptions
     public string JobGetLatestStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetLatestByKey";
 
     [Required]
+    public string JobGetLatestByCategoryStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetLatestByCategory";
+
+    [Required]
     public string JobExpireStaleStoredProcedure { get; set; } = "monitoring.UspMonitoringJobExpireStale";
 
     [Range(1, 3600)]

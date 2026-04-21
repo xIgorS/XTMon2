@@ -1,0 +1,36 @@
+<span class="submenu-link__content">
+    <span class="submenu-link__text">@Text</span>
+    <span class="@IndicatorClass" aria-hidden="true"></span>
+    <span class="sr-only">@StatusDescription</span>
+</span>
+
+@code {
+    [Parameter]
+    public string Text { get; set; } = string.Empty;
+
+    [Parameter]
+    public XTMon.Helpers.DataValidationNavRunState Status { get; set; }
+
+    private string IndicatorClass => $"submenu-status-indicator {GetBadgeVariantClass(Status)}";
+
+    private string StatusDescription => Status switch
+    {
+        XTMon.Helpers.DataValidationNavRunState.Failed => "Run failed for the selected PNL date",
+        XTMon.Helpers.DataValidationNavRunState.Alert => "Run completed with issues for the selected PNL date",
+        XTMon.Helpers.DataValidationNavRunState.Succeeded => "Run completed successfully for the selected PNL date",
+        XTMon.Helpers.DataValidationNavRunState.Running => "Run is currently in progress for the selected PNL date",
+        _ => "Run has not started for the selected PNL date"
+    };
+
+    private static string GetBadgeVariantClass(XTMon.Helpers.DataValidationNavRunState status)
+    {
+        return status switch
+        {
+            XTMon.Helpers.DataValidationNavRunState.Failed => "submenu-status-badge--failed",
+            XTMon.Helpers.DataValidationNavRunState.Alert => "submenu-status-badge--failed",
+            XTMon.Helpers.DataValidationNavRunState.Succeeded => "submenu-status-badge--succeeded",
+            XTMon.Helpers.DataValidationNavRunState.Running => "submenu-status-badge--running",
+            _ => "submenu-status-badge--not-run"
+        };
+    }
+}

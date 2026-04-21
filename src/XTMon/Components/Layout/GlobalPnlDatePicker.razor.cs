@@ -4,7 +4,7 @@ using XTMon.Services;
 
 namespace XTMon.Components.Layout;
 
-public partial class GlobalPnlDatePicker : ComponentBase
+public partial class GlobalPnlDatePicker : ComponentBase, IDisposable
 {
     [Inject]
     private PnlDateState PnlDateState { get; set; } = default!;
@@ -17,6 +17,8 @@ public partial class GlobalPnlDatePicker : ComponentBase
 
     protected override async Task OnInitializedAsync()
     {
+        PnlDateState.OnDateChanged += OnPnlDateChanged;
+
         try
         {
             await PnlDateState.EnsureLoadedAsync(PnlDateRepository, CancellationToken.None);
@@ -31,5 +33,15 @@ public partial class GlobalPnlDatePicker : ComponentBase
     {
         PnlDateState.SetDate(date);
         return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        PnlDateState.OnDateChanged -= OnPnlDateChanged;
+    }
+
+    private void OnPnlDateChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
     }
 }

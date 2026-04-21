@@ -140,6 +140,7 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.JobMarkFailedStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetByIdStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobGetLatestByCategoryStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobExpireStaleStoredProcedure),
         "MonitoringJobs options must define all required connection and stored procedure names.")
     .ValidateOnStart();
@@ -451,6 +452,7 @@ builder.Services.AddScoped<IMonitoringJobExecutor, DataValidationMonitoringJobEx
 builder.Services.AddScoped<IMonitoringJobExecutor, FunctionalRejectionMonitoringJobExecutor>();
 builder.Services.AddScoped<AuthorizationFeedbackState>();
 builder.Services.AddScoped<PnlDateState>();
+builder.Services.AddScoped<DataValidationNavAlertState>();
 builder.Services.AddScoped<IAuthorizationHandler, UamPermissionHandler>();
 builder.Services.AddSingleton<IDeploymentCheckService, DeploymentCheckService>();
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();

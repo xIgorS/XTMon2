@@ -127,16 +127,27 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
 
     private void OnGlobalPnlDateChanged()
     {
-        InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             selectedCobDate = PnlDateState.SelectedDate;
+            checkError = null;
+
+            if (!selectedCobDate.HasValue)
+            {
+                ClearLoadedState();
+                StateHasChanged();
+                return;
+            }
+
+            await RestoreLatestJobAsync();
+            StartPollingIfNeeded();
             StateHasChanged();
         });
     }
 
     private Task OnCobDateSelected(DateOnly date)
     {
-        selectedCobDate = date;
+        PnlDateState.SetDate(date);
         checkError = null;
         return Task.CompletedTask;
     }
@@ -194,6 +205,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     {
         if (!selectedCobDate.HasValue)
         {
+            ClearLoadedState();
             return;
         }
 
@@ -204,6 +216,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
             var latestJob = await Repository.GetLatestJvJobAsync(userId, selectedCobDate.Value, requestType: null, disposeCts.Token);
             if (latestJob is null)
             {
+                ClearLoadedState();
                 return;
             }
 
@@ -214,6 +227,29 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         {
             Logger.LogWarning(ex, "Unable to restore latest JV job state for selected PnlDate {PnlDate}.", selectedCobDate);
         }
+    }
+
+    private void ClearLoadedState()
+    {
+        StopPolling();
+        activeJobStatus = null;
+        activeJobRequestType = null;
+        activeJobEnqueuedAt = null;
+        activeJobStartedAt = null;
+        activeJobCompletedAt = null;
+        activeJobId = null;
+        parsedQuery = string.Empty;
+        parsedFixQuery = string.Empty;
+        result = null;
+        copyMessage = null;
+        copySucceeded = false;
+        copyFixMessage = null;
+        copyFixSucceeded = false;
+        showJobStatusDetails = false;
+        showCheckQuery = false;
+        showFixQuery = false;
+        isChecking = false;
+        isFixing = false;
     }
 
     private void StartPollingIfNeeded()
@@ -496,8 +532,27 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     private static string GetColumnAlignmentClass(string columnName) =>
         JvCalculationHelper.GetColumnAlignmentClass(columnName);
 
-    private static string FormatCellValue(string? value)
+    private static string FormatCellValue(string columnName, string? value)
     {
-        return string.IsNullOrWhiteSpace(value) ? "-" : value;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "-";
+        }
+
+        var normalizedColumnName = MonitoringDisplayHelper.NormalizeColumnName(columnName);
+        if (normalizedColumnName is "pnldate" or "cobdate")
+        {
+            if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsedDateTime))
+            {
+                return DateOnly.FromDateTime(parsedDateTime).ToString(DisplayDateFormat, CultureInfo.InvariantCulture);
+            }
+
+            if (DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDateOnly))
+            {
+                return parsedDateOnly.ToString(DisplayDateFormat, CultureInfo.InvariantCulture);
+            }
+        }
+
+        return value;
     }
 }

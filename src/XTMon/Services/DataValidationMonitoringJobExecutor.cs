@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using XTMon.Helpers;
 using XTMon.Models;
+using XTMon.Options;
 using XTMon.Repositories;
 
 namespace XTMon.Services;
@@ -47,6 +49,7 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
             "fact-pv-ca-consistency" => ExecuteResultAsync<IFactPvCaConsistencyRepository, FactPvCaConsistencyResult>(repository => repository.GetFactPvCaConsistencyAsync(job.PnlDate, cancellationToken)),
             "multiple-feed-version" => ExecuteResultAsync<IMultipleFeedVersionRepository, MultipleFeedVersionResult>(repository => repository.GetMultipleFeedVersionAsync(job.PnlDate, cancellationToken)),
             "publication-consistency" => ExecuteResultAsync<IPublicationConsistencyRepository, PublicationConsistencyResult>(repository => repository.GetPublicationConsistencyAsync(job.PnlDate, cancellationToken)),
+            "jv-balance-consistency" => ExecuteJvBalanceConsistencyAsync(job, cancellationToken),
             "missing-workflow-check" => ExecuteResultAsync<IMissingWorkflowCheckRepository, MissingWorkflowCheckResult>(repository => repository.GetMissingWorkflowCheckAsync(job.PnlDate, cancellationToken)),
             "precalc-monitoring" => ExecuteResultAsync<IPrecalcMonitoringRepository, PrecalcMonitoringResult>(repository => repository.GetPrecalcMonitoringAsync(job.PnlDate, cancellationToken)),
             "vrdb-status" => ExecuteResultAsync<IVrdbStatusRepository, VrdbStatusResult>(repository => repository.GetVrdbStatusAsync(job.PnlDate, cancellationToken)),
@@ -94,6 +97,16 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
         var parameters = MonitoringJobHelper.DeserializeParameters<DataValidationJobParameters>(job.ParametersJson);
         return await ExecuteResultAsync<IReverseConsoFileRepository, ReverseConsoFileResult>(
             repository => repository.GetReverseConsoFileAsync(job.PnlDate, parameters?.SourceSystemCodes, cancellationToken));
+    }
+
+    private async Task<MonitoringJobResultPayload> ExecuteJvBalanceConsistencyAsync(MonitoringJobRecord job, CancellationToken cancellationToken)
+    {
+        var parameters = MonitoringJobHelper.DeserializeParameters<DataValidationJobParameters>(job.ParametersJson);
+        var options = _serviceProvider.GetRequiredService<IOptions<JvBalanceConsistencyOptions>>();
+        var precision = parameters?.Precision ?? options.Value.Precision;
+
+        return await ExecuteResultAsync<IJvBalanceConsistencyRepository, JvBalanceConsistencyResult>(
+            repository => repository.GetJvBalanceConsistencyAsync(job.PnlDate, precision, cancellationToken));
     }
 
     private async Task<MonitoringJobResultPayload> ExecuteResultAsync<TRepository, TResult>(Func<TRepository, Task<TResult>> callback)

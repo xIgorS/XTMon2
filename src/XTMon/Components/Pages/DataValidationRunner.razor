@@ -1,0 +1,168 @@
+@page "/data-validation-runner"
+@rendermode InteractiveServer
+
+<PageTitle>Run Data Validation</PageTitle>
+
+<div class="space-y-5">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+            <p class="section-label">Data validation</p>
+            <h1 class="mt-1 text-2xl font-bold text-heading">Run Checks</h1>
+            <p class="muted mt-1">Run all Data Validation checks or a selected subset for one PNL date.</p>
+            <p class="muted mt-1">Batch mode uses each check's default settings and the selected global PNL date.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <button class="primary-button" @onclick="RefreshStatusesAsync" disabled="@(isRefreshing || isSubmitting || !selectedPnlDate.HasValue)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                </svg>
+                @(isRefreshing ? "Refreshing..." : "Refresh")
+            </button>
+            <button class="primary-button" @onclick="SelectAll" disabled="@(isSubmitting || selectableRows.Count == 0)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                Select All
+            </button>
+            <button class="primary-button" @onclick="ClearSelection" disabled="@(isSubmitting || selectedRowsCount == 0)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+                Clear
+            </button>
+            <button class="primary-button-filled" @onclick="RunSelectedAsync" disabled="@(!canRunSelected)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+                </svg>
+                @(isSubmitting ? "Submitting..." : $"Run Selected ({selectedRowsCount})")
+            </button>
+        </div>
+    </div>
+
+    <div class="surface">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div class="flex flex-col gap-1.5">
+                <label class="stat-label" for="batchRunnerPnlDate">PNL date</label>
+                <DatePickerInput InputId="batchRunnerPnlDate"
+                                 Value="selectedPnlDate"
+                                 ValueChanged="OnPnlDateSelected"
+                                 AvailableDates="availableDates"
+                                 IsDisabled="@(isSubmitting || isRefreshing)"
+                                 AriaLabel="Data Validation batch-run PNL date" />
+                <p class="muted mt-1">Changing the date updates the global sidebar date and refreshes all saved statuses.</p>
+            </div>
+            <div class="rounded-xl border border-dashed p-4 text-sm text-body-secondary">
+                <p class="font-semibold text-heading">Batch defaults</p>
+                <p class="mt-1">Checks that normally support extra inputs run here with their existing defaults only.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+            </svg>
+            <p class="stat-label">Selected PNL Date</p>
+            <p class="stat-value">@SelectedPnlDateText</p>
+            <p class="muted mt-1">Applies to every selected check</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" />
+            </svg>
+            <p class="stat-label">Available Checks</p>
+            <p class="stat-value">@rows.Count</p>
+            <p class="muted mt-1">Batch-eligible items</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="stat-label">Selected</p>
+            <p class="stat-value">@selectedRowsCount</p>
+            <p class="muted mt-1">Ready to submit</p>
+        </div>
+        <div class="stat-card">
+            <svg class="stat-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="stat-label">Last Refresh</p>
+            <p class="stat-value">@LastRefreshText</p>
+            <p class="muted mt-1">Active checks: @activeChecksCount</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="surface flex items-center gap-2 @(statusIsError ? "!border-rose-500/30" : "!border-emerald-500/30")">
+            @if (statusIsError)
+            {
+                <svg class="h-5 w-5 shrink-0 text-error" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                </svg>
+            }
+            else
+            {
+                <svg class="h-5 w-5 shrink-0 text-success" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+            }
+            <p class="text-sm font-semibold @(statusIsError ? "text-error" : "text-success")">@statusMessage</p>
+        </div>
+    }
+
+    <div class="surface">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <p class="stat-label">Checks</p>
+                <p class="muted mt-1">Choose all checks or only the subset you want to run.</p>
+            </div>
+            @if (hasHiddenRestrictedChecks)
+            {
+                <p class="text-sm text-body-secondary">Batch Status is hidden because it requires APS access.</p>
+            }
+        </div>
+
+        <div class="db-grid__wrap mt-4">
+            <table class="db-grid">
+                <thead>
+                    <tr>
+                        <th class="db-grid__head db-grid__cell--checkbox"></th>
+                        <th class="db-grid__head db-grid__cell--text">Check</th>
+                        <th class="db-grid__head db-grid__cell--text">Current Status</th>
+                        <th class="db-grid__head db-grid__cell--text">Last Run</th>
+                        <th class="db-grid__head db-grid__cell--text">Batch Defaults</th>
+                        <th class="db-grid__head db-grid__cell--text">Last Submission</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in rows)
+                    {
+                        <tr class="db-grid__row">
+                            <td class="db-grid__cell db-grid__cell--checkbox">
+                                <input type="checkbox"
+                                       class="batch-run-checkbox"
+                                       checked="@row.IsSelected"
+                                       @onchange="@(args => OnRowSelectionChanged(row, (bool)(args.Value ?? false)))"
+                                       disabled="@isSubmitting" />
+                            </td>
+                            <td class="db-grid__cell db-grid__cell--text">
+                                <div class="flex flex-col gap-1">
+                                    <span class="font-semibold text-heading">@row.Definition.DisplayName</span>
+                                    <span class="text-xs text-body-secondary">@row.Definition.Route</span>
+                                </div>
+                            </td>
+                            <td class="db-grid__cell db-grid__cell--text">
+                                <span class="submenu-status-badge @GetStatusBadgeClass(row.LatestJob)">@GetStatusLabel(row.LatestJob)</span>
+                            </td>
+                            <td class="db-grid__cell db-grid__cell--text">@GetLastRunText(row.LatestJob)</td>
+                            <td class="db-grid__cell db-grid__cell--text">@GetDefaultSummaryText(row.Definition.Route)</td>
+                            <td class="db-grid__cell db-grid__cell--text @GetSubmissionTextClass(row)">@GetSubmissionText(row)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

@@ -207,6 +207,49 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
     }
 
+    public async Task<IReadOnlyList<MonitoringJobRecord>> GetLatestMonitoringJobsByCategoryAsync(string category, DateOnly pnlDate, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _options.JobGetLatestByCategoryStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@Category", SqlDbType.VarChar, 64) { Value = category });
+            command.Parameters.Add(new SqlParameter("@PnlDate", SqlDbType.Date) { Value = pnlDate.ToDateTime(TimeOnly.MinValue) });
+
+            var jobs = new List<MonitoringJobRecord>();
+
+            await connection.OpenAsync(cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                jobs.Add(ReadMonitoringJobRecord(reader));
+            }
+
+            return jobs;
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(GetLatestMonitoringJobsByCategoryAsync), _options.JobGetLatestByCategoryStoredProcedure, $"Category={category}, PnlDate={pnlDate:yyyy-MM-dd}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex,
+                "Monitoring latest jobs query failed for category {Category}, pnl date {PnlDate}.",
+                category,
+                pnlDate);
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(GetLatestMonitoringJobsByCategoryAsync), _options.JobGetLatestByCategoryStoredProcedure, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     public async Task SaveMonitoringJobResultAsync(long jobId, MonitoringJobResultPayload payload, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();

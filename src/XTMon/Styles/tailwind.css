@@ -67,6 +67,8 @@
 
     --success-text: #059669;
     --error-text: #e11d48;
+    --info-text: #2563eb;
+    --warning-text: #f97316;
   }
 
   .dark {
@@ -123,6 +125,8 @@
 
     --success-text: #34d399;
     --error-text: #fb7185;
+    --info-text: #60a5fa;
+    --warning-text: #fb923c;
   }
 
   body {
@@ -196,6 +200,65 @@
     margin-top: 0;
   }
 
+  .submenu-link__content {
+    @apply flex w-full items-center justify-between gap-2;
+    min-width: 0;
+  }
+
+  .submenu-link__text {
+    @apply truncate;
+  }
+
+  .submenu-status-badge {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold leading-tight;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 14%, transparent);
+  }
+
+  .submenu-status-indicator {
+    @apply inline-flex h-3 w-3 shrink-0 rounded-full;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent);
+  }
+
+  .submenu-status-badge::before {
+    content: "";
+    @apply h-1.5 w-1.5 rounded-full;
+    background-color: currentColor;
+  }
+
+  .submenu-status-indicator::before {
+    content: "";
+    @apply h-full w-full rounded-full;
+    background-color: currentColor;
+  }
+
+  .submenu-status-badge--failed {
+    color: var(--error-text);
+    background-color: color-mix(in srgb, var(--error-text) 12%, transparent);
+  }
+
+  .submenu-status-badge--succeeded {
+    color: var(--success-text);
+    background-color: color-mix(in srgb, var(--success-text) 12%, transparent);
+  }
+
+  .submenu-status-badge--not-run {
+    color: var(--info-text);
+    background-color: color-mix(in srgb, var(--info-text) 12%, transparent);
+  }
+
+  .submenu-status-badge--running {
+    color: var(--warning-text);
+    background-color: color-mix(in srgb, var(--warning-text) 12%, transparent);
+  }
+
+  .submenu-status-badge--running::before {
+    animation: submenu-status-blink 1s ease-in-out infinite;
+  }
+
+  .submenu-status-indicator.submenu-status-badge--running::before {
+    animation: submenu-status-blink 1s ease-in-out infinite;
+  }
+
   .submenu-link:hover {
     color: var(--nav-submenu-text-hover);
     background-color: var(--nav-submenu-hover-bg);
@@ -211,6 +274,29 @@
   .submenu-link-active:hover {
     color: var(--nav-submenu-active-text);
     background-color: var(--nav-submenu-active-bg);
+  }
+
+  .submenu-link-active .submenu-status-badge {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 18%, white 12%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .submenu-status-badge--running::before {
+      animation: none;
+    }
+  }
+
+  @keyframes submenu-status-blink {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    50% {
+      opacity: 0.35;
+      transform: scale(0.85);
+    }
   }
 
   .primary-button {

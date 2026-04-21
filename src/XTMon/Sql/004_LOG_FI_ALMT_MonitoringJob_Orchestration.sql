@@ -354,6 +354,67 @@ BEGIN
 END
 GO
 
+CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobGetLatestByCategory]
+    @Category VARCHAR(64),
+    @PnlDate DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    WITH [LatestJobs] AS
+    (
+        SELECT
+            [jobs].[JobId],
+            [jobs].[Category],
+            [jobs].[SubmenuKey],
+            [jobs].[DisplayName],
+            [jobs].[PnlDate],
+            [jobs].[Status],
+            [jobs].[WorkerId],
+            [jobs].[ParametersJson],
+            [jobs].[ParameterSummary],
+            [jobs].[EnqueuedAt],
+            [jobs].[StartedAt],
+            [jobs].[LastHeartbeatAt],
+            [jobs].[CompletedAt],
+            [jobs].[FailedAt],
+            [jobs].[ErrorMessage],
+            ROW_NUMBER() OVER (PARTITION BY [jobs].[SubmenuKey] ORDER BY [jobs].[JobId] DESC) AS [RowNumber]
+        FROM [monitoring].[MonitoringJobs] AS [jobs]
+        WHERE [jobs].[Category] = @Category
+          AND [jobs].[PnlDate] = @PnlDate
+    )
+    SELECT
+        [jobs].[JobId],
+        [jobs].[Category],
+        [jobs].[SubmenuKey],
+        [jobs].[DisplayName],
+        [jobs].[PnlDate],
+        [jobs].[Status],
+        [jobs].[WorkerId],
+        [jobs].[ParametersJson],
+        [jobs].[ParameterSummary],
+        [jobs].[EnqueuedAt],
+        [jobs].[StartedAt],
+        [jobs].[LastHeartbeatAt],
+        [jobs].[CompletedAt],
+        [jobs].[FailedAt],
+        [jobs].[ErrorMessage],
+        [results].[ParsedQuery],
+        [results].[GridColumnsJson],
+        [results].[GridRowsJson],
+        [results].[MetadataJson],
+        [results].[SavedAt]
+    FROM [LatestJobs] AS [jobs]
+    LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results]
+        ON [results].[Category] = [jobs].[Category]
+       AND [results].[SubmenuKey] = [jobs].[SubmenuKey]
+       AND [results].[PnlDate] = [jobs].[PnlDate]
+    WHERE [jobs].[RowNumber] = 1
+    ORDER BY [jobs].[SubmenuKey];
+END
+GO
+
 CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobExpireStale]
     @StaleTimeoutSeconds INT,
     @ErrorMessage NVARCHAR(MAX)

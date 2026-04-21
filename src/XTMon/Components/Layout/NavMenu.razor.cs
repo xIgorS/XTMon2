@@ -1,57 +1,82 @@
 using Microsoft.AspNetCore.Components;
+using XTMon.Helpers;
+using XTMon.Services;
 
 namespace XTMon.Components.Layout;
 
 public partial class NavMenu : ComponentBase, IDisposable
 {
+	private readonly CancellationTokenSource _disposeCts = new();
+
 	[Inject]
 	private NavigationManager NavigationManager { get; set; } = default!;
+
+	[Inject]
+	private PnlDateState PnlDateState { get; set; } = default!;
+
+	[Inject]
+	private DataValidationNavAlertState DataValidationNavAlertState { get; set; } = default!;
 
 	protected override void OnInitialized()
 	{
 		NavigationManager.LocationChanged += OnLocationChanged;
+		PnlDateState.OnDateChanged += OnPnlDateChanged;
+		DataValidationNavAlertState.StatusesChanged += OnDataValidationStatusesChanged;
+	}
+
+	protected override async Task OnInitializedAsync()
+	{
+		await RefreshDataValidationAlertsAsync();
 	}
 
 	private bool IsDataValidationRoute =>
-		IsCurrentRoute("batch-status") ||
-		IsCurrentRoute("referential-data") ||
-		IsCurrentRoute("market-data") ||
-		IsCurrentRoute("pricing-file-reception") ||
-		IsCurrentRoute("out-of-scope-portfolio") ||
-		IsCurrentRoute("missing-sog-check") ||
-		IsCurrentRoute("adjustment-links-check") ||
-		IsCurrentRoute("column-store-check") ||
-		IsCurrentRoute("trading-vs-fivr-check") ||
-		IsCurrentRoute("mirrorization") ||
-		IsCurrentRoute("result-transfer") ||
-		IsCurrentRoute("rollovered-portfolios") ||
-		IsCurrentRoute("sas-tables") ||
-		IsCurrentRoute("non-xtg-portfolio") ||
-		IsCurrentRoute("rejected-xtg-portfolio") ||
-		IsCurrentRoute("feedout-extraction") ||
-		IsCurrentRoute("future-cash") ||
-		IsCurrentRoute("fact-pv-ca-consistency") ||
-		IsCurrentRoute("multiple-feed-version") ||
-		IsCurrentRoute("daily-balance") ||
-		IsCurrentRoute("adjustments") ||
-		IsCurrentRoute("pricing") ||
-		IsCurrentRoute("reverse-conso-file") ||
-		IsCurrentRoute("publication-consistency") ||
-		IsCurrentRoute("jv-balance-consistency") ||
-		IsCurrentRoute("missing-workflow-check") ||
-		IsCurrentRoute("precalc-monitoring") ||
-		IsCurrentRoute("vrdb-status");
+		IsCurrentRoute(DataValidationCheckCatalog.BatchRunRoute) ||
+		DataValidationCheckCatalog.Routes.Any(IsCurrentRoute);
 
 	private bool IsFunctionalRejectionRoute => IsCurrentRoute("functional-rejection");
 
 	public void Dispose()
 	{
 		NavigationManager.LocationChanged -= OnLocationChanged;
+		PnlDateState.OnDateChanged -= OnPnlDateChanged;
+		DataValidationNavAlertState.StatusesChanged -= OnDataValidationStatusesChanged;
+		_disposeCts.Cancel();
+		_disposeCts.Dispose();
 	}
 
 	private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
 	{
 		_ = InvokeAsync(StateHasChanged);
+	}
+
+	private void OnPnlDateChanged()
+	{
+		_ = InvokeAsync(async () =>
+		{
+			await RefreshDataValidationAlertsAsync();
+			StateHasChanged();
+		});
+	}
+
+	private void OnDataValidationStatusesChanged()
+	{
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	private async Task RefreshDataValidationAlertsAsync()
+	{
+		try
+		{
+			await DataValidationNavAlertState.RefreshAsync(_disposeCts.Token);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private DataValidationNavRunState GetDataValidationRunState(string route)
+	{
+		return DataValidationNavAlertState.GetStatus(route);
 	}
 
 	private bool IsCurrentRoute(string route)

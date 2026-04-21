@@ -175,6 +175,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobMarkFailedStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetByIdStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetLatestStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetLatestByCategoryStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobExpireStaleStoredProcedure),
 
             // Data validation

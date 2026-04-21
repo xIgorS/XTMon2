@@ -211,7 +211,7 @@
                                 @foreach (var column in gridColumns)
                                 {
                                     var value = column.Index < row.Count ? row[column.Index] : null;
-                                    <td class="db-grid__cell @GetColumnAlignmentClass(column.Name)">@FormatCellValue(value)</td>
+                                    <td class="db-grid__cell @GetColumnAlignmentClass(column.Name)">@FormatCellValue(column.Name, value)</td>
                                 }
                             </tr>
                         }

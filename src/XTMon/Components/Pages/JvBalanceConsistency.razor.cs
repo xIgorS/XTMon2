@@ -17,6 +17,7 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
     private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string GridDateFormat = "dd-MM-yyyy";
     private const string LoadErrorMessage = "Unable to load JV Balance Consistency right now. Please try again.";
+    private const string MonitoringSubmenuKey = "jv-balance-consistency";
     private static readonly IReadOnlyList<GridColumnDefinition> PreferredColumns =
     [
         new("Pnl Date", ["PnlDate", "Pnl Date"]),
@@ -32,7 +33,7 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
     private readonly HashSet<DateOnly> availableDates = [];
 
     [Inject]
-    private IJvBalanceConsistencyRepository Repository { get; set; } = default!;
+    private IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
 
     [Inject]
     private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
@@ -42,6 +43,9 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
 
     [Inject]
     private IOptions<JvBalanceConsistencyOptions> JvBalanceConsistencyOptions { get; set; } = default!;
+
+    [Inject]
+    private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
     [Inject]
     private ILogger<JvBalanceConsistency> Logger { get; set; } = default!;
@@ -61,6 +65,12 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
     private MonitoringTableResult? result;
     private bool showQuery;
     private string precisionText = string.Empty;
+    private string? savedParameterSummary;
+    private long? activeJobId;
+    private string? activeJobStatus;
+    private PeriodicTimer? pollTimer;
+    private CancellationTokenSource? pollCts;
+    private readonly CancellationTokenSource disposeCts = new();
 
     private string ProcedureName => JvBalanceConsistencyOptions.Value.JvBalanceConsistencyStoredProcedure;
     private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(JvBalanceConsistencyOptions.Value.ConnectionStringName, ProcedureName);
@@ -68,15 +78,20 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
     private string SelectedPnlDateText => selectedPnlDate.HasValue
         ? selectedPnlDate.Value.ToString(DisplayDateFormat, CultureInfo.InvariantCulture)
         : "-";
+    private string SavedParameterSummaryText => string.IsNullOrWhiteSpace(savedParameterSummary) ? $"Precision: {precisionText}" : savedParameterSummary;
+    private string JobStatusText => string.IsNullOrWhiteSpace(activeJobStatus) ? "-" : activeJobStatus;
     private string LastRunText => lastRunAt.HasValue
         ? lastRunAt.Value.ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture)
         : "-";
+    private bool IsJobActive => MonitoringJobHelper.IsActiveStatus(activeJobStatus);
 
     protected override async Task OnInitializedAsync()
     {
         precisionText = JvBalanceConsistencyOptions.Value.Precision.ToString("0.00", CultureInfo.InvariantCulture);
         await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await RestoreLatestJobAsync();
+        StartPollingIfNeeded();
     }
 
     private async Task LoadPnlDatesAsync()
@@ -100,9 +115,10 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
 
     private void OnGlobalPnlDateChanged()
     {
-        InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             selectedPnlDate = PnlDateState.SelectedDate;
+            await RestoreLatestJobAsync();
             StateHasChanged();
         });
     }
@@ -110,14 +126,17 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
     public void Dispose()
     {
         PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
+        StopPolling();
+        disposeCts.Cancel();
+        disposeCts.Dispose();
     }
 
-    private Task OnPnlDateSelected(DateOnly date)
+    private async Task OnPnlDateSelected(DateOnly date)
     {
         selectedPnlDate = date;
         validationError = null;
         runError = null;
-        return Task.CompletedTask;
+        await RestoreLatestJobAsync();
     }
 
     private void OnPrecisionInput(ChangeEventArgs args)
@@ -150,10 +169,18 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
 
         try
         {
-            var response = await Repository.GetJvBalanceConsistencyAsync(selectedPnlDate.Value, precision, CancellationToken.None);
-            parsedQuery = response.ParsedQuery;
-            result = response.Table;
-            lastRunAt = DateTime.Now;
+            var enqueueResult = await MonitoringJobRepository.EnqueueMonitoringJobAsync(
+                MonitoringJobHelper.DataValidationCategory,
+                MonitoringSubmenuKey,
+                "JV Balance Consistency",
+                selectedPnlDate.Value,
+                MonitoringJobHelper.SerializeParameters(BuildCurrentParameters(precision)),
+                $"Precision: {FormatPrecision(precision)}",
+                disposeCts.Token);
+
+            activeJobId = enqueueResult.JobId;
+            await RefreshActiveJobAsync(disposeCts.Token);
+            StartPollingIfNeeded();
         }
         catch (Exception ex)
         {
@@ -171,6 +198,149 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
         {
             isLoading = false;
         }
+    }
+
+    private DataValidationJobParameters BuildCurrentParameters(decimal precision)
+    {
+        return new DataValidationJobParameters(
+            SourceSystemCodes: null,
+            TraceAllVersions: null,
+            Precision: precision);
+    }
+
+    private async Task RestoreLatestJobAsync()
+    {
+        StopPolling();
+
+        if (!selectedPnlDate.HasValue)
+        {
+            ClearLoadedState();
+            return;
+        }
+
+        try
+        {
+            var latestJob = await MonitoringJobRepository.GetLatestMonitoringJobAsync(
+                MonitoringJobHelper.DataValidationCategory,
+                MonitoringSubmenuKey,
+                selectedPnlDate.Value,
+                disposeCts.Token);
+
+            if (latestJob is null)
+            {
+                ClearLoadedState();
+                return;
+            }
+
+            ApplyJob(latestJob);
+            StartPollingIfNeeded();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to restore latest JV Balance Consistency job for PnlDate {PnlDate}.", selectedPnlDate.Value);
+        }
+    }
+
+    private void StartPollingIfNeeded()
+    {
+        StopPolling();
+
+        if (!activeJobId.HasValue || !IsJobActive)
+        {
+            return;
+        }
+
+        pollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
+        pollTimer = new PeriodicTimer(TimeSpan.FromSeconds(MonitoringJobsOptions.Value.JobPollIntervalSeconds));
+        _ = PollJobAsync(pollTimer, pollCts.Token);
+    }
+
+    private async Task PollJobAsync(PeriodicTimer timer, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshActiveJobAsync(cancellationToken);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private async Task RefreshActiveJobAsync(CancellationToken cancellationToken)
+    {
+        if (!activeJobId.HasValue)
+        {
+            return;
+        }
+
+        var job = await MonitoringJobRepository.GetMonitoringJobByIdAsync(activeJobId.Value, cancellationToken);
+        if (job is null)
+        {
+            return;
+        }
+
+        ApplyJob(job);
+        if (!IsJobActive)
+        {
+            StopPolling();
+        }
+    }
+
+    private void ApplyJob(MonitoringJobRecord job)
+    {
+        activeJobId = job.JobId;
+        activeJobStatus = job.Status;
+        savedParameterSummary = job.ParameterSummary;
+        parsedQuery = job.ParsedQuery ?? string.Empty;
+        result = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
+        hasRun = true;
+
+        var savedParameters = MonitoringJobHelper.DeserializeParameters<DataValidationJobParameters>(job.ParametersJson);
+        if (savedParameters?.Precision is decimal precision)
+        {
+            precisionText = FormatPrecision(precision);
+        }
+
+        var latestExecution = job.CompletedAt ?? job.StartedAt ?? job.EnqueuedAt;
+        lastRunAt = JvCalculationHelper.ToUtc(latestExecution).ToLocalTime();
+
+        if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
+        {
+            runError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? LoadErrorMessage : job.ErrorMessage;
+        }
+        else
+        {
+            runError = null;
+        }
+    }
+
+    private void ClearLoadedState()
+    {
+        activeJobId = null;
+        activeJobStatus = null;
+        savedParameterSummary = null;
+        hasRun = false;
+        parsedQuery = string.Empty;
+        result = null;
+        lastRunAt = null;
+        runError = null;
+    }
+
+    private void StopPolling()
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+        pollCts = null;
+
+        pollTimer?.Dispose();
+        pollTimer = null;
     }
 
     private bool TryParsePrecision(out decimal precision, out string error)
@@ -198,6 +368,11 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
 
         error = string.Empty;
         return true;
+    }
+
+    private static string FormatPrecision(decimal precision)
+    {
+        return Math.Round(precision, 2, MidpointRounding.AwayFromZero).ToString("0.00", CultureInfo.InvariantCulture);
     }
 
     private void ToggleQueryVisibility()
