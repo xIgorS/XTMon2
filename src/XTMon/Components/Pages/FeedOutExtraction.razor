@@ -120,7 +120,7 @@
             <p class="muted">FeedOut Extraction is currently running for the selected PNL DATE. Results will appear when the background job finishes.</p>
         </div>
     }
-    else if (result is null || result.Rows.Count == 0)
+    else if (result is null || result.Columns.Count == 0)
     {
         <div class="surface">
             <p class="muted">No rows returned from FeedOut Extraction.</p>
