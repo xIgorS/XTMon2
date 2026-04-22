@@ -31,6 +31,9 @@ TestResults/
 # Publish output
 publish/
 
+# Build verification artifacts
+artifacts/
+
 # Tool binaries
 tailwindcss.exe
 
