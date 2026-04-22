@@ -93,6 +93,11 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
 
     public async Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(string workerId, CancellationToken cancellationToken)
     {
+        return await TryTakeNextMonitoringJobAsync(workerId, excludedCategories: null, cancellationToken);
+    }
+
+    public async Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(string workerId, IReadOnlyCollection<string>? excludedCategories, CancellationToken cancellationToken)
+    {
         var stopwatch = Stopwatch.StartNew();
         try
         {
@@ -102,6 +107,10 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@WorkerId", SqlDbType.VarChar, 100) { Value = workerId });
+            command.Parameters.Add(new SqlParameter("@ExcludedCategoriesCsv", SqlDbType.NVarChar, 4000)
+            {
+                Value = BuildExcludedCategoriesCsv(excludedCategories)
+            });
 
             await connection.OpenAsync(cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -127,6 +136,24 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         {
             LogOperationDuration(nameof(TryTakeNextMonitoringJobAsync), _options.JobTakeNextStoredProcedure, stopwatch.ElapsedMilliseconds);
         }
+    }
+
+    private static object BuildExcludedCategoriesCsv(IReadOnlyCollection<string>? excludedCategories)
+    {
+        if (excludedCategories is null || excludedCategories.Count == 0)
+        {
+            return DBNull.Value;
+        }
+
+        var categories = excludedCategories
+            .Where(category => !string.IsNullOrWhiteSpace(category))
+            .Select(category => category.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        return categories.Length == 0
+            ? DBNull.Value
+            : string.Join(',', categories);
     }
 
     public async Task<MonitoringJobRecord?> GetMonitoringJobByIdAsync(long jobId, CancellationToken cancellationToken)

@@ -14,6 +14,7 @@ public interface IMonitoringJobRepository
         CancellationToken cancellationToken);
 
     Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(string workerId, CancellationToken cancellationToken);
+    Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(string workerId, IReadOnlyCollection<string>? excludedCategories, CancellationToken cancellationToken);
     Task<MonitoringJobRecord?> GetMonitoringJobByIdAsync(long jobId, CancellationToken cancellationToken);
     Task<MonitoringJobRecord?> GetLatestMonitoringJobAsync(string category, string submenuKey, DateOnly pnlDate, CancellationToken cancellationToken);
     Task<IReadOnlyList<MonitoringJobRecord>> GetLatestMonitoringJobsByCategoryAsync(string category, DateOnly pnlDate, CancellationToken cancellationToken);

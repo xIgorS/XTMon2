@@ -50,13 +50,20 @@ public sealed class MonitoringJobProcessingService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Monitoring job processing service started.");
+        _logger.LogInformation(
+            "Monitoring job processing service started with MaxConcurrentJobs={MaxConcurrentJobs}, PollIntervalSeconds={PollIntervalSeconds}, StaleTimeoutSeconds={StaleTimeoutSeconds}.",
+            _options.MaxConcurrentJobs,
+            _options.JobPollIntervalSeconds,
+            _options.JobRunningStaleTimeoutSeconds);
+        var activeJobs = new List<ActiveMonitoringJob>();
 
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                MonitoringJobRecord? job;
+                PruneCompletedJobs(activeJobs);
+
+                var claimedJobs = 0;
 
                 try
                 {
@@ -87,21 +94,36 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                         _logger.LogWarning("Marked {ExpiredCount} stale monitoring job(s) as failed.", expiredCount);
                     }
 
-                    try
+                    while (!stoppingToken.IsCancellationRequested && activeJobs.Count < _options.MaxConcurrentJobs)
                     {
-                        job = await TryTakeNextMonitoringJobAsync(repository, stoppingToken);
-                    }
-                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        LogProcessorException(ex, "processing loop take-next");
-                        _logger.LogError(AppLogEvents.MonitoringProcessorBackgroundFailed, ex,
-                            "Monitoring job processing loop failed while claiming the next job. Retrying after delay.");
-                        await Task.Delay(_idleDelay, stoppingToken);
-                        continue;
+                        MonitoringJobRecord? job;
+                        var preferredExcludedCategories = BuildPreferredExcludedCategories(activeJobs);
+                        var hardExcludedCategories = BuildHardExcludedCategories(activeJobs);
+
+                        try
+                        {
+                            job = await TryTakeNextMonitoringJobAsync(repository, preferredExcludedCategories, hardExcludedCategories, stoppingToken);
+                        }
+                        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                        {
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            LogProcessorException(ex, "processing loop take-next");
+                            _logger.LogError(AppLogEvents.MonitoringProcessorBackgroundFailed, ex,
+                                "Monitoring job processing loop failed while claiming the next job. Retrying after delay.");
+                            await Task.Delay(_idleDelay, stoppingToken);
+                            break;
+                        }
+
+                        if (job is null)
+                        {
+                            break;
+                        }
+
+                        activeJobs.Add(new ActiveMonitoringJob(job, RunJobSafelyAsync(job, stoppingToken)));
+                        claimedJobs++;
                     }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -116,21 +138,39 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                     continue;
                 }
 
-                if (job is null)
+                if (claimedJobs > 0 || activeJobs.Count > 0)
                 {
-                    await Task.Delay(_idleDelay, stoppingToken);
-                    continue;
+                    _logger.LogDebug(
+                        "Monitoring processor cycle claimed {ClaimedJobs} job(s); {ActiveJobs} job(s) are active out of {MaxConcurrentJobs} slot(s).",
+                        claimedJobs,
+                        activeJobs.Count,
+                        _options.MaxConcurrentJobs);
                 }
 
-                await ProcessJobAsync(job, stoppingToken);
+                await WaitForNextDispatchOpportunityAsync(activeJobs, stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             _logger.LogInformation("Monitoring job processing service cancellation received.");
         }
+        finally
+        {
+            await DrainActiveJobsAsync(activeJobs);
+        }
 
         _logger.LogInformation("Monitoring job processing service stopped.");
+    }
+
+    private async Task RunJobSafelyAsync(MonitoringJobRecord job, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await ProcessJobAsync(job, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
     }
 
     private async Task<int> ExpireStaleRunningJobsAsync(IMonitoringJobRepository repository, TimeSpan staleTimeout, CancellationToken cancellationToken)
@@ -146,11 +186,34 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         }
     }
 
-    private async Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(IMonitoringJobRepository repository, CancellationToken cancellationToken)
+    private async Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(
+        IMonitoringJobRepository repository,
+        IReadOnlyCollection<string> preferredExcludedCategories,
+        IReadOnlyCollection<string> hardExcludedCategories,
+        CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
         try
         {
+            var prioritizedExcludedCategories = preferredExcludedCategories
+                .Concat(hardExcludedCategories)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            if (prioritizedExcludedCategories.Length > 0)
+            {
+                var preferredJob = await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, prioritizedExcludedCategories, cancellationToken);
+                if (preferredJob is not null)
+                {
+                    return preferredJob;
+                }
+            }
+
+            if (hardExcludedCategories.Count > 0)
+            {
+                return await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, hardExcludedCategories, cancellationToken);
+            }
+
             return await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, cancellationToken);
         }
         finally
@@ -366,6 +429,85 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             _logger.LogWarning(ex, "Unable to mark monitoring job {JobId} as cancelled.", jobId);
         }
     }
+
+    private async Task WaitForNextDispatchOpportunityAsync(IReadOnlyCollection<ActiveMonitoringJob> activeJobs, CancellationToken stoppingToken)
+    {
+        if (activeJobs.Count == 0)
+        {
+            await Task.Delay(_idleDelay, stoppingToken);
+            return;
+        }
+
+        var nextActiveJob = Task.WhenAny(activeJobs.Select(activeJob => activeJob.Task));
+        var idleDelayTask = Task.Delay(_idleDelay, stoppingToken);
+        await Task.WhenAny(nextActiveJob, idleDelayTask);
+    }
+
+    private async Task DrainActiveJobsAsync(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
+    {
+        if (activeJobs.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.WhenAll(activeJobs.Select(activeJob => activeJob.Task));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void PruneCompletedJobs(List<ActiveMonitoringJob> activeJobs)
+    {
+        for (var index = activeJobs.Count - 1; index >= 0; index--)
+        {
+            var activeJob = activeJobs[index];
+            if (!activeJob.Task.IsCompleted)
+            {
+                continue;
+            }
+
+            if (activeJob.Task.IsFaulted)
+            {
+                _logger.LogError(activeJob.Task.Exception, "Monitoring job worker task faulted unexpectedly.");
+            }
+
+            activeJobs.RemoveAt(index);
+        }
+    }
+
+    private IReadOnlyCollection<string> BuildPreferredExcludedCategories(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
+    {
+        if (activeJobs.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        return activeJobs
+            .Select(activeJob => activeJob.Job.Category)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private IReadOnlyCollection<string> BuildHardExcludedCategories(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
+    {
+        if (activeJobs.Count == 0 || _options.CategoryMaxConcurrentJobs.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        return activeJobs
+            .GroupBy(activeJob => activeJob.Job.Category, StringComparer.Ordinal)
+            .Where(group =>
+                _options.CategoryMaxConcurrentJobs.TryGetValue(group.Key, out var categoryLimit)
+                && group.Count() >= categoryLimit)
+            .Select(group => group.Key)
+            .ToArray();
+    }
+
+    private sealed record ActiveMonitoringJob(MonitoringJobRecord Job, Task Task);
 
     private void LogProcessorException(Exception ex, string context)
     {

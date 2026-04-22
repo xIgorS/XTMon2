@@ -19,6 +19,40 @@
         </button>
     </div>
 
+    <div class="surface">
+        <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+                <p class="section-label">Monitoring Job Capacity</p>
+                <h2 class="mt-1 text-lg font-bold text-heading">Worker slot policy</h2>
+                <p class="muted mt-1 text-sm">These limits are loaded from configuration at startup and control how many monitoring jobs can run in parallel. Update appsettings and restart the application to change them.</p>
+            </div>
+            <span class="pill text-xs shrink-0">Global max: @EffectiveMonitoringJobConcurrencyPolicy.GlobalLimit slot@(EffectiveMonitoringJobConcurrencyPolicy.GlobalLimit == 1 ? string.Empty : "s")</span>
+        </div>
+
+        <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4 dark:border-slate-700/70 dark:bg-slate-900/30">
+                <p class="stat-label">Global Worker Pool</p>
+                <p class="mt-2 text-2xl font-bold text-heading">@EffectiveMonitoringJobConcurrencyPolicy.GlobalLimit</p>
+                <p class="muted mt-1 text-xs">Maximum monitoring jobs that can run at once across all menus.</p>
+            </div>
+
+            @foreach (var categoryLimit in EffectiveMonitoringJobConcurrencyPolicy.CategoryLimits)
+            {
+                <div class="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4 dark:border-slate-700/70 dark:bg-slate-900/30">
+                    <p class="stat-label">@categoryLimit.DisplayName</p>
+                    <p class="mt-2 text-2xl font-bold text-heading">@categoryLimit.EffectiveLimit</p>
+                    <p class="muted mt-1 text-xs">@categoryLimit.Description</p>
+                </div>
+            }
+
+            <div class="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4 dark:border-slate-700/70 dark:bg-slate-900/30">
+                <p class="stat-label">Operational Note</p>
+                <p class="mt-2 text-sm font-semibold text-heading">Free slots follow the caps</p>
+                <p class="muted mt-1 text-xs">A category that reaches its own limit will wait even if the global pool still has free slots. Categories without a specific cap can use the remaining global capacity.</p>
+            </div>
+        </div>
+    </div>
+
     @if (isRunning)
     {
         <div class="surface">

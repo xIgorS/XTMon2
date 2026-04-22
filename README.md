@@ -122,6 +122,26 @@ Open: **https://localhost:7010**
 
 > In Visual Studio, select **https-prod** from the launch profile dropdown in the toolbar.
 
+## Monitoring Job Concurrency
+
+Shared monitoring jobs use two levels of concurrency control from `MonitoringJobs` in `src/XTMon/appsettings.json`:
+
+- `MaxConcurrentJobs` is the global worker pool size.
+- `CategoryMaxConcurrentJobs` applies hard caps per menu category.
+
+The default production profile is tuned for three parallel monitoring jobs:
+
+- `DataValidation`: `2`
+- `FunctionalRejection`: `1`
+- global pool: `3`
+
+Operational behavior:
+
+- A category that reaches its own cap waits even if the global pool still has spare slots.
+- Categories without an explicit cap can use any remaining global capacity.
+- Changes take effect after an application restart.
+- The active slot policy is displayed on the **System Diagnostics** page so operators can verify the current limits without opening configuration files.
+
 ## Environment Indicator
 
 A small badge in the bottom-left corner of the sidebar shows the current mode:

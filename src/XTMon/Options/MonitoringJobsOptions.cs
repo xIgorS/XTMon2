@@ -45,6 +45,11 @@ public sealed class MonitoringJobsOptions
     [Range(1, 3600)]
     public int JobPollIntervalSeconds { get; set; } = 5;
 
+    [Range(1, 16)]
+    public int MaxConcurrentJobs { get; set; } = 1;
+
+    public Dictionary<string, int> CategoryMaxConcurrentJobs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     [Range(30, 86400)]
     public int JobRunningStaleTimeoutSeconds { get; set; } = 900;
 }

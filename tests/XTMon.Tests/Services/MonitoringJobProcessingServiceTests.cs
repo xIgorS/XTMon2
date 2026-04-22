@@ -14,9 +14,11 @@ public class MonitoringJobProcessingServiceTests
 {
     private static readonly DateOnly TestDate = new(2026, 1, 15);
 
-    private static IOptions<MonitoringJobsOptions> DefaultOptions() =>
+    private static IOptions<MonitoringJobsOptions> CreateOptions(int maxConcurrentJobs = 1, Dictionary<string, int>? categoryMaxConcurrentJobs = null) =>
         Microsoft.Extensions.Options.Options.Create(new MonitoringJobsOptions
         {
+            MaxConcurrentJobs = maxConcurrentJobs,
+            CategoryMaxConcurrentJobs = categoryMaxConcurrentJobs ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
             JobRunningStaleTimeoutSeconds = 1800,
             JobPollIntervalSeconds = 1
         });
@@ -66,7 +68,7 @@ public class MonitoringJobProcessingServiceTests
 
         var service = new MonitoringJobProcessingService(
             factory.Object,
-            options ?? DefaultOptions(),
+            options ?? CreateOptions(),
             NullLogger<MonitoringJobProcessingService>.Instance,
             idleDelay ?? TimeSpan.FromSeconds(5),
             heartbeatInterval,
@@ -95,6 +97,289 @@ public class MonitoringJobProcessingServiceTests
                 StartedAt = DateTime.UtcNow
             });
         return repo;
+    }
+
+    [Fact]
+    public async Task MaxConcurrentJobsOne_PreservesSerializedExecution()
+    {
+        var firstStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstReleaseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondReleaseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completionCount = 0;
+
+        var job1 = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 1L);
+        var job2 = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 2L);
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job1)
+            .ReturnsAsync(job2)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
+            .Callback(() => Interlocked.Increment(ref completionCount))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            async (job, _) =>
+            {
+                if (job.JobId == 1L)
+                {
+                    firstStartedTcs.TrySetResult(true);
+                    await firstReleaseTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    return payload;
+                }
+
+                secondStartedTcs.TrySetResult(true);
+                await secondReleaseTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return payload;
+            });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            options: CreateOptions(maxConcurrentJobs: 1),
+            idleDelay: TimeSpan.FromMilliseconds(10));
+
+        await service.StartAsync(CancellationToken.None);
+
+        await firstStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(150);
+        Assert.False(secondStartedTcs.Task.IsCompleted);
+
+        firstReleaseTcs.TrySetResult(true);
+        await secondStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        secondReleaseTcs.TrySetResult(true);
+
+        await EventuallyAsync(() => Volatile.Read(ref completionCount) == 2);
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task MaxConcurrentJobsTwo_AllowsParallelExecution()
+    {
+        var bothStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseJobsTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completionCount = 0;
+        var startedCount = 0;
+
+        var job1 = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 1L);
+        var job2 = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 2L);
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job1)
+            .ReturnsAsync(job2)
+            .ReturnsAsync((MonitoringJobRecord?)null)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
+            .Callback(() => Interlocked.Increment(ref completionCount))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            async (_, _) =>
+            {
+                if (Interlocked.Increment(ref startedCount) == 2)
+                {
+                    bothStartedTcs.TrySetResult(true);
+                }
+
+                await releaseJobsTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return payload;
+            });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            options: CreateOptions(maxConcurrentJobs: 2),
+            idleDelay: TimeSpan.FromMilliseconds(10));
+
+        await service.StartAsync(CancellationToken.None);
+
+        await bothStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        releaseJobsTcs.TrySetResult(true);
+
+        await EventuallyAsync(() => Volatile.Read(ref completionCount) == 2);
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task MaxConcurrentJobsTwo_PrefersDifferentCategoryWhenOneIsAlreadyActive()
+    {
+        var dataValidationStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var functionalRejectionStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseJobsTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completionCount = 0;
+        var functionalRejectionClaimed = false;
+
+        var dataValidationJob = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 1L);
+        var functionalRejectionJob = MakeJob(MonitoringJobHelper.FunctionalRejectionCategory, "fr|1|SYS|DTM|CODE", 2L);
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(dataValidationJob)
+            .ReturnsAsync((MonitoringJobRecord?)null)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, CancellationToken _) =>
+            {
+                if (!functionalRejectionClaimed
+                    && excludedCategories is not null
+                    && excludedCategories.Contains(MonitoringJobHelper.DataValidationCategory, StringComparer.Ordinal))
+                {
+                    functionalRejectionClaimed = true;
+                    return functionalRejectionJob;
+                }
+
+                return null;
+            });
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
+            .Callback(() => Interlocked.Increment(ref completionCount))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            async (job, _) =>
+            {
+                if (job.Category == MonitoringJobHelper.DataValidationCategory)
+                {
+                    dataValidationStartedTcs.TrySetResult(true);
+                }
+
+                if (job.Category == MonitoringJobHelper.FunctionalRejectionCategory)
+                {
+                    functionalRejectionStartedTcs.TrySetResult(true);
+                }
+
+                await releaseJobsTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return payload;
+            });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            options: CreateOptions(maxConcurrentJobs: 2),
+            idleDelay: TimeSpan.FromMilliseconds(10));
+
+        await service.StartAsync(CancellationToken.None);
+
+        await dataValidationStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await functionalRejectionStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        releaseJobsTcs.TrySetResult(true);
+
+        await EventuallyAsync(() => Volatile.Read(ref completionCount) == 2);
+        await service.StopAsync(CancellationToken.None);
+
+        repo.Verify(
+            r => r.TryTakeNextMonitoringJobAsync(
+                It.IsAny<string>(),
+                It.Is<IReadOnlyCollection<string>?>(excludedCategories =>
+                    excludedCategories != null
+                    && excludedCategories.Contains(MonitoringJobHelper.DataValidationCategory)),
+                It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task CategoryLimitOne_PreventsClaimingSecondJobFromSameCategory()
+    {
+        var dataValidationStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var functionalRejectionStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseJobsTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completionCount = 0;
+        var secondDataValidationStarted = 0;
+
+        var dataValidationJob = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 1L);
+        var secondDataValidationJob = MakeJob(MonitoringJobHelper.DataValidationCategory, "daily-balance", 2L);
+        var functionalRejectionJob = MakeJob(MonitoringJobHelper.FunctionalRejectionCategory, "fr|1|SYS|DTM|CODE", 3L);
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+        var functionalRejectionClaimed = false;
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(dataValidationJob)
+            .ReturnsAsync(secondDataValidationJob)
+            .ReturnsAsync((MonitoringJobRecord?)null)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, CancellationToken _) =>
+            {
+                if (!functionalRejectionClaimed
+                    && excludedCategories != null
+                    && excludedCategories.Contains(MonitoringJobHelper.DataValidationCategory))
+                {
+                    functionalRejectionClaimed = true;
+                    return functionalRejectionJob;
+                }
+
+                return null;
+            });
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
+            .Callback(() => Interlocked.Increment(ref completionCount))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            async (job, _) =>
+            {
+                if (job.JobId == dataValidationJob.JobId)
+                {
+                    dataValidationStartedTcs.TrySetResult(true);
+                }
+
+                if (job.JobId == functionalRejectionJob.JobId)
+                {
+                    functionalRejectionStartedTcs.TrySetResult(true);
+                }
+
+                if (job.JobId == secondDataValidationJob.JobId)
+                {
+                    Interlocked.Increment(ref secondDataValidationStarted);
+                }
+
+                await releaseJobsTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return payload;
+            });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            options: CreateOptions(
+                maxConcurrentJobs: 2,
+                categoryMaxConcurrentJobs: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [MonitoringJobHelper.DataValidationCategory] = 1,
+                    [MonitoringJobHelper.FunctionalRejectionCategory] = 1
+                }),
+            idleDelay: TimeSpan.FromMilliseconds(10));
+
+        await service.StartAsync(CancellationToken.None);
+
+        await dataValidationStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await functionalRejectionStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Assert.True(functionalRejectionClaimed);
+    Assert.Equal(0, Volatile.Read(ref secondDataValidationStarted));
+
+        releaseJobsTcs.TrySetResult(true);
+
+    await EventuallyAsync(() => Volatile.Read(ref completionCount) >= 2);
+        await service.StopAsync(CancellationToken.None);
+
+        repo.Verify(
+            r => r.TryTakeNextMonitoringJobAsync(
+                It.IsAny<string>(),
+                It.Is<IReadOnlyCollection<string>?>(excludedCategories =>
+                    excludedCategories != null
+                    && excludedCategories.Contains(MonitoringJobHelper.DataValidationCategory)),
+                It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
     }
 
     [Fact]
@@ -347,6 +632,17 @@ public class MonitoringJobProcessingServiceTests
         await service.StopAsync(CancellationToken.None);
 
         repo.Verify(r => r.MarkMonitoringJobCompletedAsync(1L, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private static async Task EventuallyAsync(Func<bool> condition)
+    {
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        while (!condition())
+        {
+            timeoutCts.Token.ThrowIfCancellationRequested();
+            await Task.Delay(25, timeoutCts.Token);
+        }
     }
 
     private sealed class StubExecutor : IMonitoringJobExecutor

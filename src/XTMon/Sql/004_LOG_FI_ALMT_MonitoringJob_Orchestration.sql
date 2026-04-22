@@ -324,7 +324,8 @@ END
 GO
 
 CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobTakeNext]
-    @WorkerId VARCHAR(100)
+    @WorkerId VARCHAR(100),
+    @ExcludedCategoriesCsv NVARCHAR(4000) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -340,6 +341,15 @@ BEGIN
         SELECT TOP (1) [JobId]
         FROM [monitoring].[MonitoringJobs] WITH (UPDLOCK, READPAST, ROWLOCK)
         WHERE [Status] = 'Queued'
+          AND (
+                @ExcludedCategoriesCsv IS NULL
+                OR NOT EXISTS
+                (
+                    SELECT 1
+                    FROM STRING_SPLIT(@ExcludedCategoriesCsv, ',') AS [excluded]
+                    WHERE LTRIM(RTRIM([excluded].[value])) = [MonitoringJobs].[Category]
+                )
+              )
         ORDER BY [EnqueuedAt], [JobId]
     )
     UPDATE [jobs]

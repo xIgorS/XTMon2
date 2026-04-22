@@ -54,6 +54,153 @@ public class MonitoringDisplayHelperTests
         Assert.Equal("01-01-2025 00:00:00", result);
     }
 
+    [Fact]
+    public void GetMonitoringJobCompletionTime_WhenCompletedAtPresent_ReturnsFormattedTime()
+    {
+        var completedAt = new DateTime(2025, 1, 1, 10, 7, 30);
+        var job = new MonitoringJobRecord(
+            1,
+            "DataValidation",
+            "batch-status",
+            null,
+            new DateOnly(2025, 1, 1),
+            "Completed",
+            null,
+            null,
+            null,
+            new DateTime(2025, 1, 1, 10, 0, 0),
+            new DateTime(2025, 1, 1, 10, 5, 0),
+            null,
+            completedAt,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+        var expected = DateTime.SpecifyKind(completedAt, DateTimeKind.Utc)
+            .ToLocalTime()
+            .ToString("dd-MM-yyyy HH:mm:ss");
+
+        Assert.Equal(expected, MonitoringDisplayHelper.GetMonitoringJobCompletionTime(job));
+    }
+
+    [Fact]
+    public void GetMonitoringJobCompletionTime_WhenNoTerminalTimestamp_ReturnsDash()
+    {
+        var job = new MonitoringJobRecord(
+            1,
+            "DataValidation",
+            "batch-status",
+            null,
+            new DateOnly(2025, 1, 1),
+            "Running",
+            null,
+            null,
+            null,
+            new DateTime(2025, 1, 1, 10, 0, 0),
+            new DateTime(2025, 1, 1, 10, 5, 0),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+        Assert.Equal("-", MonitoringDisplayHelper.GetMonitoringJobCompletionTime(job));
+    }
+
+    [Fact]
+    public void GetMonitoringJobDuration_WhenCompletedJob_ReturnsElapsedDuration()
+    {
+        var job = new MonitoringJobRecord(
+            1,
+            "DataValidation",
+            "batch-status",
+            null,
+            new DateOnly(2025, 1, 1),
+            "Completed",
+            null,
+            null,
+            null,
+            new DateTime(2025, 1, 1, 10, 0, 0),
+            new DateTime(2025, 1, 1, 10, 5, 0),
+            null,
+            new DateTime(2025, 1, 1, 10, 7, 30),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+        Assert.Equal("2m 30s", MonitoringDisplayHelper.GetMonitoringJobDuration(job));
+    }
+
+    [Fact]
+    public void GetMonitoringJobDuration_WhenRunningJob_UsesProvidedNowUtc()
+    {
+        var job = new MonitoringJobRecord(
+            1,
+            "DataValidation",
+            "batch-status",
+            null,
+            new DateOnly(2025, 1, 1),
+            "Running",
+            null,
+            null,
+            null,
+            new DateTime(2025, 1, 1, 10, 0, 0),
+            new DateTime(2025, 1, 1, 10, 5, 0),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+        Assert.Equal(
+            "1m 05s",
+            MonitoringDisplayHelper.GetMonitoringJobDuration(job, new DateTime(2025, 1, 1, 10, 6, 5, DateTimeKind.Utc)));
+    }
+
+    [Fact]
+    public void GetMonitoringJobDuration_WhenNotStarted_ReturnsDash()
+    {
+        var job = new MonitoringJobRecord(
+            1,
+            "DataValidation",
+            "batch-status",
+            null,
+            new DateOnly(2025, 1, 1),
+            "Queued",
+            null,
+            null,
+            null,
+            new DateTime(2025, 1, 1, 10, 0, 0),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+        Assert.Equal("-", MonitoringDisplayHelper.GetMonitoringJobDuration(job));
+    }
+
     // ─── IsDateLikeColumn ─────────────────────────────────────────────────────────
 
     [Theory]

@@ -141,7 +141,11 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.JobGetByIdStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestByCategoryStoredProcedure) &&
-        !string.IsNullOrWhiteSpace(options.JobExpireStaleStoredProcedure),
+        !string.IsNullOrWhiteSpace(options.JobExpireStaleStoredProcedure) &&
+        options.CategoryMaxConcurrentJobs.All(limit =>
+            !string.IsNullOrWhiteSpace(limit.Key) &&
+            limit.Value >= 1 &&
+            limit.Value <= options.MaxConcurrentJobs),
         "MonitoringJobs options must define all required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
@@ -458,6 +462,7 @@ builder.Services.AddScoped<DataValidationNavAlertState>();
 builder.Services.AddScoped<FunctionalRejectionNavAlertState>();
 builder.Services.AddScoped<IAuthorizationHandler, UamPermissionHandler>();
 builder.Services.AddSingleton<IDeploymentCheckService, DeploymentCheckService>();
+builder.Services.AddSingleton<StartupDiagnosticsState>();
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();
 builder.Services.AddHostedService<ReplayFlowProcessingService>();
 builder.Services.AddHostedService<JvCalculationProcessingService>();

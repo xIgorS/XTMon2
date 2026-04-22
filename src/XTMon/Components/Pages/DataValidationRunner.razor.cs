@@ -505,6 +505,16 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
         return JvCalculationHelper.ToUtc(latestExecution).ToLocalTime().ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture);
     }
 
+    private static string GetCompletionTimeText(MonitoringJobRecord? job)
+    {
+        return MonitoringDisplayHelper.GetMonitoringJobCompletionTime(job);
+    }
+
+    private static string GetJobDurationText(MonitoringJobRecord? job)
+    {
+        return MonitoringDisplayHelper.GetMonitoringJobDuration(job);
+    }
+
     private string GetDefaultSummaryText(string route)
     {
         return DataValidationBatchRunHelper.BuildDefaultParameterSummary(route, JvBalanceConsistencyOptions.Value.Precision)

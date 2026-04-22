@@ -132,6 +132,8 @@
                         <th class="db-grid__head db-grid__cell--text">Check</th>
                         <th class="db-grid__head db-grid__cell--text">Current Status</th>
                         <th class="db-grid__head db-grid__cell--text">Last Run</th>
+                        <th class="db-grid__head db-grid__cell--text">Completion Time</th>
+                        <th class="db-grid__head db-grid__cell--text">Job Duration</th>
                         <th class="db-grid__head db-grid__cell--text">Batch Defaults</th>
                         <th class="db-grid__head db-grid__cell--text">Last Submission</th>
                         <th class="db-grid__head db-grid__cell--text">Action</th>
@@ -158,6 +160,8 @@
                                 <span class="submenu-status-badge @GetStatusBadgeClass(row.LatestJob)">@GetStatusLabel(row.LatestJob)</span>
                             </td>
                             <td class="db-grid__cell db-grid__cell--text">@GetLastRunText(row.LatestJob)</td>
+                            <td class="db-grid__cell db-grid__cell--text">@GetCompletionTimeText(row.LatestJob)</td>
+                            <td class="db-grid__cell db-grid__cell--text">@GetJobDurationText(row.LatestJob)</td>
                             <td class="db-grid__cell db-grid__cell--text">@GetDefaultSummaryText(row.Definition.Route)</td>
                             <td class="db-grid__cell db-grid__cell--text @GetSubmissionTextClass(row)">@GetSubmissionText(row)</td>
                             <td class="db-grid__cell db-grid__cell--text">

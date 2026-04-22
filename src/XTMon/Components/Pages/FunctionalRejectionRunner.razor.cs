@@ -519,6 +519,16 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
         return JvCalculationHelper.ToUtc(latestExecution).ToLocalTime().ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture);
     }
 
+    private static string GetCompletionTimeText(MonitoringJobRecord? job)
+    {
+        return MonitoringDisplayHelper.GetMonitoringJobCompletionTime(job);
+    }
+
+    private static string GetJobDurationText(MonitoringJobRecord? job)
+    {
+        return MonitoringDisplayHelper.GetMonitoringJobDuration(job);
+    }
+
     private static string GetSubmissionText(BatchRunRow row)
     {
         return string.IsNullOrWhiteSpace(row.LastSubmissionMessage)

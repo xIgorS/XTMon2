@@ -31,6 +31,57 @@ internal static class MonitoringDisplayHelper
         return value;
     }
 
+    public static string GetMonitoringJobCompletionTime(MonitoringJobRecord? job)
+    {
+        if (job is null)
+        {
+            return "-";
+        }
+
+        var completedAt = job.CompletedAt ?? job.FailedAt;
+        if (!completedAt.HasValue)
+        {
+            return "-";
+        }
+
+        return JvCalculationHelper.ToUtc(completedAt.Value)
+            .ToLocalTime()
+            .ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture);
+    }
+
+    public static string GetMonitoringJobDuration(MonitoringJobRecord? job, DateTime? nowUtc = null)
+    {
+        if (job?.StartedAt is null)
+        {
+            return "-";
+        }
+
+        var startedAtUtc = JvCalculationHelper.ToUtc(job.StartedAt.Value);
+        var endAtUtc = job.CompletedAt.HasValue
+            ? JvCalculationHelper.ToUtc(job.CompletedAt.Value)
+            : job.FailedAt.HasValue
+                ? JvCalculationHelper.ToUtc(job.FailedAt.Value)
+                : nowUtc ?? DateTime.UtcNow;
+
+        var duration = endAtUtc - startedAtUtc;
+        if (duration < TimeSpan.Zero)
+        {
+            return "0s";
+        }
+
+        if (duration.TotalHours >= 1)
+        {
+            return $"{(int)duration.TotalHours}h {duration.Minutes:D2}m {duration.Seconds:D2}s";
+        }
+
+        if (duration.TotalMinutes >= 1)
+        {
+            return $"{duration.Minutes}m {duration.Seconds:D2}s";
+        }
+
+        return $"{duration.Seconds}s";
+    }
+
     public static bool IsDateLikeColumn(string columnName)
     {
         var normalized = NormalizeColumnName(columnName);
