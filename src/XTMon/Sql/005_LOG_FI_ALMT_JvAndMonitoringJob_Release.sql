@@ -546,6 +546,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
+    SET LOCK_TIMEOUT 5000;
 
     DECLARE @Selected TABLE ([JobId] BIGINT NOT NULL);
 
@@ -818,9 +819,9 @@ BEGIN
         [jobs].[CompletedAt],
         [jobs].[FailedAt],
         [jobs].[ErrorMessage],
-        [results].[ParsedQuery],
-        [results].[GridColumnsJson],
-        [results].[GridRowsJson],
+        NULL AS [ParsedQuery],
+        NULL AS [GridColumnsJson],
+        NULL AS [GridRowsJson],
         [results].[MetadataJson],
         [results].[SavedAt]
     FROM [LatestJobs] AS [jobs]
@@ -837,6 +838,7 @@ CREATE PROCEDURE [monitoring].[UspMonitoringJobExpireStale]
 AS
 BEGIN
     SET NOCOUNT ON;
+    SET LOCK_TIMEOUT 5000;
 
     DECLARE @Cutoff DATETIME2(0) = DATEADD(SECOND, -@StaleTimeoutSeconds, SYSUTCDATETIME());
 

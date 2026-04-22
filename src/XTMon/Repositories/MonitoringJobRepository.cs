@@ -72,7 +72,8 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
         catch (SqlException ex)
         {
-            LogSqlException(ex, nameof(EnqueueMonitoringJobAsync), _options.JobEnqueueStoredProcedure, $"Category={category}, SubmenuKey={submenuKey}, PnlDate={pnlDate:yyyy-MM-dd}");
+            LogSqlException(ex, nameof(EnqueueMonitoringJobAsync), _options.JobEnqueueStoredProcedure, stopwatch.ElapsedMilliseconds,
+                $"Category={category}, SubmenuKey={submenuKey}, PnlDate={pnlDate:yyyy-MM-dd}");
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -113,7 +114,8 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
         catch (SqlException ex)
         {
-            LogSqlException(ex, nameof(TryTakeNextMonitoringJobAsync), _options.JobTakeNextStoredProcedure, $"WorkerId={workerId}");
+            LogSqlException(ex, nameof(TryTakeNextMonitoringJobAsync), _options.JobTakeNextStoredProcedure, stopwatch.ElapsedMilliseconds,
+                $"WorkerId={workerId}");
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -150,7 +152,8 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
         catch (SqlException ex)
         {
-            LogSqlException(ex, nameof(GetMonitoringJobByIdAsync), _options.JobGetByIdStoredProcedure, $"JobId={jobId}");
+            LogSqlException(ex, nameof(GetMonitoringJobByIdAsync), _options.JobGetByIdStoredProcedure, stopwatch.ElapsedMilliseconds,
+                $"JobId={jobId}");
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -189,7 +192,8 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
         catch (SqlException ex)
         {
-            LogSqlException(ex, nameof(GetLatestMonitoringJobAsync), _options.JobGetLatestStoredProcedure, $"Category={category}, SubmenuKey={submenuKey}, PnlDate={pnlDate:yyyy-MM-dd}");
+            LogSqlException(ex, nameof(GetLatestMonitoringJobAsync), _options.JobGetLatestStoredProcedure, stopwatch.ElapsedMilliseconds,
+                $"Category={category}, SubmenuKey={submenuKey}, PnlDate={pnlDate:yyyy-MM-dd}");
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -233,7 +237,8 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
         catch (SqlException ex)
         {
-            LogSqlException(ex, nameof(GetLatestMonitoringJobsByCategoryAsync), _options.JobGetLatestByCategoryStoredProcedure, $"Category={category}, PnlDate={pnlDate:yyyy-MM-dd}");
+            LogSqlException(ex, nameof(GetLatestMonitoringJobsByCategoryAsync), _options.JobGetLatestByCategoryStoredProcedure, stopwatch.ElapsedMilliseconds,
+                $"Category={category}, PnlDate={pnlDate:yyyy-MM-dd}");
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -275,7 +280,8 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
         catch (SqlException ex)
         {
-            LogSqlException(ex, nameof(SaveMonitoringJobResultAsync), _options.JobSaveResultStoredProcedure, $"JobId={jobId}");
+            LogSqlException(ex, nameof(SaveMonitoringJobResultAsync), _options.JobSaveResultStoredProcedure, stopwatch.ElapsedMilliseconds,
+                $"JobId={jobId}");
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -337,6 +343,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
                 ex,
                 nameof(ExpireStaleRunningMonitoringJobsAsync),
                 _options.JobExpireStaleStoredProcedure,
+                stopwatch.ElapsedMilliseconds,
                 $"StaleTimeoutSeconds={staleTimeoutSeconds}");
             throw;
         }
@@ -376,7 +383,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
         catch (SqlException ex)
         {
-            LogSqlException(ex, nameof(ExecuteMonitoringJobStateProcedureAsync), procedureName, $"JobId={jobId}");
+            LogSqlException(ex, nameof(ExecuteMonitoringJobStateProcedureAsync), procedureName, stopwatch.ElapsedMilliseconds, $"JobId={jobId}");
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -413,16 +420,17 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
     }
 
-    private void LogSqlException(SqlException ex, string operationName, string commandName, string? context = null)
+    private void LogSqlException(SqlException ex, string operationName, string commandName, long elapsedMilliseconds, string? context = null)
     {
         if (SqlDataHelper.IsSqlTimeout(ex))
         {
             _logger.LogError(AppLogEvents.RepositoryMonitoringJobSqlTimeout, ex,
-                "Monitoring job SQL timeout in operation {Operation}, connection {ConnectionName}, command {CommandName}, timeout seconds {TimeoutSeconds}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
+                "Monitoring job SQL timeout in operation {Operation}, connection {ConnectionName}, command {CommandName}, timeout seconds {TimeoutSeconds}, elapsed ms {ElapsedMs}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
                 operationName,
                 _options.JobConnectionStringName,
                 commandName,
                 _options.CommandTimeoutSeconds,
+                elapsedMilliseconds,
                 ex.Number,
                 ex.State,
                 ex.Class,
@@ -433,10 +441,11 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         if (SqlDataHelper.IsSqlConnectionFailure(ex))
         {
             _logger.LogError(AppLogEvents.RepositoryMonitoringJobConnectionFailed, ex,
-                "Monitoring job SQL connection problem in operation {Operation}, connection {ConnectionName}, command {CommandName}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
+                "Monitoring job SQL connection problem in operation {Operation}, connection {ConnectionName}, command {CommandName}, elapsed ms {ElapsedMs}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
                 operationName,
                 _options.JobConnectionStringName,
                 commandName,
+                elapsedMilliseconds,
                 ex.Number,
                 ex.State,
                 ex.Class,
@@ -445,10 +454,11 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
 
         _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex,
-            "Monitoring job SQL error in operation {Operation}, connection {ConnectionName}, command {CommandName}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
+            "Monitoring job SQL error in operation {Operation}, connection {ConnectionName}, command {CommandName}, elapsed ms {ElapsedMs}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
             operationName,
             _options.JobConnectionStringName,
             commandName,
+            elapsedMilliseconds,
             ex.Number,
             ex.State,
             ex.Class,

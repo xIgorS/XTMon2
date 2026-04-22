@@ -50,6 +50,7 @@ public class MonitoringJobProcessingServiceTests
             IEnumerable<IMonitoringJobExecutor> executors,
             IOptions<MonitoringJobsOptions>? options = null,
             TimeSpan? idleDelay = null,
+            TimeSpan? heartbeatInterval = null,
             JobCancellationRegistry? jobCancellationRegistry = null)
     {
         var sp = new Mock<IServiceProvider>();
@@ -68,6 +69,7 @@ public class MonitoringJobProcessingServiceTests
             options ?? DefaultOptions(),
             NullLogger<MonitoringJobProcessingService>.Instance,
             idleDelay ?? TimeSpan.FromSeconds(5),
+            heartbeatInterval,
             jobCancellationRegistry);
 
         return (service, repo);
@@ -179,6 +181,121 @@ public class MonitoringJobProcessingServiceTests
         repo.Verify(
             r => r.ExpireStaleRunningMonitoringJobsAsync(It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.AtLeast(2));
+    }
+
+    [Fact]
+    public async Task WhenExpireStaleThrows_ServiceContinuesPolling()
+    {
+        var recoveredTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var expireCalls = 0;
+
+        var repo = BaseRepo();
+        repo.Setup(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.ExpireStaleRunningMonitoringJobsAsync(It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns<TimeSpan, string, CancellationToken>((_, _, _) =>
+            {
+                expireCalls++;
+                if (expireCalls == 1)
+                {
+                    throw new TimeoutException("stale expiry timed out");
+                }
+
+                recoveredTcs.TrySetResult(true);
+                return Task.FromResult(0);
+            });
+
+        var (service, _) = CreateService(repo, [], idleDelay: TimeSpan.FromMilliseconds(10));
+        await service.StartAsync(CancellationToken.None);
+
+        await recoveredTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        repo.Verify(
+            r => r.ExpireStaleRunningMonitoringJobsAsync(It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.AtLeast(2));
+    }
+
+    [Fact]
+    public async Task WhenTakeNextThrows_ServiceContinuesPolling()
+    {
+        var recoveredTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var takeNextCalls = 0;
+
+        var repo = BaseRepo();
+        repo.Setup(r => r.ExpireStaleRunningMonitoringJobsAsync(It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+        repo.Setup(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns<string, CancellationToken>((_, _) =>
+            {
+                takeNextCalls++;
+                if (takeNextCalls == 1)
+                {
+                    throw new TimeoutException("take next timed out");
+                }
+
+                recoveredTcs.TrySetResult(true);
+                return Task.FromResult<MonitoringJobRecord?>(null);
+            });
+
+        var (service, _) = CreateService(repo, [], idleDelay: TimeSpan.FromMilliseconds(10));
+        await service.StartAsync(CancellationToken.None);
+
+        await recoveredTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        repo.Verify(
+            r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.AtLeast(2));
+    }
+
+    [Fact]
+    public async Task LongRunningJob_SendsPeriodicHeartbeatsWhileExecuting()
+    {
+        var heartbeatCount = 0;
+        var repeatedHeartbeatTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey);
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.HeartbeatMonitoringJobAsync(1L, It.IsAny<CancellationToken>()))
+            .Callback(() =>
+            {
+                heartbeatCount++;
+                if (heartbeatCount >= 3)
+                {
+                    repeatedHeartbeatTcs.TrySetResult(true);
+                }
+            })
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(1L, It.IsAny<CancellationToken>()))
+            .Callback(() => completedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            async (_, _) =>
+            {
+                await repeatedHeartbeatTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return payload;
+            });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            idleDelay: TimeSpan.FromMilliseconds(10),
+            heartbeatInterval: TimeSpan.FromMilliseconds(20));
+
+        await service.StartAsync(CancellationToken.None);
+
+        await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        repo.Verify(r => r.HeartbeatMonitoringJobAsync(1L, It.IsAny<CancellationToken>()), Times.AtLeast(3));
     }
 
     [Fact]

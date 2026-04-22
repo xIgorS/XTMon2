@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using XTMon.Helpers;
@@ -12,12 +13,14 @@ public sealed class MonitoringJobProcessingService : BackgroundService
 {
     private static readonly TimeSpan DefaultIdleDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MarkStateShutdownGrace = TimeSpan.FromSeconds(10);
+    private const long SlowPollStageThresholdMilliseconds = 1000;
     private const string StaleRunningJobErrorMessage = "Monitoring background job timed out while in Running status and was auto-failed.";
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<MonitoringJobProcessingService> _logger;
     private readonly MonitoringJobsOptions _options;
     private readonly TimeSpan _idleDelay;
+    private readonly TimeSpan _heartbeatInterval;
     private readonly JobCancellationRegistry _jobCancellationRegistry;
 
     public MonitoringJobProcessingService(
@@ -25,7 +28,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         IOptions<MonitoringJobsOptions> options,
         ILogger<MonitoringJobProcessingService> logger,
         JobCancellationRegistry jobCancellationRegistry)
-        : this(scopeFactory, options, logger, DefaultIdleDelay, jobCancellationRegistry)
+        : this(scopeFactory, options, logger, DefaultIdleDelay, null, jobCancellationRegistry)
     {
     }
 
@@ -34,12 +37,14 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         IOptions<MonitoringJobsOptions> options,
         ILogger<MonitoringJobProcessingService> logger,
         TimeSpan idleDelay,
+        TimeSpan? heartbeatInterval = null,
         JobCancellationRegistry? jobCancellationRegistry = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _options = options.Value;
         _idleDelay = idleDelay;
+        _heartbeatInterval = heartbeatInterval ?? BuildHeartbeatInterval(_options);
         _jobCancellationRegistry = jobCancellationRegistry ?? new JobCancellationRegistry();
     }
 
@@ -58,13 +63,46 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                     using var scope = _scopeFactory.CreateScope();
                     var repository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
                     var staleTimeout = TimeSpan.FromSeconds(_options.JobRunningStaleTimeoutSeconds);
-                    var expiredCount = await repository.ExpireStaleRunningMonitoringJobsAsync(staleTimeout, StaleRunningJobErrorMessage, stoppingToken);
+
+                    int expiredCount;
+                    try
+                    {
+                        expiredCount = await ExpireStaleRunningJobsAsync(repository, staleTimeout, stoppingToken);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogProcessorException(ex, "processing loop stale-expiry");
+                        _logger.LogError(AppLogEvents.MonitoringProcessorBackgroundFailed, ex,
+                            "Monitoring job processing loop failed during stale-job expiry. Retrying after delay.");
+                        await Task.Delay(_idleDelay, stoppingToken);
+                        continue;
+                    }
+
                     if (expiredCount > 0)
                     {
                         _logger.LogWarning("Marked {ExpiredCount} stale monitoring job(s) as failed.", expiredCount);
                     }
 
-                    job = await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, stoppingToken);
+                    try
+                    {
+                        job = await TryTakeNextMonitoringJobAsync(repository, stoppingToken);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogProcessorException(ex, "processing loop take-next");
+                        _logger.LogError(AppLogEvents.MonitoringProcessorBackgroundFailed, ex,
+                            "Monitoring job processing loop failed while claiming the next job. Retrying after delay.");
+                        await Task.Delay(_idleDelay, stoppingToken);
+                        continue;
+                    }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -95,10 +133,38 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         _logger.LogInformation("Monitoring job processing service stopped.");
     }
 
+    private async Task<int> ExpireStaleRunningJobsAsync(IMonitoringJobRepository repository, TimeSpan staleTimeout, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            return await repository.ExpireStaleRunningMonitoringJobsAsync(staleTimeout, StaleRunningJobErrorMessage, cancellationToken);
+        }
+        finally
+        {
+            LogSlowPollStage("stale-expiry", stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    private async Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(IMonitoringJobRepository repository, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            return await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, cancellationToken);
+        }
+        finally
+        {
+            LogSlowPollStage("take-next", stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     private async Task ProcessJobAsync(MonitoringJobRecord job, CancellationToken cancellationToken)
     {
         using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _jobCancellationRegistry.RegisterMonitoringJob(job.JobId, jobCancellation);
+        CancellationTokenSource? heartbeatLoopCts = null;
+        Task? heartbeatLoopTask = null;
 
         try
         {
@@ -123,6 +189,9 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                 return;
             }
 
+            heartbeatLoopCts = CancellationTokenSource.CreateLinkedTokenSource(jobCancellation.Token);
+            heartbeatLoopTask = KeepHeartbeatAliveAsync(repository, job.JobId, heartbeatLoopCts.Token);
+
             var payload = await executor.ExecuteAsync(job, jobCancellation.Token);
             if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
@@ -137,21 +206,28 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                 return;
             }
 
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            heartbeatLoopCts = null;
+            heartbeatLoopTask = null;
+
             await repository.MarkMonitoringJobCompletedAsync(job.JobId, jobCancellation.Token);
 
             _logger.LogInformation("Monitoring job {JobId} completed.", job.JobId);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             throw;
         }
         catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
         {
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             _logger.LogInformation("Monitoring job {JobId} cancellation was requested.", job.JobId);
             await EnsureMonitoringJobMarkedCancelledAsync(job.JobId, cancellationToken);
         }
         catch (Exception ex)
         {
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             LogProcessorException(ex, $"job {job.JobId}");
             _logger.LogError(AppLogEvents.MonitoringProcessorBackgroundFailed, ex, "Monitoring job {JobId} failed.", job.JobId);
 
@@ -198,8 +274,65 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         }
         finally
         {
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             _jobCancellationRegistry.UnregisterMonitoringJob(job.JobId, jobCancellation);
         }
+    }
+
+    private async Task KeepHeartbeatAliveAsync(IMonitoringJobRepository repository, long jobId, CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(_heartbeatInterval);
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                try
+                {
+                    await repository.HeartbeatMonitoringJobAsync(jobId, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    LogProcessorException(ex, $"job {jobId} heartbeat");
+                    _logger.LogWarning(ex, "Heartbeat update failed for monitoring job {JobId}. Will retry while the job remains active.", jobId);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private static async Task StopHeartbeatLoopAsync(CancellationTokenSource? heartbeatLoopCts, Task? heartbeatLoopTask)
+    {
+        if (heartbeatLoopCts is null || heartbeatLoopTask is null)
+        {
+            return;
+        }
+
+        heartbeatLoopCts.Cancel();
+
+        try
+        {
+            await heartbeatLoopTask;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            heartbeatLoopCts.Dispose();
+        }
+    }
+
+    private static TimeSpan BuildHeartbeatInterval(MonitoringJobsOptions options)
+    {
+        var seconds = Math.Clamp(options.JobRunningStaleTimeoutSeconds / 3, 5, 30);
+        return TimeSpan.FromSeconds(seconds);
     }
 
     private static async Task<bool> IsJobActiveAsync(IMonitoringJobRepository repository, long jobId, CancellationToken cancellationToken)
@@ -261,5 +394,18 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                 sqlException.State,
                 sqlException.Class);
         }
+    }
+
+    private void LogSlowPollStage(string stage, long elapsedMilliseconds)
+    {
+        if (elapsedMilliseconds < SlowPollStageThresholdMilliseconds)
+        {
+            return;
+        }
+
+        _logger.LogWarning(
+            "Monitoring job processing poll stage {Stage} took {ElapsedMs} ms.",
+            stage,
+            elapsedMilliseconds);
     }
 }
