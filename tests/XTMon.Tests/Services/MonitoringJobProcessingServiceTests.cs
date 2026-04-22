@@ -584,6 +584,74 @@ public class MonitoringJobProcessingServiceTests
     }
 
     [Fact]
+    public async Task LongRunningJob_HeartbeatLoopUsesSeparateScope()
+    {
+        var heartbeatCount = 0;
+        var repeatedHeartbeatTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseJobTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var createdScopeCount = 0;
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey);
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.HeartbeatMonitoringJobAsync(1L, It.IsAny<CancellationToken>()))
+            .Callback(() =>
+            {
+                heartbeatCount++;
+                if (heartbeatCount >= 3)
+                {
+                    repeatedHeartbeatTcs.TrySetResult(true);
+                }
+            })
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(1L, It.IsAny<CancellationToken>()))
+            .Callback(() => completedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            async (_, _) =>
+            {
+                await releaseJobTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return payload;
+            });
+
+        var sp = new Mock<IServiceProvider>();
+        sp.Setup(p => p.GetService(typeof(IMonitoringJobRepository))).Returns(repo.Object);
+        sp.Setup(p => p.GetService(typeof(IEnumerable<IMonitoringJobExecutor>))).Returns(new[] { executor });
+
+        var scope = new Mock<IServiceScope>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        scope.Setup(s => s.Dispose());
+
+        var factory = new Mock<IServiceScopeFactory>();
+        factory.Setup(f => f.CreateScope())
+            .Callback(() => Interlocked.Increment(ref createdScopeCount))
+            .Returns(scope.Object);
+
+        var service = new MonitoringJobProcessingService(
+            factory.Object,
+            CreateOptions(),
+            NullLogger<MonitoringJobProcessingService>.Instance,
+            TimeSpan.FromMilliseconds(10),
+            TimeSpan.FromMilliseconds(20));
+
+        await service.StartAsync(CancellationToken.None);
+
+        await repeatedHeartbeatTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(Volatile.Read(ref createdScopeCount) >= 3);
+
+        releaseJobTcs.TrySetResult(true);
+
+        await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task WhenMonitoringJobIsCancelled_DoesNotMarkCompleted()
     {
         var heartbeatTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);

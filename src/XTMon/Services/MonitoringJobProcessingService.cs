@@ -253,7 +253,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             }
 
             heartbeatLoopCts = CancellationTokenSource.CreateLinkedTokenSource(jobCancellation.Token);
-            heartbeatLoopTask = KeepHeartbeatAliveAsync(repository, job.JobId, heartbeatLoopCts.Token);
+            heartbeatLoopTask = KeepHeartbeatAliveAsync(job.JobId, heartbeatLoopCts.Token);
 
             var payload = await executor.ExecuteAsync(job, jobCancellation.Token);
             if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
@@ -342,8 +342,10 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         }
     }
 
-    private async Task KeepHeartbeatAliveAsync(IMonitoringJobRepository repository, long jobId, CancellationToken cancellationToken)
+    private async Task KeepHeartbeatAliveAsync(long jobId, CancellationToken cancellationToken)
     {
+        using var scope = _scopeFactory.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
         using var timer = new PeriodicTimer(_heartbeatInterval);
 
         try

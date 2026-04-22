@@ -688,7 +688,8 @@ BEGIN
            [FailedAt] = NULL,
            [ErrorMessage] = NULL,
            [LastHeartbeatAt] = SYSUTCDATETIME()
-     WHERE [JobId] = @JobId;
+      WHERE [JobId] = @JobId
+         AND [Status] IN ('Running', 'Queued');
 END
 GO
 
@@ -705,7 +706,8 @@ BEGIN
            [CompletedAt] = NULL,
            [ErrorMessage] = @ErrorMessage,
            [LastHeartbeatAt] = SYSUTCDATETIME()
-     WHERE [JobId] = @JobId;
+      WHERE [JobId] = @JobId
+         AND [Status] IN ('Running', 'Queued');
 END
 GO
 
