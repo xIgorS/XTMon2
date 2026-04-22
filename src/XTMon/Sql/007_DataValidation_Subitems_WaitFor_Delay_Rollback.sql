@@ -61,10 +61,12 @@ USE ' + QUOTENAME(@DatabaseName) + N';
 
 DECLARE @ObjectName nvarchar(517) = N''[' + REPLACE(@SchemaName, '''', '''''') + N'].[' + REPLACE(@ProcedureName, '''', '''''') + N']'';
 DECLARE @Definition nvarchar(max) = OBJECT_DEFINITION(OBJECT_ID(@ObjectName));
+DECLARE @ErrorMessage nvarchar(2048);
 
 IF @Definition IS NULL
 BEGIN
-    THROW 50011, N''Unable to load definition for '' + @ObjectName + N'' from database ' + REPLACE(@DatabaseName, '''', '''''') + N'.'', 1;
+    SET @ErrorMessage = N''Unable to load definition for '' + @ObjectName + N'' from database '' + DB_NAME() + N''.'';
+    ;THROW 50011, @ErrorMessage, 1;
 END;
 
 IF @Definition NOT LIKE N''%XTMon WAITFOR delay injection%''
@@ -89,21 +91,24 @@ SET @MarkerIndex = CHARINDEX(@Marker, @Altered);
 
 IF @MarkerIndex <= 0
 BEGIN
-    THROW 50012, N''Unable to locate rollback marker for '' + @ObjectName + N'' in database ' + REPLACE(@DatabaseName, '''', '''''') + N'.'', 1;
+    SET @ErrorMessage = N''Unable to locate rollback marker for '' + @ObjectName + N'' in database '' + DB_NAME() + N''.'';
+    ;THROW 50012, @ErrorMessage, 1;
 END;
 
 SET @WaitForIndex = CHARINDEX(N''WAITFOR DELAY'', @Altered, @MarkerIndex);
 
 IF @WaitForIndex <= 0
 BEGIN
-    THROW 50013, N''Unable to locate WAITFOR DELAY after rollback marker for '' + @ObjectName + N'' in database ' + REPLACE(@DatabaseName, '''', '''''') + N'.'', 1;
+    SET @ErrorMessage = N''Unable to locate WAITFOR DELAY after rollback marker for '' + @ObjectName + N'' in database '' + DB_NAME() + N''.'';
+    ;THROW 50013, @ErrorMessage, 1;
 END;
 
 SET @SemicolonIndex = CHARINDEX(N'';'', @Altered, @WaitForIndex);
 
 IF @SemicolonIndex <= 0
 BEGIN
-    THROW 50014, N''Unable to locate the end of the injected WAITFOR statement for '' + @ObjectName + N'' in database ' + REPLACE(@DatabaseName, '''', '''''') + N'.'', 1;
+    SET @ErrorMessage = N''Unable to locate the end of the injected WAITFOR statement for '' + @ObjectName + N'' in database '' + DB_NAME() + N''.'';
+    ;THROW 50014, @ErrorMessage, 1;
 END;
 
 SET @RemovalLength = @SemicolonIndex - @MarkerIndex + 1;

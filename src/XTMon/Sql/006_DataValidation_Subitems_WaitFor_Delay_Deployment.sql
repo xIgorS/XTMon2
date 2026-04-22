@@ -5,7 +5,7 @@ DECLARE @DelayMinutes int = 1;
 
 IF @DelayMinutes NOT BETWEEN 1 AND 10
 BEGIN
-    THROW 50000, 'DelayMinutes must be between 1 and 10.', 1;
+    ;THROW 50000, 'DelayMinutes must be between 1 and 10.', 1;
 END;
 
 DECLARE @DelayLiteral char(8) = CONCAT('00:', RIGHT(CONCAT('0', CONVERT(varchar(2), @DelayMinutes)), 2), ':00');
@@ -78,10 +78,12 @@ DECLARE @HasExecuteParameter bit = CASE
         WHERE object_id = OBJECT_ID(@ObjectName)
           AND name = N''@Execute''
     ) THEN 1 ELSE 0 END;
+DECLARE @ErrorMessage nvarchar(2048);
 
 IF @Definition IS NULL
 BEGIN
-    THROW 50001, N''Unable to load definition for '' + @ObjectName + N'' from database ' + REPLACE(@DatabaseName, '''', '''''') + N'.'', 1;
+    SET @ErrorMessage = N''Unable to load definition for '' + @ObjectName + N'' from database '' + DB_NAME() + N''.'';
+    ;THROW 50001, @ErrorMessage, 1;
 END;
 
 IF @Definition LIKE N''%XTMon WAITFOR delay injection%''
@@ -107,7 +109,8 @@ SET @BeginIndex = CASE WHEN @AsIndex > 0 THEN CHARINDEX(N''BEGIN'', @UpperDefini
 
 IF @BeginIndex <= 0
 BEGIN
-    THROW 50002, N''Unable to locate BEGIN block for '' + @ObjectName + N'' in database ' + REPLACE(@DatabaseName, '''', '''''') + N'.'', 1;
+    SET @ErrorMessage = N''Unable to locate BEGIN block for '' + @ObjectName + N'' in database '' + DB_NAME() + N''.'';
+    ;THROW 50002, @ErrorMessage, 1;
 END;
 
 SET @Injection = CHAR(13) + CHAR(10)
