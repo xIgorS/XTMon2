@@ -30,6 +30,7 @@ TestResults/
 
 # Publish output
 publish/
+artifacts/
 
 # Tool binaries
 tailwindcss.exe

@@ -74,8 +74,8 @@ public partial class Adjustments : ComponentBase, IDisposable
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await LoadPnlDatesAsync();
         await LoadSourceSystemsAsync();
     }
 

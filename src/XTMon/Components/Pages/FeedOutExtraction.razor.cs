@@ -87,8 +87,8 @@ public partial class FeedOutExtraction : ComponentBase, IDisposable
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await LoadPnlDatesAsync();
     }
 
     private async Task LoadPnlDatesAsync()

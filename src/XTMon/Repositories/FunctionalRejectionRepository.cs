@@ -237,27 +237,7 @@ public sealed class FunctionalRejectionRepository : IFunctionalRejectionReposito
     }
 
     private string ResolveDetailConnectionStringName(string dbConnection)
-    {
-        if (string.IsNullOrWhiteSpace(dbConnection))
-        {
-            throw new InvalidOperationException("Functional Rejection dbconnexion value is required.");
-        }
-
-        var normalized = dbConnection.Trim();
-        if (string.Equals(normalized, "DTM", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(normalized, "DTM_FI", StringComparison.OrdinalIgnoreCase))
-        {
-            return _options.DtmConnectionStringName;
-        }
-
-        if (string.Equals(normalized, "STAGING", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(normalized, "STAGING_FI_ALMT", StringComparison.OrdinalIgnoreCase))
-        {
-            return _options.StagingConnectionStringName;
-        }
-
-        throw new InvalidOperationException($"Unsupported Functional Rejection dbconnexion value '{dbConnection}'.");
-    }
+        => _options.ResolveDetailConnectionStringName(dbConnection);
 
     private static async Task<TechnicalRejectColumn[]> ReadTechnicalRejectColumnsAsync(SqlDataReader reader, CancellationToken cancellationToken)
     {

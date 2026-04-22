@@ -62,8 +62,8 @@ public partial class ResultTransfer : ComponentBase, IDisposable
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await LoadPnlDatesAsync();
     }
 
     private async Task LoadPnlDatesAsync()

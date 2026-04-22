@@ -91,8 +91,8 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadCobDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await LoadCobDatesAsync();
         await RestoreLatestJobAsync();
         StartPollingIfNeeded();
     }

@@ -120,8 +120,8 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await LoadPnlDatesAsync();
         await LoadDataAsync(selectedPnlDate, replayFlowSet: null);
         await LoadStatusAsync();
         StartPollingIfNeeded();

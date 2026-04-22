@@ -25,7 +25,7 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
         new("Ytd Amount HO", ["YtdAmountHO", "Ytd Amount HO"]),
         new("Mtd Amount Paradigm", ["MtdAmountParadigm", "Mtd Amount Paradigm"]),
         new("Qtd Amount Paradigm", ["QtdAmountParadigm", "Qtd Amount Paradigm"]),
-        new("Ydt Amount Paradigm", ["YtdAmountParadigm", "Ydt Amount Paradigm", "Ytd Amount Paradigm"]),
+        new("Ytd Amount Paradigm", ["YtdAmountParadigm", "Ydt Amount Paradigm", "Ytd Amount Paradigm"]),
         new("Jv Check Balance", ["JvCheckBalance", "JvCheck", "Jv Check Balance"])
     ];
 
@@ -75,8 +75,8 @@ public partial class JvBalanceConsistency : ComponentBase, IDisposable
     protected override async Task OnInitializedAsync()
     {
         precisionText = JvBalanceConsistencyOptions.Value.Precision.ToString("0.00", CultureInfo.InvariantCulture);
-        await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await LoadPnlDatesAsync();
     }
 
     private async Task LoadPnlDatesAsync()

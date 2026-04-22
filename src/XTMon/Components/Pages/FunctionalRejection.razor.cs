@@ -107,8 +107,8 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadPnlDatesAsync();
         PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await LoadPnlDatesAsync();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -118,6 +118,22 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         if (!HasValidSelection)
         {
             selectionError = "Choose a Functional Rejection submenu item from the navigation menu.";
+            runError = null;
+            validationError = null;
+            hasRun = false;
+            result = null;
+            parsedQuery = string.Empty;
+            lastAutoLoadKey = null;
+            return;
+        }
+
+        try
+        {
+            FunctionalRejectionOptions.Value.ResolveDetailConnectionStringName(DbConnection);
+        }
+        catch (InvalidOperationException ex)
+        {
+            selectionError = ex.Message;
             runError = null;
             validationError = null;
             hasRun = false;
@@ -362,13 +378,14 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
 
     private string ResolveDetailConnectionStringName()
     {
-        if (string.Equals(DbConnection, "DTM", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(DbConnection, "DTM_FI", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            return FunctionalRejectionOptions.Value.DtmConnectionStringName;
+            return FunctionalRejectionOptions.Value.ResolveDetailConnectionStringName(DbConnection);
         }
-
-        return FunctionalRejectionOptions.Value.StagingConnectionStringName;
+        catch (InvalidOperationException)
+        {
+            return "?";
+        }
     }
 
     private static string GetColumnAlignmentClass(string columnName) => JvCalculationHelper.GetColumnAlignmentClass(columnName);

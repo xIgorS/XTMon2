@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using XTMon.Infrastructure;
 using XTMon.Models;
 using XTMon.Repositories;
+using XTMon.Services;
 
 namespace XTMon.Components.Layout;
 
@@ -19,6 +20,9 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
     [Inject]
     private ILogger<FunctionalRejectionNav> Logger { get; set; } = default!;
+
+    [Inject]
+    private PnlDateState PnlDateState { get; set; } = default!;
 
     [Parameter]
     public bool IsOpen { get; set; }
@@ -70,9 +74,20 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
     private string GetItemHref(FunctionalRejectionMenuItem item)
     {
-        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        var query = QueryHelpers.ParseQuery(uri.Query);
-        query.TryGetValue("pnlDate", out var pnlDate);
+        string? pnlDate = null;
+        if (PnlDateState.IsLoaded && PnlDateState.SelectedDate.HasValue)
+        {
+            pnlDate = PnlDateState.SelectedDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+            var query = QueryHelpers.ParseQuery(uri.Query);
+            if (query.TryGetValue("pnlDate", out var urlPnlDate) && !string.IsNullOrWhiteSpace(urlPnlDate.ToString()))
+            {
+                pnlDate = urlPnlDate.ToString();
+            }
+        }
 
         return QueryHelpers.AddQueryString(
             "functional-rejection",
@@ -82,7 +97,7 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
                 ["businessDatatypeId"] = item.BusinessDataTypeId.ToString(CultureInfo.InvariantCulture),
                 ["sourceSystemName"] = item.SourceSystemName,
                 ["dbConnection"] = item.DbConnection,
-                ["pnlDate"] = pnlDate.ToString()
+                ["pnlDate"] = pnlDate
             });
     }
 
