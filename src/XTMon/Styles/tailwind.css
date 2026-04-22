@@ -162,6 +162,14 @@
     color: var(--nav-text);
   }
 
+  .nav-link__content {
+    @apply flex w-full min-w-0 items-center justify-between gap-2;
+  }
+
+  .nav-link__text {
+    @apply truncate;
+  }
+
   .nav-link:hover {
     color: var(--nav-text-hover);
     background-color: var(--nav-hover-bg);

@@ -26,14 +26,14 @@
     </AuthorizeView>
     <details class="group flex flex-col gap-1" open="@IsDataValidationRoute">
         <summary class="nav-link list-none justify-between @(IsDataValidationRoute ? "nav-link-active" : string.Empty)">
-            <span class="flex items-center gap-3">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 shrink-0">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 5.25h15A2.25 2.25 0 0 1 21.75 7.5v9A2.25 2.25 0 0 1 19.5 18.75h-15A2.25 2.25 0 0 1 2.25 16.5v-9A2.25 2.25 0 0 1 4.5 5.25Zm3 3.75h9m-9 3h9m-9 3h5.25" />
-                </svg>
-                Data Validation
-                @{
-                    var dataValidationAggregate = GetDataValidationAggregateState();
-                }
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 shrink-0">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 5.25h15A2.25 2.25 0 0 1 21.75 7.5v9A2.25 2.25 0 0 1 19.5 18.75h-15A2.25 2.25 0 0 1 2.25 16.5v-9A2.25 2.25 0 0 1 4.5 5.25Zm3 3.75h9m-9 3h9m-9 3h5.25" />
+            </svg>
+            @{
+                var dataValidationAggregate = GetDataValidationAggregateState();
+            }
+            <span class="nav-link__content">
+                <span class="nav-link__text">Data Validation</span>
                 <span class="@GetMainMenuIndicatorClass(dataValidationAggregate)" aria-hidden="true"></span>
                 <span class="sr-only">@GetMainMenuIndicatorDescription(dataValidationAggregate)</span>
             </span>

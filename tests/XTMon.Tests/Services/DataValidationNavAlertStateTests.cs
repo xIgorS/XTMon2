@@ -10,6 +10,7 @@ namespace XTMon.Tests.Services;
 public class DataValidationNavAlertStateTests
 {
     private static readonly DateOnly TestDate = new(2026, 4, 21);
+    private static readonly DateOnly OtherDate = new(2026, 4, 20);
 
     [Fact]
     public async Task RefreshAsync_LoadsSelectedDateAlerts()
@@ -67,14 +68,32 @@ public class DataValidationNavAlertStateTests
         Assert.Equal(1, changeNotifications);
     }
 
-    private static MonitoringJobRecord CreateJob(string submenuKey, string status)
+    [Fact]
+    public void ApplyStatuses_IgnoresJobsFromOtherPnlDates()
+    {
+        var state = new DataValidationNavAlertState(
+            new PnlDateState(),
+            Mock.Of<IJvCalculationRepository>(),
+            Mock.Of<IMonitoringJobRepository>(),
+            NullLogger<DataValidationNavAlertState>.Instance);
+
+        state.ApplyStatuses(TestDate, [
+            CreateJob("batch-status", "Completed", TestDate),
+            CreateJob("future-cash", "Failed", OtherDate)
+        ]);
+
+        Assert.Equal(DataValidationNavRunState.Succeeded, state.GetStatus("batch-status"));
+        Assert.Equal(DataValidationNavRunState.NotRun, state.GetStatus("future-cash"));
+    }
+
+    private static MonitoringJobRecord CreateJob(string submenuKey, string status, DateOnly? pnlDate = null)
     {
         return new MonitoringJobRecord(
             JobId: 1,
             Category: MonitoringJobHelper.DataValidationCategory,
             SubmenuKey: submenuKey,
             DisplayName: submenuKey,
-            PnlDate: TestDate,
+            PnlDate: pnlDate ?? TestDate,
             Status: status,
             WorkerId: null,
             ParametersJson: null,

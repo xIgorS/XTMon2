@@ -1,13 +1,13 @@
 <details class="group flex flex-col gap-1" open="@IsOpen">
     <summary class="nav-link list-none justify-between @(IsOpen ? "nav-link-active" : string.Empty)">
-        <span class="flex items-center gap-3">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 shrink-0">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h10.5m-10.5 4.5h16.5m-16.5 4.5h10.5M15 5.25l6 6-6 6" />
-            </svg>
-            Functional Rejection
-            @{
-                var aggregateStatus = GetAggregateStatus();
-            }
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 shrink-0">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h10.5m-10.5 4.5h16.5m-16.5 4.5h10.5M15 5.25l6 6-6 6" />
+        </svg>
+        @{
+            var aggregateStatus = GetAggregateStatus();
+        }
+        <span class="nav-link__content">
+            <span class="nav-link__text">Functional Rejection</span>
             <span class="@GetAggregateIndicatorClass(aggregateStatus)" aria-hidden="true"></span>
             <span class="sr-only">@GetAggregateIndicatorDescription(aggregateStatus)</span>
         </span>
