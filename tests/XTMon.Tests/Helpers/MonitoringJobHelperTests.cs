@@ -31,10 +31,57 @@ public class MonitoringJobHelperTests
             new TechnicalRejectColumn("Amount", "decimal")
         };
 
-        var json = MonitoringJobHelper.SerializeTechnicalRejectColumns(columns);
+        var json = MonitoringJobHelper.SerializeTechnicalRejectColumns(columns, hasAlerts: true);
         var roundTrip = MonitoringJobHelper.DeserializeTechnicalRejectColumns(json);
 
         Assert.Equal(columns, roundTrip);
+    }
+
+    [Fact]
+    public void SerializeTechnicalRejectColumns_ReturnsNullForEmptyWithNoAlerts()
+    {
+        var json = MonitoringJobHelper.SerializeTechnicalRejectColumns(Array.Empty<TechnicalRejectColumn>(), hasAlerts: false);
+
+        Assert.Null(json);
+    }
+
+    [Fact]
+    public void SerializeTechnicalRejectColumns_IncludesHasAlertsFlag()
+    {
+        var columns = new[] { new TechnicalRejectColumn("Col", "int") };
+
+        var json = MonitoringJobHelper.SerializeTechnicalRejectColumns(columns, hasAlerts: true);
+
+        Assert.NotNull(json);
+        Assert.True(MonitoringJobHelper.TryGetHasAlertsFromMetadata(json, out var hasAlerts));
+        Assert.True(hasAlerts);
+    }
+
+    [Fact]
+    public void DeserializeTechnicalRejectColumns_HandlesLegacyArrayFormat()
+    {
+        var legacyJson = "[{\"Name\":\"TradeDate\",\"TypeName\":\"date\"}]";
+
+        var result = MonitoringJobHelper.DeserializeTechnicalRejectColumns(legacyJson);
+
+        Assert.Single(result);
+        Assert.Equal("TradeDate", result[0].Name);
+    }
+
+    [Fact]
+    public void TryGetHasAlertsFromMetadata_ReturnsFalseForLegacyArrayFormat()
+    {
+        var legacyJson = "[{\"Name\":\"TradeDate\",\"TypeName\":\"date\"}]";
+
+        Assert.False(MonitoringJobHelper.TryGetHasAlertsFromMetadata(legacyJson, out _));
+    }
+
+    [Fact]
+    public void TryGetHasAlertsFromMetadata_ReturnsFalseForMalformedJson()
+    {
+        Assert.False(MonitoringJobHelper.TryGetHasAlertsFromMetadata("not-json", out _));
+        Assert.False(MonitoringJobHelper.TryGetHasAlertsFromMetadata(null, out _));
+        Assert.False(MonitoringJobHelper.TryGetHasAlertsFromMetadata(string.Empty, out _));
     }
 
     [Fact]

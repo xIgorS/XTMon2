@@ -1,4 +1,3 @@
-using System.Text.Json;
 using XTMon.Models;
 
 namespace XTMon.Helpers;
@@ -105,32 +104,13 @@ internal static class DataValidationNavAlertHelper
 
     private static bool HasAlertCondition(MonitoringJobRecord job)
     {
-        if (!string.IsNullOrEmpty(job.MetadataJson) && TryGetPreComputedHasAlerts(job.MetadataJson, out var preComputed))
+        if (MonitoringJobHelper.TryGetHasAlertsFromMetadata(job.MetadataJson, out var preComputed))
         {
             return preComputed;
         }
 
         var table = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
         return ComputeHasAlerts(job.SubmenuKey, table);
-    }
-
-    private static bool TryGetPreComputedHasAlerts(string metadataJson, out bool hasAlerts)
-    {
-        hasAlerts = false;
-        try
-        {
-            using var doc = JsonDocument.Parse(metadataJson);
-            if (doc.RootElement.TryGetProperty("hasAlerts", out var prop) &&
-                (prop.ValueKind == JsonValueKind.True || prop.ValueKind == JsonValueKind.False))
-            {
-                hasAlerts = prop.GetBoolean();
-                return true;
-            }
-        }
-        catch (JsonException)
-        {
-        }
-        return false;
     }
 
     private static bool HasColumnValue(MonitoringTableResult? table, string columnName, Func<string, bool> predicate)

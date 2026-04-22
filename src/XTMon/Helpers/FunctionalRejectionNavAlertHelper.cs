@@ -18,6 +18,11 @@ internal static class FunctionalRejectionNavAlertHelper
 
         if (string.Equals(job.Status, "Completed", StringComparison.OrdinalIgnoreCase) || job.CompletedAt is not null)
         {
+            if (MonitoringJobHelper.TryGetHasAlertsFromMetadata(job.MetadataJson, out var hasAlerts))
+            {
+                return hasAlerts ? DataValidationNavRunState.Alert : DataValidationNavRunState.Succeeded;
+            }
+
             var table = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
             return table is { Rows.Count: > 0 }
                 ? DataValidationNavRunState.Alert

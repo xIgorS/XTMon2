@@ -11,6 +11,7 @@ namespace XTMon.Services;
 public sealed class MonitoringJobProcessingService : BackgroundService
 {
     private static readonly TimeSpan DefaultIdleDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MarkStateShutdownGrace = TimeSpan.FromSeconds(10);
     private const string StaleRunningJobErrorMessage = "Monitoring background job timed out while in Running status and was auto-failed.";
 
     private readonly IServiceScopeFactory _scopeFactory;
@@ -107,7 +108,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             var executor = executors.FirstOrDefault(candidate => candidate.CanExecute(job))
                 ?? throw new InvalidOperationException($"No monitoring executor is registered for category '{job.Category}' and submenu '{job.SubmenuKey}'.");
 
-            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
                 _logger.LogInformation("Skipping monitoring job {JobId} because it is no longer active.", job.JobId);
                 return;
@@ -116,21 +117,21 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             _logger.LogInformation("Processing monitoring job {JobId} for {Category}/{SubmenuKey}, pnl date {PnlDate}.", job.JobId, job.Category, job.SubmenuKey, job.PnlDate);
 
             await repository.HeartbeatMonitoringJobAsync(job.JobId, jobCancellation.Token);
-            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
                 _logger.LogInformation("Stopping monitoring job {JobId} after heartbeat because it is no longer active.", job.JobId);
                 return;
             }
 
             var payload = await executor.ExecuteAsync(job, jobCancellation.Token);
-            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
                 _logger.LogInformation("Discarding monitoring job {JobId} result because the job was cancelled or otherwise finalized.", job.JobId);
                 return;
             }
 
             await repository.SaveMonitoringJobResultAsync(job.JobId, payload, jobCancellation.Token);
-            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
                 _logger.LogInformation("Skipping completion for monitoring job {JobId} because it is no longer active.", job.JobId);
                 return;
@@ -147,29 +148,50 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
         {
             _logger.LogInformation("Monitoring job {JobId} cancellation was requested.", job.JobId);
-            await EnsureMonitoringJobMarkedCancelledAsync(job.JobId);
+            await EnsureMonitoringJobMarkedCancelledAsync(job.JobId, cancellationToken);
         }
         catch (Exception ex)
         {
             LogProcessorException(ex, $"job {job.JobId}");
             _logger.LogError(AppLogEvents.MonitoringProcessorBackgroundFailed, ex, "Monitoring job {JobId} failed.", job.JobId);
 
+            using var markFailedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            markFailedCts.CancelAfter(MarkStateShutdownGrace);
+
             for (var attempt = 1; attempt <= 2; attempt++)
             {
+                if (markFailedCts.IsCancellationRequested)
+                {
+                    _logger.LogWarning("Skipping remaining mark-failed attempts for monitoring job {JobId} because shutdown or grace period was reached; stale-job expiry will reclaim it.", job.JobId);
+                    break;
+                }
+
                 try
                 {
                     using var scope = _scopeFactory.CreateScope();
                     var repository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
-                    await repository.MarkMonitoringJobFailedAsync(job.JobId, ex.Message, CancellationToken.None);
+                    await repository.MarkMonitoringJobFailedAsync(job.JobId, ex.Message, markFailedCts.Token);
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("Mark-failed for monitoring job {JobId} was cancelled; stale-job expiry will reclaim it.", job.JobId);
                     break;
                 }
                 catch (Exception markFailedException)
                 {
                     _logger.LogError(AppLogEvents.MonitoringProcessorBackgroundFailed, markFailedException,
                         "Failed to mark monitoring job {JobId} as failed (attempt {Attempt}/2).", job.JobId, attempt);
-                    if (attempt < 2)
+                    if (attempt < 2 && !markFailedCts.IsCancellationRequested)
                     {
-                        await Task.Delay(TimeSpan.FromSeconds(2));
+                        try
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(2), markFailedCts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            break;
+                        }
                     }
                 }
             }
@@ -186,18 +208,25 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         return currentJob is not null && MonitoringJobHelper.IsActiveStatus(currentJob.Status);
     }
 
-    private async Task EnsureMonitoringJobMarkedCancelledAsync(long jobId)
+    private async Task EnsureMonitoringJobMarkedCancelledAsync(long jobId, CancellationToken cancellationToken)
     {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(MarkStateShutdownGrace);
+
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var repository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
-            if (!await IsJobActiveAsync(repository, jobId, CancellationToken.None))
+            if (!await IsJobActiveAsync(repository, jobId, cts.Token))
             {
                 return;
             }
 
-            await repository.MarkMonitoringJobFailedAsync(jobId, BackgroundJobCancellationService.MonitoringJobCanceledMessage, CancellationToken.None);
+            await repository.MarkMonitoringJobFailedAsync(jobId, BackgroundJobCancellationService.MonitoringJobCanceledMessage, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Mark-cancelled for monitoring job {JobId} was interrupted; stale-job expiry will reclaim it.", jobId);
         }
         catch (Exception ex)
         {

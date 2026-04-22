@@ -35,6 +35,6 @@ public sealed class FunctionalRejectionMonitoringJobExecutor : IMonitoringJobExe
             Table: new MonitoringTableResult(
                 result.Columns.Select(static column => column.Name).ToArray(),
                 result.Rows),
-            MetadataJson: MonitoringJobHelper.SerializeTechnicalRejectColumns(result.Columns));
+            MetadataJson: MonitoringJobHelper.SerializeTechnicalRejectColumns(result.Columns, hasAlerts: result.Rows.Count > 0));
     }
 }

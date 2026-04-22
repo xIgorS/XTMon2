@@ -56,9 +56,13 @@ internal static class MonitoringJobHelper
         }
     }
 
-    public static string? SerializeTechnicalRejectColumns(IReadOnlyList<TechnicalRejectColumn> columns)
+    public static string? SerializeTechnicalRejectColumns(IReadOnlyList<TechnicalRejectColumn> columns, bool hasAlerts)
     {
-        return columns.Count == 0 ? null : JsonSerializer.Serialize(columns);
+        if (columns.Count == 0 && !hasAlerts)
+        {
+            return null;
+        }
+        return JsonSerializer.Serialize(new { hasAlerts, columns });
     }
 
     public static IReadOnlyList<TechnicalRejectColumn> DeserializeTechnicalRejectColumns(string? json)
@@ -70,12 +74,48 @@ internal static class MonitoringJobHelper
 
         try
         {
-            return JsonSerializer.Deserialize<List<TechnicalRejectColumn>>(json)?.ToArray() ?? Array.Empty<TechnicalRejectColumn>();
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("columns", out var columnsProp))
+            {
+                return columnsProp.Deserialize<List<TechnicalRejectColumn>>()?.ToArray()
+                    ?? Array.Empty<TechnicalRejectColumn>();
+            }
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                return doc.RootElement.Deserialize<List<TechnicalRejectColumn>>()?.ToArray()
+                    ?? Array.Empty<TechnicalRejectColumn>();
+            }
         }
-        catch
+        catch (JsonException)
         {
-            return Array.Empty<TechnicalRejectColumn>();
         }
+        return Array.Empty<TechnicalRejectColumn>();
+    }
+
+    public static bool TryGetHasAlertsFromMetadata(string? metadataJson, out bool hasAlerts)
+    {
+        hasAlerts = false;
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("hasAlerts", out var prop) &&
+                (prop.ValueKind == JsonValueKind.True || prop.ValueKind == JsonValueKind.False))
+            {
+                hasAlerts = prop.GetBoolean();
+                return true;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+        return false;
     }
 
     public static bool IsTerminalStatus(string? status)
