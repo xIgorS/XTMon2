@@ -47,184 +47,184 @@
             </svg>
         </summary>
         <div class="submenu-group">
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="data-validation-runner">
+            <a class="@GetDataValidationRunnerLinkClass()" href="data-validation-runner">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h9.75m-6.75 4.5h10.5M17.25 13.5l1.5 1.5 3-3" />
                 </svg>
                 Run Checks
-            </NavLink>
+            </a>
             <AuthorizeView Policy="UamRestricted">
                 <Authorized>
-                    <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="batch-status">
+                    <a class="@GetDataValidationSubmenuLinkClass("batch-status")" href="batch-status">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h12A2.25 2.25 0 0 0 20.25 14.25V3M3.75 3h16.5M3.75 8.25h16.5M8.25 12h7.5m-7.5 3h4.5M6.75 21h10.5" />
                         </svg>
                         <DataValidationNavLabel Text="Batch Status" Status='@GetDataValidationRunState("batch-status")' />
-                    </NavLink>
+                    </a>
                 </Authorized>
             </AuthorizeView>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="referential-data">
+            <a class="@GetDataValidationSubmenuLinkClass("referential-data")" href="referential-data">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 5.25h15m-15 5.25h9M3.75 5.25A1.5 1.5 0 0 1 5.25 3.75h13.5a1.5 1.5 0 0 1 1.5 1.5v13.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V5.25Z" />
                 </svg>
                 <DataValidationNavLabel Text="Referential Data" Status='@GetDataValidationRunState("referential-data")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="market-data">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("market-data")" href="market-data">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5M6 3.75h12A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6A2.25 2.25 0 0 1 6 3.75Z" />
                 </svg>
                 <DataValidationNavLabel Text="Market Data" Status='@GetDataValidationRunState("market-data")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="pricing-file-reception">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("pricing-file-reception")" href="pricing-file-reception">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 5.25h15A2.25 2.25 0 0 1 21.75 7.5v9A2.25 2.25 0 0 1 19.5 18.75h-15A2.25 2.25 0 0 1 2.25 16.5v-9A2.25 2.25 0 0 1 4.5 5.25Zm3 3h6m-6 3h9m-9 3h5.25" />
                 </svg>
                 <DataValidationNavLabel Text="Pricing File Reception" Status='@GetDataValidationRunState("pricing-file-reception")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="out-of-scope-portfolio">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("out-of-scope-portfolio")" href="out-of-scope-portfolio">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 7.5A2.25 2.25 0 0 1 6.75 5.25h10.5A2.25 2.25 0 0 1 19.5 7.5v9A2.25 2.25 0 0 1 17.25 18.75H6.75A2.25 2.25 0 0 1 4.5 16.5v-9Zm4.5 2.25h6m-6 3h6m-6 3h3" />
                 </svg>
                 <DataValidationNavLabel Text="Out of Scope Portfolio" Status='@GetDataValidationRunState("out-of-scope-portfolio")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="missing-sog-check">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("missing-sog-check")" href="missing-sog-check">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 4.5h9.75m-9.75 4.5h6.75M16.5 8.25l1.5 1.5 3-3m-4.5 8.25 1.5 1.5 3-3M3.75 5.25A1.5 1.5 0 0 1 5.25 3.75h13.5a1.5 1.5 0 0 1 1.5 1.5v13.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V5.25Z" />
                 </svg>
                 <DataValidationNavLabel Text="Missing SOG Check" Status='@GetDataValidationRunState("missing-sog-check")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="adjustment-links-check">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("adjustment-links-check")" href="adjustment-links-check">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 4.5h8.25m-8.25 4.5h5.25m7.5-9 1.5 1.5 3-3m-4.5 7.5h4.5M3.75 5.25A1.5 1.5 0 0 1 5.25 3.75h13.5a1.5 1.5 0 0 1 1.5 1.5v13.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V5.25Z" />
                 </svg>
                 <DataValidationNavLabel Text="Adjustment Links Check" Status='@GetDataValidationRunState("adjustment-links-check")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="column-store-check">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("column-store-check")" href="column-store-check">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 5.25h15A2.25 2.25 0 0 1 21.75 7.5v9A2.25 2.25 0 0 1 19.5 18.75h-15A2.25 2.25 0 0 1 2.25 16.5v-9A2.25 2.25 0 0 1 4.5 5.25Zm3 3h9m-9 3h6m-6 3h9m1.5-9 1.5 1.5m0 0L21 5.25m-3 1.5L16.5 5.25" />
                 </svg>
                 <DataValidationNavLabel Text="Column Store Check" Status='@GetDataValidationRunState("column-store-check")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="trading-vs-fivr-check">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("trading-vs-fivr-check")" href="trading-vs-fivr-check">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 7.5h6.75m-6.75 4.5h6.75m-6.75 4.5h6.75m4.5-9 2.25 2.25m0 0L21 7.5m-3.75 2.25H10.5m4.5 4.5 2.25 2.25m0 0L21 14.25m-3.75 2.25H10.5" />
                 </svg>
                 <DataValidationNavLabel Text="Trading vs Fivr Check" Status='@GetDataValidationRunState("trading-vs-fivr-check")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="mirrorization">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("mirrorization")" href="mirrorization">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 4.5h15m-15 4.5h15M6.75 3.75v16.5m10.5-16.5v16.5" />
                 </svg>
                 <DataValidationNavLabel Text="Mirrorization" Status='@GetDataValidationRunState("mirrorization")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="result-transfer">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("result-transfer")" href="result-transfer">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h7.5m-7.5 4.5h7.5m-7.5 4.5h7.5m9-9-3 3m0 0-3-3m3 3V4.5m-3 12 3-3m0 0 3 3m-3-3v6" />
                 </svg>
                 <DataValidationNavLabel Text="Result Transfer" Status='@GetDataValidationRunState("result-transfer")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="rollovered-portfolios">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("rollovered-portfolios")" href="rollovered-portfolios">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h10.5m-10.5 4.5h10.5m-10.5 4.5h10.5m3-10.5 2.25 2.25M18 8.25l2.25-2.25m-2.25 9.75 2.25 2.25M18 17.25l2.25-2.25" />
                 </svg>
                 <DataValidationNavLabel Text="Rollovered Portfolios" Status='@GetDataValidationRunState("rollovered-portfolios")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="sas-tables">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("sas-tables")" href="sas-tables">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 5.25h15m-15 5.25h15M6 4.5v15m12-15v15" />
                 </svg>
                 <DataValidationNavLabel Text="SAS Tables" Status='@GetDataValidationRunState("sas-tables")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="non-xtg-portfolio">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("non-xtg-portfolio")" href="non-xtg-portfolio">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 7.5A2.25 2.25 0 0 1 6.75 5.25h10.5A2.25 2.25 0 0 1 19.5 7.5v9A2.25 2.25 0 0 1 17.25 18.75H6.75A2.25 2.25 0 0 1 4.5 16.5v-9Zm3.75 2.25h7.5m-7.5 3h7.5m-7.5 3h4.5m-9-12h15" />
                 </svg>
                 <DataValidationNavLabel Text="Non XTG Portfolio" Status='@GetDataValidationRunState("non-xtg-portfolio")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="rejected-xtg-portfolio">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("rejected-xtg-portfolio")" href="rejected-xtg-portfolio">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 7.5A2.25 2.25 0 0 1 6.75 5.25h10.5A2.25 2.25 0 0 1 19.5 7.5v9A2.25 2.25 0 0 1 17.25 18.75H6.75A2.25 2.25 0 0 1 4.5 16.5v-9Zm3.75 2.25h7.5m-7.5 3h4.5m-4.5 3h7.5m2.25-6 1.5 1.5-3 3" />
                 </svg>
                 <DataValidationNavLabel Text="Rejected XTG Portfolio" Status='@GetDataValidationRunState("rejected-xtg-portfolio")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="feedout-extraction">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("feedout-extraction")" href="feedout-extraction">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 4.5h15m-15 4.5h9M4.5 4.5h15a2.25 2.25 0 0 1 2.25 2.25v10.5A2.25 2.25 0 0 1 19.5 19.5h-15a2.25 2.25 0 0 1-2.25-2.25V6.75A2.25 2.25 0 0 1 4.5 4.5Z" />
                 </svg>
                 <DataValidationNavLabel Text="FeedOut Extraction" Status='@GetDataValidationRunState("feedout-extraction")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="future-cash">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("future-cash")" href="future-cash">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m9-9H3m15.75-5.25-1.5 1.5m0 7.5 1.5 1.5m-13.5-9 1.5 1.5m0 7.5-1.5 1.5" />
                 </svg>
                 <DataValidationNavLabel Text="Future Cash" Status='@GetDataValidationRunState("future-cash")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="fact-pv-ca-consistency">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("fact-pv-ca-consistency")" href="fact-pv-ca-consistency">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h9m-9 4.5h9m-9 4.5h9m4.5-8.25a2.25 2.25 0 1 1 0 4.5 2.25 2.25 0 0 1 0-4.5Zm0 7.5a2.25 2.25 0 1 1 0 4.5 2.25 2.25 0 0 1 0-4.5Z" />
                 </svg>
                 <DataValidationNavLabel Text="Fact PV/CA Consistency" Status='@GetDataValidationRunState("fact-pv-ca-consistency")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="multiple-feed-version">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("multiple-feed-version")" href="multiple-feed-version">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h8.25m-8.25 4.5h8.25m-8.25 4.5h8.25m4.5-9v9m-2.25-6.75h4.5m-4.5 4.5h4.5" />
                 </svg>
                 <DataValidationNavLabel Text="Multiple Feed Version" Status='@GetDataValidationRunState("multiple-feed-version")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="daily-balance">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("daily-balance")" href="daily-balance">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.5h16.5M6 8.25h12m-12 4.5h5.25m-5.25 4.5h8.25M3.75 6A1.5 1.5 0 0 1 5.25 4.5h13.5A1.5 1.5 0 0 1 20.25 6v12A1.5 1.5 0 0 1 18.75 19.5H5.25A1.5 1.5 0 0 1 3.75 18V6Z" />
                 </svg>
                 <DataValidationNavLabel Text="Daily Balance" Status='@GetDataValidationRunState("daily-balance")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="adjustments">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("adjustments")" href="adjustments">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h9.75m-6.75 4.5h7.5m3.75-7.5 2.25 2.25-4.5 4.5H15v-2.25l4.5-4.5Z" />
                 </svg>
                 <DataValidationNavLabel Text="Adjustments" Status='@GetDataValidationRunState("adjustments")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="pricing">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("pricing")" href="pricing">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75h19.5m-17.25-9h14.25m-12-4.5h9.75m-3 9v3.75m-3.75-3.75v3.75m7.5-3.75v3.75" />
                 </svg>
                 <DataValidationNavLabel Text="Pricing" Status='@GetDataValidationRunState("pricing")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="reverse-conso-file">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("reverse-conso-file")" href="reverse-conso-file">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5m-16.5 4.5h12m-12 4.5h10.5M6.75 3.75v16.5m10.5-16.5v16.5" />
                 </svg>
                 <DataValidationNavLabel Text="Reverse Conso File" Status='@GetDataValidationRunState("reverse-conso-file")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="publication-consistency">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("publication-consistency")" href="publication-consistency">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 5.25h15A2.25 2.25 0 0 1 21.75 7.5v9A2.25 2.25 0 0 1 19.5 18.75h-15A2.25 2.25 0 0 1 2.25 16.5v-9A2.25 2.25 0 0 1 4.5 5.25Zm3 3h9m-9 3h9m-9 3h6" />
                 </svg>
                 <DataValidationNavLabel Text="Publication Consistency" Status='@GetDataValidationRunState("publication-consistency")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="jv-balance-consistency">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("jv-balance-consistency")" href="jv-balance-consistency">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h10.5m-10.5 5.25h16.5M17.25 9.75v4.5m-2.25-2.25h4.5" />
                 </svg>
                 <DataValidationNavLabel Text="JV Balance Consistency" Status='@GetDataValidationRunState("jv-balance-consistency")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="missing-workflow-check">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("missing-workflow-check")" href="missing-workflow-check">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 5.25h9.75m-9.75 5.25h15M17.25 8.25l1.5 1.5 2.25-2.25" />
                 </svg>
                 <DataValidationNavLabel Text="Missing Workflow Check" Status='@GetDataValidationRunState("missing-workflow-check")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="precalc-monitoring">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("precalc-monitoring")" href="precalc-monitoring">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 5.25h15m-15 4.5h15m-15 4.5h9m-9 4.5h15M17.25 3.75v16.5" />
                 </svg>
                 <DataValidationNavLabel Text="Precalc Monitoring" Status='@GetDataValidationRunState("precalc-monitoring")' />
-            </NavLink>
-            <NavLink class="submenu-link" ActiveClass="submenu-link-active" href="vrdb-status">
+            </a>
+            <a class="@GetDataValidationSubmenuLinkClass("vrdb-status")" href="vrdb-status">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5m-16.5 4.5h10.5m-10.5 4.5h16.5M18 3.75v16.5" />
                 </svg>
                 <DataValidationNavLabel Text="VRDB Status" Status='@GetDataValidationRunState("vrdb-status")' />
-            </NavLink>
+            </a>
         </div>
     </details>
     <FunctionalRejectionNav IsOpen="@IsFunctionalRejectionRoute" />

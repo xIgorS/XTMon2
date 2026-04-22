@@ -306,6 +306,9 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
 
     public async Task<int> ExpireStaleRunningMonitoringJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+        var staleTimeoutSeconds = Math.Max(1, Convert.ToInt32(staleAfter.TotalSeconds, CultureInfo.InvariantCulture));
+
         try
         {
             using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
@@ -316,7 +319,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
 
             command.Parameters.Add(new SqlParameter("@StaleTimeoutSeconds", SqlDbType.Int)
             {
-                Value = Math.Max(1, Convert.ToInt32(staleAfter.TotalSeconds, CultureInfo.InvariantCulture))
+                Value = staleTimeoutSeconds
             });
             command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
             {
@@ -328,10 +331,23 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             await connection.OpenAsync(cancellationToken);
             return await command.ExecuteNonQueryAsync(cancellationToken);
         }
+        catch (SqlException ex)
+        {
+            LogSqlException(
+                ex,
+                nameof(ExpireStaleRunningMonitoringJobsAsync),
+                _options.JobExpireStaleStoredProcedure,
+                $"StaleTimeoutSeconds={staleTimeoutSeconds}");
+            throw;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring stale job expiration failed.");
             throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(ExpireStaleRunningMonitoringJobsAsync), _options.JobExpireStaleStoredProcedure, stopwatch.ElapsedMilliseconds);
         }
     }
 

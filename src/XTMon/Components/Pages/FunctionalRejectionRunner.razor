@@ -131,25 +131,26 @@
                         <th class="db-grid__head db-grid__cell--text">Current Status</th>
                         <th class="db-grid__head db-grid__cell--text">Last Run</th>
                         <th class="db-grid__head db-grid__cell--text">Last Submission</th>
+                        <th class="db-grid__head db-grid__cell--text">Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     @if (isLoadingRows)
                     {
                         <tr class="db-grid__row">
-                            <td class="db-grid__cell db-grid__cell--text" colspan="7">Loading...</td>
+                            <td class="db-grid__cell db-grid__cell--text" colspan="8">Loading...</td>
                         </tr>
                     }
                     else if (!string.IsNullOrWhiteSpace(loadError))
                     {
                         <tr class="db-grid__row">
-                            <td class="db-grid__cell db-grid__cell--text text-error" colspan="7">@loadError</td>
+                            <td class="db-grid__cell db-grid__cell--text text-error" colspan="8">@loadError</td>
                         </tr>
                     }
                     else if (rows.Count == 0)
                     {
                         <tr class="db-grid__row">
-                            <td class="db-grid__cell db-grid__cell--text muted" colspan="7">No Functional Rejection items are available.</td>
+                            <td class="db-grid__cell db-grid__cell--text muted" colspan="8">No Functional Rejection items are available.</td>
                         </tr>
                     }
                     else
@@ -177,6 +178,18 @@
                                 </td>
                                 <td class="db-grid__cell db-grid__cell--text">@GetLastRunText(row.LatestJob)</td>
                                 <td class="db-grid__cell db-grid__cell--text @GetSubmissionTextClass(row)">@GetSubmissionText(row)</td>
+                                <td class="db-grid__cell db-grid__cell--text">
+                                    @if (CanCancelJob(row))
+                                    {
+                                        <button class="primary-button" @onclick="() => CancelJobAsync(row)" disabled="@IsCancellingJob(row)">
+                                            @(IsCancellingJob(row) ? "Cancelling..." : "Cancel")
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">-</span>
+                                    }
+                                </td>
                             </tr>
                         }
                     }

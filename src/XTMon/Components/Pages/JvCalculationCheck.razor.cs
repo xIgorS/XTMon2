@@ -38,6 +38,9 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     [Inject]
     private PnlDateState PnlDateState { get; set; } = default!;
 
+    [Inject]
+    private IBackgroundJobCancellationService BackgroundJobCancellationService { get; set; } = default!;
+
     [CascadingParameter]
     private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
 
@@ -64,6 +67,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     private bool showJobStatusDetails;
     private bool showCheckQuery;
     private bool showFixQuery;
+    private bool isCancellingJob;
     private PeriodicTimer? pollTimer;
     private CancellationTokenSource? pollCts;
     private readonly CancellationTokenSource disposeCts = new();
@@ -79,6 +83,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     private string LatestExecutionText => LatestExecutionAt.HasValue
         ? $"{LatestExecutionAt.Value.ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture)} UTC"
         : "-";
+    private bool CanCancelJob => activeJobId.HasValue && MonitoringJobHelper.IsActiveStatus(activeJobStatus) && !isCancellingJob;
 
     private string JobStatusClass => activeJobStatus?.ToUpperInvariant() switch
     {
@@ -304,6 +309,10 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
 
         job = await ResolveStaleRunningJobAsync(job, cancellationToken);
         ApplyJob(job);
+        if (!MonitoringJobHelper.IsActiveStatus(activeJobStatus))
+        {
+            StopPolling();
+        }
     }
 
     private async Task<JvJobRecord> ResolveStaleRunningJobAsync(JvJobRecord job, CancellationToken cancellationToken)
@@ -397,6 +406,40 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     private void ToggleJobStatusDetails()
     {
         showJobStatusDetails = !showJobStatusDetails;
+    }
+
+    private async Task CancelJobAsync()
+    {
+        if (!activeJobId.HasValue)
+        {
+            return;
+        }
+
+        isCancellingJob = true;
+
+        try
+        {
+            var cancelled = await BackgroundJobCancellationService.CancelJvJobAsync(activeJobId.Value, disposeCts.Token);
+            if (!cancelled)
+            {
+                checkError = "JV job is no longer active.";
+            }
+
+            await RefreshActiveJobAsync(disposeCts.Token);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to cancel JV job {JobId}.", activeJobId.Value);
+            checkError = "Unable to cancel JV job right now. Please try again.";
+        }
+        finally
+        {
+            isCancellingJob = false;
+        }
     }
 
     private void ToggleCheckQueryVisibility()

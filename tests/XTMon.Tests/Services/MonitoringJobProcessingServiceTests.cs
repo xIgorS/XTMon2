@@ -49,7 +49,8 @@ public class MonitoringJobProcessingServiceTests
             Mock<IMonitoringJobRepository> repo,
             IEnumerable<IMonitoringJobExecutor> executors,
             IOptions<MonitoringJobsOptions>? options = null,
-            TimeSpan? idleDelay = null)
+            TimeSpan? idleDelay = null,
+            JobCancellationRegistry? jobCancellationRegistry = null)
     {
         var sp = new Mock<IServiceProvider>();
         sp.Setup(p => p.GetService(typeof(IMonitoringJobRepository))).Returns(repo.Object);
@@ -66,7 +67,8 @@ public class MonitoringJobProcessingServiceTests
             factory.Object,
             options ?? DefaultOptions(),
             NullLogger<MonitoringJobProcessingService>.Instance,
-            idleDelay ?? TimeSpan.FromSeconds(5));
+            idleDelay ?? TimeSpan.FromSeconds(5),
+            jobCancellationRegistry);
 
         return (service, repo);
     }
@@ -84,6 +86,12 @@ public class MonitoringJobProcessingServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.MarkMonitoringJobFailedAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        repo.Setup(r => r.GetMonitoringJobByIdAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((long jobId, CancellationToken _) => MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, jobId) with
+            {
+                Status = "Running",
+                StartedAt = DateTime.UtcNow
+            });
         return repo;
     }
 
@@ -171,6 +179,57 @@ public class MonitoringJobProcessingServiceTests
         repo.Verify(
             r => r.ExpireStaleRunningMonitoringJobsAsync(It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.AtLeast(2));
+    }
+
+    [Fact]
+    public async Task WhenMonitoringJobIsCancelled_DoesNotMarkCompleted()
+    {
+        var heartbeatTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationRequestedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey);
+        var registry = new JobCancellationRegistry();
+        var isCancelled = false;
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.GetMonitoringJobByIdAsync(1L, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => MakeJob(
+                MonitoringJobHelper.DataValidationCategory,
+                MonitoringJobHelper.BatchStatusSubmenuKey) with
+            {
+                Status = isCancelled ? "Failed" : "Running",
+                FailedAt = isCancelled ? DateTime.UtcNow : null,
+                ErrorMessage = isCancelled ? BackgroundJobCancellationService.MonitoringJobCanceledMessage : null
+            });
+        repo.Setup(r => r.HeartbeatMonitoringJobAsync(1L, It.IsAny<CancellationToken>()))
+            .Callback(() => heartbeatTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.MarkMonitoringJobFailedAsync(1L, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            async (_, token) =>
+            {
+                await heartbeatTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                isCancelled = true;
+                registry.CancelMonitoringJob(1L);
+                cancellationRequestedTcs.TrySetResult(true);
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return new MonitoringJobResultPayload(null, null, null);
+            });
+
+        var (service, _) = CreateService(repo, [executor], idleDelay: TimeSpan.FromMilliseconds(10), jobCancellationRegistry: registry);
+
+        await service.StartAsync(CancellationToken.None);
+
+        await cancellationRequestedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+        await service.StopAsync(CancellationToken.None);
+
+        repo.Verify(r => r.MarkMonitoringJobCompletedAsync(1L, It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private sealed class StubExecutor : IMonitoringJobExecutor

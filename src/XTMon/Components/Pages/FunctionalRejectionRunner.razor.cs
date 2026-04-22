@@ -36,8 +36,12 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
     [Inject]
     private FunctionalRejectionNavAlertState FunctionalRejectionNavAlertState { get; set; } = default!;
 
+    [Inject]
+    private IBackgroundJobCancellationService BackgroundJobCancellationService { get; set; } = default!;
+
     private readonly List<BatchRunRow> rows = [];
     private readonly HashSet<DateOnly> availableDates = [];
+    private readonly HashSet<long> cancellingJobIds = [];
     private readonly CancellationTokenSource disposeCts = new();
     private PeriodicTimer? pollTimer;
     private CancellationTokenSource? pollCts;
@@ -385,6 +389,54 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
         statusMessage = BuildSubmissionSummary(queuedCount, alreadyActiveCount, failedCount);
         statusIsError = failedCount > 0 && queuedCount == 0 && alreadyActiveCount == 0;
         isSubmitting = false;
+    }
+
+    private async Task CancelJobAsync(BatchRunRow row)
+    {
+        var jobId = row.LatestJob?.JobId;
+        if (!jobId.HasValue || row.LatestJob is null || !MonitoringJobHelper.IsActiveStatus(row.LatestJob.Status))
+        {
+            return;
+        }
+
+        cancellingJobIds.Add(jobId.Value);
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            var cancelled = await BackgroundJobCancellationService.CancelMonitoringJobAsync(jobId.Value, disposeCts.Token);
+            statusMessage = cancelled
+                ? $"Cancellation requested for {row.Item.SourceSystemBusinessDataTypeCode}."
+                : $"{row.Item.SourceSystemBusinessDataTypeCode} is no longer active.";
+            await RefreshStatusesCoreAsync();
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex,
+                "Failed to cancel Functional Rejection job {JobId} for Code {Code}.",
+                jobId.Value,
+                row.Item.SourceSystemBusinessDataTypeCode);
+            statusMessage = $"Unable to cancel {row.Item.SourceSystemBusinessDataTypeCode} right now.";
+            statusIsError = true;
+        }
+        finally
+        {
+            cancellingJobIds.Remove(jobId.Value);
+        }
+    }
+
+    private static bool CanCancelJob(BatchRunRow row)
+    {
+        return row.LatestJob is not null && MonitoringJobHelper.IsActiveStatus(row.LatestJob.Status);
+    }
+
+    private bool IsCancellingJob(BatchRunRow row)
+    {
+        return row.LatestJob is not null && cancellingJobIds.Contains(row.LatestJob.JobId);
     }
 
     private static string BuildSubmissionSummary(int queuedCount, int alreadyActiveCount, int failedCount)

@@ -134,6 +134,7 @@
                         <th class="db-grid__head db-grid__cell--text">Last Run</th>
                         <th class="db-grid__head db-grid__cell--text">Batch Defaults</th>
                         <th class="db-grid__head db-grid__cell--text">Last Submission</th>
+                        <th class="db-grid__head db-grid__cell--text">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -159,6 +160,18 @@
                             <td class="db-grid__cell db-grid__cell--text">@GetLastRunText(row.LatestJob)</td>
                             <td class="db-grid__cell db-grid__cell--text">@GetDefaultSummaryText(row.Definition.Route)</td>
                             <td class="db-grid__cell db-grid__cell--text @GetSubmissionTextClass(row)">@GetSubmissionText(row)</td>
+                            <td class="db-grid__cell db-grid__cell--text">
+                                @if (CanCancelJob(row))
+                                {
+                                    <button class="primary-button" @onclick="() => CancelJobAsync(row)" disabled="@IsCancellingJob(row)">
+                                        @(IsCancellingJob(row) ? "Cancelling..." : "Cancel")
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span class="muted">-</span>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>

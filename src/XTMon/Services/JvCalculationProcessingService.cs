@@ -17,12 +17,14 @@ public sealed class JvCalculationProcessingService : BackgroundService
     private readonly ILogger<JvCalculationProcessingService> _logger;
     private readonly JvCalculationOptions _jvCalculationOptions;
     private readonly TimeSpan _idleDelay;
+    private readonly JobCancellationRegistry _jobCancellationRegistry;
 
     public JvCalculationProcessingService(
         IServiceScopeFactory scopeFactory,
         IOptions<JvCalculationOptions> jvCalculationOptions,
-        ILogger<JvCalculationProcessingService> logger)
-        : this(scopeFactory, jvCalculationOptions, logger, DefaultIdleDelay)
+        ILogger<JvCalculationProcessingService> logger,
+        JobCancellationRegistry jobCancellationRegistry)
+        : this(scopeFactory, jvCalculationOptions, logger, DefaultIdleDelay, jobCancellationRegistry)
     {
     }
 
@@ -30,12 +32,14 @@ public sealed class JvCalculationProcessingService : BackgroundService
         IServiceScopeFactory scopeFactory,
         IOptions<JvCalculationOptions> jvCalculationOptions,
         ILogger<JvCalculationProcessingService> logger,
-        TimeSpan idleDelay)
+        TimeSpan idleDelay,
+        JobCancellationRegistry? jobCancellationRegistry = null)
     {
         _scopeFactory = scopeFactory;
         _jvCalculationOptions = jvCalculationOptions.Value;
         _logger = logger;
         _idleDelay = idleDelay;
+        _jobCancellationRegistry = jobCancellationRegistry ?? new JobCancellationRegistry();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -92,32 +96,73 @@ public sealed class JvCalculationProcessingService : BackgroundService
 
     private async Task ProcessJobAsync(JvJobRecord job, CancellationToken cancellationToken)
     {
+        using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _jobCancellationRegistry.RegisterJvJob(job.JobId, jobCancellation);
+
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
 
+            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            {
+                _logger.LogInformation("Skipping JV job {JobId} because it is no longer active.", job.JobId);
+                return;
+            }
+
             _logger.LogInformation("Processing JV job {JobId}, request {RequestType}, pnl date {PnlDate}.", job.JobId, job.RequestType, job.PnlDate);
 
-            await repository.HeartbeatJvJobAsync(job.JobId, cancellationToken);
+            await repository.HeartbeatJvJobAsync(job.JobId, jobCancellation.Token);
+            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            {
+                _logger.LogInformation("Stopping JV job {JobId} after heartbeat because it is no longer active.", job.JobId);
+                return;
+            }
 
             string? queryFix = null;
             if (string.Equals(job.RequestType, "FixAndCheck", StringComparison.OrdinalIgnoreCase))
             {
-                queryFix = await repository.FixJvCalculationAsync(job.PnlDate, executeCatchup: true, cancellationToken);
-                await repository.HeartbeatJvJobAsync(job.JobId, cancellationToken);
+                queryFix = await repository.FixJvCalculationAsync(job.PnlDate, executeCatchup: true, jobCancellation.Token);
+                if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+                {
+                    _logger.LogInformation("Discarding JV fix result for job {JobId} because it is no longer active.", job.JobId);
+                    return;
+                }
+
+                await repository.HeartbeatJvJobAsync(job.JobId, jobCancellation.Token);
+                if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+                {
+                    _logger.LogInformation("Stopping JV job {JobId} after fix heartbeat because it is no longer active.", job.JobId);
+                    return;
+                }
             }
 
-            var checkResult = await repository.CheckJvCalculationAsync(job.PnlDate, cancellationToken);
+            var checkResult = await repository.CheckJvCalculationAsync(job.PnlDate, jobCancellation.Token);
+            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            {
+                _logger.LogInformation("Discarding JV check result for job {JobId} because it is no longer active.", job.JobId);
+                return;
+            }
 
-            await repository.SaveJvJobResultAsync(job.JobId, checkResult.ParsedQuery, queryFix, checkResult.Table, cancellationToken);
-            await repository.MarkJvJobCompletedAsync(job.JobId, cancellationToken);
+            await repository.SaveJvJobResultAsync(job.JobId, checkResult.ParsedQuery, queryFix, checkResult.Table, jobCancellation.Token);
+            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            {
+                _logger.LogInformation("Skipping completion for JV job {JobId} because it is no longer active.", job.JobId);
+                return;
+            }
+
+            await repository.MarkJvJobCompletedAsync(job.JobId, jobCancellation.Token);
 
             _logger.LogInformation("JV job {JobId} completed.", job.JobId);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
+        {
+            _logger.LogInformation("JV job {JobId} cancellation was requested.", job.JobId);
+            await EnsureJvJobMarkedCancelledAsync(job.JobId);
         }
         catch (Exception ex)
         {
@@ -142,6 +187,35 @@ public sealed class JvCalculationProcessingService : BackgroundService
                     }
                 }
             }
+        }
+        finally
+        {
+            _jobCancellationRegistry.UnregisterJvJob(job.JobId, jobCancellation);
+        }
+    }
+
+    private static async Task<bool> IsJobActiveAsync(IJvCalculationRepository repository, long jobId, CancellationToken cancellationToken)
+    {
+        var currentJob = await repository.GetJvJobByIdAsync(jobId, cancellationToken);
+        return currentJob is not null && MonitoringJobHelper.IsActiveStatus(currentJob.Status);
+    }
+
+    private async Task EnsureJvJobMarkedCancelledAsync(long jobId)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
+            if (!await IsJobActiveAsync(repository, jobId, CancellationToken.None))
+            {
+                return;
+            }
+
+            await repository.MarkJvJobFailedAsync(jobId, BackgroundJobCancellationService.JvJobCanceledMessage, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Unable to mark JV job {JobId} as cancelled.", jobId);
         }
     }
 

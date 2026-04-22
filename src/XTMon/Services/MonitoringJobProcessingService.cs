@@ -17,12 +17,14 @@ public sealed class MonitoringJobProcessingService : BackgroundService
     private readonly ILogger<MonitoringJobProcessingService> _logger;
     private readonly MonitoringJobsOptions _options;
     private readonly TimeSpan _idleDelay;
+    private readonly JobCancellationRegistry _jobCancellationRegistry;
 
     public MonitoringJobProcessingService(
         IServiceScopeFactory scopeFactory,
         IOptions<MonitoringJobsOptions> options,
-        ILogger<MonitoringJobProcessingService> logger)
-        : this(scopeFactory, options, logger, DefaultIdleDelay)
+        ILogger<MonitoringJobProcessingService> logger,
+        JobCancellationRegistry jobCancellationRegistry)
+        : this(scopeFactory, options, logger, DefaultIdleDelay, jobCancellationRegistry)
     {
     }
 
@@ -30,12 +32,14 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         IServiceScopeFactory scopeFactory,
         IOptions<MonitoringJobsOptions> options,
         ILogger<MonitoringJobProcessingService> logger,
-        TimeSpan idleDelay)
+        TimeSpan idleDelay,
+        JobCancellationRegistry? jobCancellationRegistry = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _options = options.Value;
         _idleDelay = idleDelay;
+        _jobCancellationRegistry = jobCancellationRegistry ?? new JobCancellationRegistry();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -92,6 +96,9 @@ public sealed class MonitoringJobProcessingService : BackgroundService
 
     private async Task ProcessJobAsync(MonitoringJobRecord job, CancellationToken cancellationToken)
     {
+        using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _jobCancellationRegistry.RegisterMonitoringJob(job.JobId, jobCancellation);
+
         try
         {
             using var scope = _scopeFactory.CreateScope();
@@ -100,18 +107,47 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             var executor = executors.FirstOrDefault(candidate => candidate.CanExecute(job))
                 ?? throw new InvalidOperationException($"No monitoring executor is registered for category '{job.Category}' and submenu '{job.SubmenuKey}'.");
 
+            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            {
+                _logger.LogInformation("Skipping monitoring job {JobId} because it is no longer active.", job.JobId);
+                return;
+            }
+
             _logger.LogInformation("Processing monitoring job {JobId} for {Category}/{SubmenuKey}, pnl date {PnlDate}.", job.JobId, job.Category, job.SubmenuKey, job.PnlDate);
 
-            await repository.HeartbeatMonitoringJobAsync(job.JobId, cancellationToken);
-            var payload = await executor.ExecuteAsync(job, cancellationToken);
-            await repository.SaveMonitoringJobResultAsync(job.JobId, payload, cancellationToken);
-            await repository.MarkMonitoringJobCompletedAsync(job.JobId, cancellationToken);
+            await repository.HeartbeatMonitoringJobAsync(job.JobId, jobCancellation.Token);
+            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            {
+                _logger.LogInformation("Stopping monitoring job {JobId} after heartbeat because it is no longer active.", job.JobId);
+                return;
+            }
+
+            var payload = await executor.ExecuteAsync(job, jobCancellation.Token);
+            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            {
+                _logger.LogInformation("Discarding monitoring job {JobId} result because the job was cancelled or otherwise finalized.", job.JobId);
+                return;
+            }
+
+            await repository.SaveMonitoringJobResultAsync(job.JobId, payload, jobCancellation.Token);
+            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            {
+                _logger.LogInformation("Skipping completion for monitoring job {JobId} because it is no longer active.", job.JobId);
+                return;
+            }
+
+            await repository.MarkMonitoringJobCompletedAsync(job.JobId, jobCancellation.Token);
 
             _logger.LogInformation("Monitoring job {JobId} completed.", job.JobId);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
+        {
+            _logger.LogInformation("Monitoring job {JobId} cancellation was requested.", job.JobId);
+            await EnsureMonitoringJobMarkedCancelledAsync(job.JobId);
         }
         catch (Exception ex)
         {
@@ -137,6 +173,35 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                     }
                 }
             }
+        }
+        finally
+        {
+            _jobCancellationRegistry.UnregisterMonitoringJob(job.JobId, jobCancellation);
+        }
+    }
+
+    private static async Task<bool> IsJobActiveAsync(IMonitoringJobRepository repository, long jobId, CancellationToken cancellationToken)
+    {
+        var currentJob = await repository.GetMonitoringJobByIdAsync(jobId, cancellationToken);
+        return currentJob is not null && MonitoringJobHelper.IsActiveStatus(currentJob.Status);
+    }
+
+    private async Task EnsureMonitoringJobMarkedCancelledAsync(long jobId)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
+            if (!await IsJobActiveAsync(repository, jobId, CancellationToken.None))
+            {
+                return;
+            }
+
+            await repository.MarkMonitoringJobFailedAsync(jobId, BackgroundJobCancellationService.MonitoringJobCanceledMessage, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Unable to mark monitoring job {JobId} as cancelled.", jobId);
         }
     }
 

@@ -416,6 +416,8 @@ builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IMonitoringJobRepository, MonitoringJobRepository>();
+builder.Services.AddSingleton<JobCancellationRegistry>();
+builder.Services.AddSingleton<IBackgroundJobCancellationService, BackgroundJobCancellationService>();
 builder.Services.AddScoped<IBatchStatusRepository, BatchStatusRepository>();
 builder.Services.AddScoped<IReferentialDataRepository, ReferentialDataRepository>();
 builder.Services.AddScoped<IMarketDataRepository, MarketDataRepository>();

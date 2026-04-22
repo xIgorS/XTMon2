@@ -74,6 +74,15 @@
                     </svg>
                     @(isChecking ? "Running..." : "Run Check")
                 </button>
+                @if (CanCancelJob || isCancellingJob)
+                {
+                    <button class="primary-button jv-run-btn" @onclick="CancelJobAsync" disabled="@isCancellingJob">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h12v12H6z" />
+                        </svg>
+                        @(isCancellingJob ? "Cancelling..." : "Cancel Job")
+                    </button>
+                }
             </div>
         </div>
     </div>

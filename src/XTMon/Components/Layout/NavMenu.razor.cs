@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Options;
 using XTMon.Helpers;
+using XTMon.Options;
 using XTMon.Services;
 
 namespace XTMon.Components.Layout;
@@ -7,6 +9,8 @@ namespace XTMon.Components.Layout;
 public partial class NavMenu : ComponentBase, IDisposable
 {
 	private readonly CancellationTokenSource _disposeCts = new();
+	private PeriodicTimer? _alertsPollTimer;
+	private CancellationTokenSource? _alertsPollCts;
 
 	[Inject]
 	private NavigationManager NavigationManager { get; set; } = default!;
@@ -16,6 +20,9 @@ public partial class NavMenu : ComponentBase, IDisposable
 
 	[Inject]
 	private DataValidationNavAlertState DataValidationNavAlertState { get; set; } = default!;
+
+	[Inject]
+	private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
 	protected override void OnInitialized()
 	{
@@ -27,6 +34,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 	protected override async Task OnInitializedAsync()
 	{
 		await RefreshDataValidationAlertsAsync();
+		RestartAlertsPollingIfNeeded();
 	}
 
 	private bool IsDataValidationRoute =>
@@ -42,13 +50,19 @@ public partial class NavMenu : ComponentBase, IDisposable
 		NavigationManager.LocationChanged -= OnLocationChanged;
 		PnlDateState.OnDateChanged -= OnPnlDateChanged;
 		DataValidationNavAlertState.StatusesChanged -= OnDataValidationStatusesChanged;
+		StopAlertsPolling();
 		_disposeCts.Cancel();
 		_disposeCts.Dispose();
 	}
 
 	private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
 	{
-		_ = InvokeAsync(StateHasChanged);
+		_ = InvokeAsync(async () =>
+		{
+			await RefreshDataValidationAlertsAsync();
+			RestartAlertsPollingIfNeeded();
+			StateHasChanged();
+		});
 	}
 
 	private void OnPnlDateChanged()
@@ -56,6 +70,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 		_ = InvokeAsync(async () =>
 		{
 			await RefreshDataValidationAlertsAsync();
+			RestartAlertsPollingIfNeeded();
 			StateHasChanged();
 		});
 	}
@@ -76,9 +91,79 @@ public partial class NavMenu : ComponentBase, IDisposable
 		}
 	}
 
+	private void RestartAlertsPollingIfNeeded()
+	{
+		StopAlertsPolling();
+
+		if (!IsDataValidationRoute)
+		{
+			return;
+		}
+
+		var pollIntervalSeconds = Math.Max(1, MonitoringJobsOptions.Value.JobPollIntervalSeconds);
+		_alertsPollCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
+		_alertsPollTimer = new PeriodicTimer(TimeSpan.FromSeconds(pollIntervalSeconds));
+		_ = PollAlertsAsync(_alertsPollTimer, _alertsPollCts.Token);
+	}
+
+	private async Task PollAlertsAsync(PeriodicTimer timer, CancellationToken cancellationToken)
+	{
+		try
+		{
+			while (await timer.WaitForNextTickAsync(cancellationToken))
+			{
+				await RefreshDataValidationAlertsAsync();
+				await InvokeAsync(StateHasChanged);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (ObjectDisposedException)
+		{
+		}
+	}
+
+	private void StopAlertsPolling()
+	{
+		_alertsPollCts?.Cancel();
+		_alertsPollCts?.Dispose();
+		_alertsPollCts = null;
+
+		_alertsPollTimer?.Dispose();
+		_alertsPollTimer = null;
+	}
+
 	private DataValidationNavRunState GetDataValidationRunState(string route)
 	{
 		return DataValidationNavAlertState.GetStatus(route);
+	}
+
+	private string GetDataValidationRunnerLinkClass()
+	{
+		return IsCurrentRoute(DataValidationCheckCatalog.BatchRunRoute)
+			? "submenu-link submenu-link-active"
+			: "submenu-link";
+	}
+
+	private string GetDataValidationSubmenuLinkClass(string route)
+	{
+		return IsDataValidationSubmenuActive(route)
+			? "submenu-link submenu-link-active"
+			: "submenu-link";
+	}
+
+	private bool IsDataValidationSubmenuActive(string route)
+	{
+		var normalizedRoute = MonitoringJobHelper.BuildDataValidationSubmenuKey(route);
+
+		if (IsCurrentRoute(normalizedRoute))
+		{
+			return true;
+		}
+
+		return IsCurrentRoute(DataValidationCheckCatalog.BatchRunRoute)
+			&& GetDataValidationRunState(normalizedRoute) == DataValidationNavRunState.Running;
 	}
 
 	private DataValidationNavRunState GetDataValidationAggregateState()

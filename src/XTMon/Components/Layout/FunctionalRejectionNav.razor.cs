@@ -1,9 +1,11 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
 using XTMon.Helpers;
 using XTMon.Infrastructure;
 using XTMon.Models;
+using XTMon.Options;
 using XTMon.Repositories;
 using XTMon.Services;
 
@@ -13,6 +15,8 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 {
     private readonly List<FunctionalRejectionMenuItem> menuItems = [];
     private readonly CancellationTokenSource disposeCts = new();
+    private PeriodicTimer? alertsPollTimer;
+    private CancellationTokenSource? alertsPollCts;
 
     [Inject]
     private IFunctionalRejectionRepository Repository { get; set; } = default!;
@@ -29,6 +33,9 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
     [Inject]
     private PnlDateState PnlDateState { get; set; } = default!;
 
+    [Inject]
+    private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
+
     [Parameter]
     public bool IsOpen { get; set; }
 
@@ -43,6 +50,7 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
         await LoadMenuItemsAsync();
         await RefreshAlertsAsync();
+        RestartAlertsPollingIfNeeded();
     }
 
     public void Dispose()
@@ -50,6 +58,7 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
         NavigationManager.LocationChanged -= OnLocationChanged;
         FunctionalRejectionNavAlertState.StatusesChanged -= OnStatusesChanged;
         PnlDateState.OnDateChanged -= OnPnlDateChanged;
+        StopAlertsPolling();
         disposeCts.Cancel();
         disposeCts.Dispose();
     }
@@ -97,7 +106,12 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
-        _ = InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(async () =>
+        {
+            await RefreshAlertsAsync();
+            RestartAlertsPollingIfNeeded();
+            StateHasChanged();
+        });
     }
 
     private void OnStatusesChanged()
@@ -110,8 +124,52 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
         _ = InvokeAsync(async () =>
         {
             await RefreshAlertsAsync();
+            RestartAlertsPollingIfNeeded();
             StateHasChanged();
         });
+    }
+
+    private void RestartAlertsPollingIfNeeded()
+    {
+        StopAlertsPolling();
+
+        if (!IsOpen)
+        {
+            return;
+        }
+
+        var pollIntervalSeconds = Math.Max(1, MonitoringJobsOptions.Value.JobPollIntervalSeconds);
+        alertsPollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
+        alertsPollTimer = new PeriodicTimer(TimeSpan.FromSeconds(pollIntervalSeconds));
+        _ = PollAlertsAsync(alertsPollTimer, alertsPollCts.Token);
+    }
+
+    private async Task PollAlertsAsync(PeriodicTimer timer, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshAlertsAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private void StopAlertsPolling()
+    {
+        alertsPollCts?.Cancel();
+        alertsPollCts?.Dispose();
+        alertsPollCts = null;
+
+        alertsPollTimer?.Dispose();
+        alertsPollTimer = null;
     }
 
     private DataValidationNavRunState GetItemRunState(FunctionalRejectionMenuItem item)

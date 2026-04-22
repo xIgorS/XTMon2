@@ -47,7 +47,8 @@ public class JvCalculationProcessingServiceTests
         CreateService(
             Mock<IJvCalculationRepository> repo,
             IOptions<JvCalculationOptions>? options = null,
-            TimeSpan? idleDelay = null)
+            TimeSpan? idleDelay = null,
+            JobCancellationRegistry? jobCancellationRegistry = null)
     {
         var sp = new Mock<IServiceProvider>();
         sp.Setup(p => p.GetService(typeof(IJvCalculationRepository))).Returns(repo.Object);
@@ -63,7 +64,8 @@ public class JvCalculationProcessingServiceTests
             factory.Object,
             options ?? DefaultOptions(),
             NullLogger<JvCalculationProcessingService>.Instance,
-            idleDelay ?? TimeSpan.FromSeconds(5));
+            idleDelay ?? TimeSpan.FromSeconds(5),
+            jobCancellationRegistry);
 
         return (service, repo);
     }
@@ -81,6 +83,12 @@ public class JvCalculationProcessingServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.MarkJvJobFailedAsync(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        repo.Setup(r => r.GetJvJobByIdAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((long jobId, CancellationToken _) => MakeJob("CheckOnly", jobId) with
+            {
+                Status = "Running",
+                StartedAt = DateTime.UtcNow
+            });
         return repo;
     }
 
@@ -297,5 +305,52 @@ public class JvCalculationProcessingServiceTests
 
         Assert.Equal("heartbeat", callOrder[0]);
         Assert.Contains("check", callOrder);
+    }
+
+    [Fact]
+    public async Task WhenJvJobIsCancelled_DoesNotMarkCompleted()
+    {
+        var heartbeatTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationRequestedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = MakeJob("CheckOnly");
+        var registry = new JobCancellationRegistry();
+        var isCancelled = false;
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextJvJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((JvJobRecord?)null);
+        repo.Setup(r => r.GetJvJobByIdAsync(1L, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => MakeJob("CheckOnly") with
+            {
+                Status = isCancelled ? "Failed" : "Running",
+                FailedAt = isCancelled ? DateTime.UtcNow : null,
+                ErrorMessage = isCancelled ? BackgroundJobCancellationService.JvJobCanceledMessage : null
+            });
+        repo.Setup(r => r.HeartbeatJvJobAsync(1L, It.IsAny<CancellationToken>()))
+            .Callback(() => heartbeatTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.CheckJvCalculationAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Returns(async (DateOnly _, CancellationToken token) =>
+            {
+                await heartbeatTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                isCancelled = true;
+                registry.CancelJvJob(1L);
+                cancellationRequestedTcs.TrySetResult(true);
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return new JvCalculationCheckResult("SELECT 1", new MonitoringTableResult([], []));
+            });
+        repo.Setup(r => r.MarkJvJobFailedAsync(1L, BackgroundJobCancellationService.JvJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var (service, _) = CreateService(repo, idleDelay: TimeSpan.FromMilliseconds(10), jobCancellationRegistry: registry);
+
+        await service.StartAsync(CancellationToken.None);
+
+        await cancellationRequestedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+        await service.StopAsync(CancellationToken.None);
+
+        repo.Verify(r => r.MarkJvJobCompletedAsync(1L, It.IsAny<CancellationToken>()), Times.Never);
     }
 }

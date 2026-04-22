@@ -40,12 +40,16 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
     [Inject]
     private DataValidationNavAlertState DataValidationNavAlertState { get; set; } = default!;
 
+    [Inject]
+    private IBackgroundJobCancellationService BackgroundJobCancellationService { get; set; } = default!;
+
     [CascadingParameter]
     private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
 
     private readonly List<BatchRunRow> rows = [];
     private readonly List<BatchRunRow> selectableRows = [];
     private readonly HashSet<DateOnly> availableDates = [];
+    private readonly HashSet<long> cancellingJobIds = [];
     private readonly CancellationTokenSource disposeCts = new();
     private PeriodicTimer? pollTimer;
     private CancellationTokenSource? pollCts;
@@ -374,6 +378,51 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
         statusMessage = BuildSubmissionSummary(queuedCount, alreadyActiveCount, failedCount);
         statusIsError = failedCount > 0 && queuedCount == 0 && alreadyActiveCount == 0;
         isSubmitting = false;
+    }
+
+    private async Task CancelJobAsync(BatchRunRow row)
+    {
+        var jobId = row.LatestJob?.JobId;
+        if (!jobId.HasValue || row.LatestJob is null || !MonitoringJobHelper.IsActiveStatus(row.LatestJob.Status))
+        {
+            return;
+        }
+
+        cancellingJobIds.Add(jobId.Value);
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            var cancelled = await BackgroundJobCancellationService.CancelMonitoringJobAsync(jobId.Value, disposeCts.Token);
+            statusMessage = cancelled
+                ? $"Cancellation requested for {row.Definition.DisplayName}."
+                : $"{row.Definition.DisplayName} is no longer active.";
+            await RefreshStatusesCoreAsync();
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to cancel Data Validation job {JobId} for route {Route}.", jobId.Value, row.Definition.Route);
+            statusMessage = $"Unable to cancel {row.Definition.DisplayName} right now.";
+            statusIsError = true;
+        }
+        finally
+        {
+            cancellingJobIds.Remove(jobId.Value);
+        }
+    }
+
+    private static bool CanCancelJob(BatchRunRow row)
+    {
+        return row.LatestJob is not null && MonitoringJobHelper.IsActiveStatus(row.LatestJob.Status);
+    }
+
+    private bool IsCancellingJob(BatchRunRow row)
+    {
+        return row.LatestJob is not null && cancellingJobIds.Contains(row.LatestJob.JobId);
     }
 
     private static string BuildSubmissionSummary(int queuedCount, int alreadyActiveCount, int failedCount)
