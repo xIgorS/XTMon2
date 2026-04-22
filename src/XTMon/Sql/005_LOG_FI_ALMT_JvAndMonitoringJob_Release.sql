@@ -307,7 +307,8 @@ BEGIN
         [CompletedAt] = NULL,
         [ErrorMessage] = @ErrorMessage,
         [LastHeartbeatAt] = SYSUTCDATETIME()
-    WHERE [JobId] = @JobId;
+    WHERE [JobId] = @JobId
+      AND [Status] IN ('Running','Queued');
 END
 GO
 
