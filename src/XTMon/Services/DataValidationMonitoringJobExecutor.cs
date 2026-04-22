@@ -21,9 +21,9 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
         return string.Equals(job.Category, MonitoringJobHelper.DataValidationCategory, StringComparison.Ordinal);
     }
 
-    public Task<MonitoringJobResultPayload> ExecuteAsync(MonitoringJobRecord job, CancellationToken cancellationToken)
+    public async Task<MonitoringJobResultPayload> ExecuteAsync(MonitoringJobRecord job, CancellationToken cancellationToken)
     {
-        return job.SubmenuKey switch
+        var payload = await (job.SubmenuKey switch
         {
             "batch-status" => ExecuteBatchStatusAsync(job, cancellationToken),
             "referential-data" => ExecuteResultAsync<IReferentialDataRepository, ReferentialDataResult>(repository => repository.GetReferentialDataAsync(job.PnlDate, cancellationToken)),
@@ -54,7 +54,12 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
             "precalc-monitoring" => ExecuteResultAsync<IPrecalcMonitoringRepository, PrecalcMonitoringResult>(repository => repository.GetPrecalcMonitoringAsync(job.PnlDate, cancellationToken)),
             "vrdb-status" => ExecuteResultAsync<IVrdbStatusRepository, VrdbStatusResult>(repository => repository.GetVrdbStatusAsync(job.PnlDate, cancellationToken)),
             _ => throw new InvalidOperationException($"Unsupported data validation submenu '{job.SubmenuKey}'.")
-        };
+        });
+
+        return new MonitoringJobResultPayload(
+            payload.ParsedQuery,
+            payload.Table,
+            DataValidationNavAlertHelper.BuildMetadataJson(job.SubmenuKey, payload.Table));
     }
 
     private async Task<MonitoringJobResultPayload> ExecuteBatchStatusAsync(MonitoringJobRecord job, CancellationToken cancellationToken)

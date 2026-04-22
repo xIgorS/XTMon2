@@ -1,3 +1,4 @@
+using System.Text.Json;
 using XTMon.Models;
 
 namespace XTMon.Helpers;
@@ -39,6 +40,39 @@ internal static class DataValidationNavAlertHelper
 
     public static IReadOnlyList<string> SupportedRoutes { get; } = DataValidationCheckCatalog.Routes;
 
+    internal static string BuildMetadataJson(string submenuKey, MonitoringTableResult? table)
+    {
+        var hasAlerts = ComputeHasAlerts(submenuKey, table);
+        return $"{{\"hasAlerts\":{(hasAlerts ? "true" : "false")}}}";
+    }
+
+    internal static bool ComputeHasAlerts(string submenuKey, MonitoringTableResult? table)
+    {
+        var route = MonitoringJobHelper.BuildDataValidationSubmenuKey(submenuKey);
+
+        if (StatusKoRoutes.Contains(route))
+        {
+            return HasColumnValue(table, "status", value => string.Equals(value, "KO", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (string.Equals(route, "daily-balance", StringComparison.OrdinalIgnoreCase))
+        {
+            return HasColumnValue(table, "status", value => value.StartsWith("KO", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (string.Equals(route, "market-data", StringComparison.OrdinalIgnoreCase))
+        {
+            return HasColumnValue(table, "result", value => string.Equals(value, "MISSING", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (ContainsRowsRoutes.Contains(route))
+        {
+            return table is { Rows.Count: > 0 };
+        }
+
+        return false;
+    }
+
     public static DataValidationNavRunState GetRunState(MonitoringJobRecord? job)
     {
         if (job is null)
@@ -71,29 +105,31 @@ internal static class DataValidationNavAlertHelper
 
     private static bool HasAlertCondition(MonitoringJobRecord job)
     {
-        var route = MonitoringJobHelper.BuildDataValidationSubmenuKey(job.SubmenuKey);
+        if (!string.IsNullOrEmpty(job.MetadataJson) && TryGetPreComputedHasAlerts(job.MetadataJson, out var preComputed))
+        {
+            return preComputed;
+        }
+
         var table = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
+        return ComputeHasAlerts(job.SubmenuKey, table);
+    }
 
-        if (StatusKoRoutes.Contains(route))
+    private static bool TryGetPreComputedHasAlerts(string metadataJson, out bool hasAlerts)
+    {
+        hasAlerts = false;
+        try
         {
-            return HasColumnValue(table, "status", value => string.Equals(value, "KO", StringComparison.OrdinalIgnoreCase));
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (doc.RootElement.TryGetProperty("hasAlerts", out var prop) &&
+                (prop.ValueKind == JsonValueKind.True || prop.ValueKind == JsonValueKind.False))
+            {
+                hasAlerts = prop.GetBoolean();
+                return true;
+            }
         }
-
-        if (string.Equals(route, "daily-balance", StringComparison.OrdinalIgnoreCase))
+        catch (JsonException)
         {
-            return HasColumnValue(table, "status", value => value.StartsWith("KO", StringComparison.OrdinalIgnoreCase));
         }
-
-        if (string.Equals(route, "market-data", StringComparison.OrdinalIgnoreCase))
-        {
-            return HasColumnValue(table, "result", value => string.Equals(value, "MISSING", StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (ContainsRowsRoutes.Contains(route))
-        {
-            return table is { Rows.Count: > 0 };
-        }
-
         return false;
     }
 

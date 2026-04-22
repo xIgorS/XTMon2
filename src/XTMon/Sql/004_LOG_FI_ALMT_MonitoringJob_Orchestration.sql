@@ -599,9 +599,9 @@ BEGIN
         [jobs].[CompletedAt],
         [jobs].[FailedAt],
         [jobs].[ErrorMessage],
-        [results].[ParsedQuery],
-        [results].[GridColumnsJson],
-        [results].[GridRowsJson],
+        NULL AS [ParsedQuery],
+        NULL AS [GridColumnsJson],
+        NULL AS [GridRowsJson],
         [results].[MetadataJson],
         [results].[SavedAt]
     FROM [LatestJobs] AS [jobs]

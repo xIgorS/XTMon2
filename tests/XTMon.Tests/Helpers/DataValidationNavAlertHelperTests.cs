@@ -150,13 +150,84 @@ public class DataValidationNavAlertHelperTests
         Assert.Equal(DataValidationNavRunState.NotRun, result);
     }
 
+    [Fact]
+    public void GetRunState_ReturnsAlertWhenMetadataJsonHasHasAlertsTrue()
+    {
+        var job = CreateJob("daily-balance", status: "Completed", completedAt: DateTime.UtcNow,
+            metadataJson: "{\"hasAlerts\":true}");
+
+        var result = DataValidationNavAlertHelper.GetRunState(job);
+
+        Assert.Equal(DataValidationNavRunState.Alert, result);
+    }
+
+    [Fact]
+    public void GetRunState_ReturnsSucceededWhenMetadataJsonHasHasAlertsFalse()
+    {
+        var job = CreateJob("daily-balance", status: "Completed", completedAt: DateTime.UtcNow,
+            metadataJson: "{\"hasAlerts\":false}");
+
+        var result = DataValidationNavAlertHelper.GetRunState(job);
+
+        Assert.Equal(DataValidationNavRunState.Succeeded, result);
+    }
+
+    [Fact]
+    public void GetRunState_FallsBackToGridDataWhenMetadataJsonAbsent()
+    {
+        var job = CreateJob("daily-balance", status: "Completed", completedAt: DateTime.UtcNow,
+            columnsJson: "[\"Status\",\"Source\"]",
+            rowsJson: "[[\"KO - mismatch\",\"XTG\"]]");
+
+        var result = DataValidationNavAlertHelper.GetRunState(job);
+
+        Assert.Equal(DataValidationNavRunState.Alert, result);
+    }
+
+    [Fact]
+    public void GetRunState_IgnoresMalformedMetadataJsonAndFallsBackToGrid()
+    {
+        var job = CreateJob("daily-balance", status: "Completed", completedAt: DateTime.UtcNow,
+            metadataJson: "not-valid-json",
+            columnsJson: "[\"Status\"]",
+            rowsJson: "[[\"KO - mismatch\"]]");
+
+        var result = DataValidationNavAlertHelper.GetRunState(job);
+
+        Assert.Equal(DataValidationNavRunState.Alert, result);
+    }
+
+    [Theory]
+    [InlineData("daily-balance", "[\"Status\"]", "[[\"KO - issue\"]]", true)]
+    [InlineData("daily-balance", "[\"Status\"]", "[[\"OK\"]]", false)]
+    [InlineData("market-data", "[\"Result\"]", "[[\"MISSING\"]]", true)]
+    [InlineData("market-data", "[\"Result\"]", "[[\"OK\"]]", false)]
+    [InlineData("future-cash", "[\"Portfolio\"]", "[[\"ABC\"]]", true)]
+    [InlineData("future-cash", null, null, false)]
+    [InlineData("reverse-conso-file", "[\"Col\"]", "[[\"val\"]]", false)]
+    public void BuildMetadataJson_ReturnsCorrectHasAlertsValue(
+        string submenuKey, string? columnsJson, string? rowsJson, bool expectedHasAlerts)
+    {
+        var table = columnsJson is null
+            ? null
+            : new MonitoringTableResult(
+                System.Text.Json.JsonSerializer.Deserialize<List<string>>(columnsJson)!,
+                System.Text.Json.JsonSerializer.Deserialize<List<List<string?>>>(rowsJson!)!
+                    .Select(r => (IReadOnlyList<string?>)r).ToList());
+
+        var json = DataValidationNavAlertHelper.BuildMetadataJson(submenuKey, table);
+
+        Assert.Equal($"{{\"hasAlerts\":{(expectedHasAlerts ? "true" : "false")}}}", json);
+    }
+
     private static MonitoringJobRecord CreateJob(
         string submenuKey,
         string status,
         DateTime? completedAt = null,
         DateTime? failedAt = null,
         string? columnsJson = null,
-        string? rowsJson = null)
+        string? rowsJson = null,
+        string? metadataJson = null)
     {
         return new MonitoringJobRecord(
             JobId: 1,
@@ -177,7 +248,7 @@ public class DataValidationNavAlertHelperTests
             ParsedQuery: "SELECT 1",
             GridColumnsJson: columnsJson,
             GridRowsJson: rowsJson,
-            MetadataJson: null,
+            MetadataJson: metadataJson,
             SavedAt: DateTime.UtcNow);
     }
 }
