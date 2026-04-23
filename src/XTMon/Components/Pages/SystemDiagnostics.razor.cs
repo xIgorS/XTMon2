@@ -26,6 +26,9 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private ISystemDiagnosticsRepository SystemDiagnosticsRepository { get; set; } = default!;
 
     [Inject]
+    private StartupJobRecoveryService StartupJobRecoveryService { get; set; } = default!;
+
+    [Inject]
     private ILogger<SystemDiagnostics> Logger { get; set; } = default!;
 
     private readonly CancellationTokenSource disposeCts = new();
@@ -38,8 +41,11 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private bool bulkCancellationIsError;
     private bool isCleaningLogging;
     private bool isCleaningHistory;
+    private bool isRecoveringStartupJobs;
     private string? cleanupMessage;
     private bool cleanupIsError;
+    private string? recoveryMessage;
+    private bool recoveryIsError;
     private bool ShowCleanupButtons => SystemDiagnosticsOptions.Value.ShowCleanupButtons;
     private MonitoringJobConcurrencyPolicy EffectiveMonitoringJobConcurrencyPolicy => BuildMonitoringJobConcurrencyPolicy(MonitoringJobsOptions.Value);
 
@@ -106,6 +112,34 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         finally
         {
             isCleaningLogging = false;
+        }
+    }
+
+    private async Task RecoverStartupJobsAsync()
+    {
+        isRecoveringStartupJobs = true;
+        recoveryMessage = null;
+        recoveryIsError = false;
+
+        try
+        {
+            var result = await StartupJobRecoveryService.RecoverAsync(disposeCts.Token);
+            recoveryMessage = result.TotalRecoveredJobs == 0
+                ? "No running monitoring or JV jobs were found to reset."
+                : $"Reset {result.RecoveredMonitoringJobs} monitoring job(s) and {result.RecoveredJvJobs} JV job(s) that were still marked Running.";
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to run startup-style job recovery from System Diagnostics.");
+            recoveryMessage = "Unable to reset running job statuses right now.";
+            recoveryIsError = true;
+        }
+        finally
+        {
+            isRecoveringStartupJobs = false;
         }
     }
 

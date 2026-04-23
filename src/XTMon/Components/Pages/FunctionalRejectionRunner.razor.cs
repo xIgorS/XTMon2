@@ -433,11 +433,23 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
         }
         finally
         {
-            if (!keepCancellationPending)
+            if (!ShouldKeepCancellationPending(row, jobId.Value, keepCancellationPending))
             {
                 cancellingJobIds.Remove(jobId.Value);
             }
         }
+    }
+
+    private static bool ShouldKeepCancellationPending(BatchRunRow row, long jobId, bool keepCancellationPending)
+    {
+        if (keepCancellationPending)
+        {
+            return true;
+        }
+
+        return row.LatestJob is not null
+            && row.LatestJob.JobId == jobId
+            && MonitoringJobHelper.IsActiveStatus(row.LatestJob.Status);
     }
 
     private void ReconcilePendingCancellationState()

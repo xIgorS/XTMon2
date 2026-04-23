@@ -517,7 +517,8 @@ CREATE TABLE [monitoring].[MonitoringJobs]
     [FailedAt] DATETIME2(0) NULL,
     [ErrorMessage] NVARCHAR(MAX) NULL,
     [KeyHash] BINARY(32) NOT NULL,
-    [ActivityAt] AS COALESCE([LastHeartbeatAt], [StartedAt], [EnqueuedAt]) PERSISTED
+    [ActivityAt] AS COALESCE([LastHeartbeatAt], [StartedAt], [EnqueuedAt]) PERSISTED,
+    CONSTRAINT [CK_MonitoringJobs_Status] CHECK ([Status] IN ('Queued','Running','Completed','Failed','Cancelled'))
 );
 GO
 
@@ -748,7 +749,8 @@ BEGIN
 
     UPDATE [monitoring].[MonitoringJobs]
        SET [LastHeartbeatAt] = SYSUTCDATETIME()
-     WHERE [JobId] = @JobId;
+         WHERE [JobId] = @JobId
+             AND [Status] = 'Running';
 END
 GO
 

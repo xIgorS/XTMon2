@@ -257,7 +257,8 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             heartbeatLoopCts = CancellationTokenSource.CreateLinkedTokenSource(jobCancellation.Token);
             heartbeatLoopTask = KeepHeartbeatAliveAsync(job.JobId, heartbeatLoopCts.Token);
 
-            var payload = await executor.ExecuteAsync(job, jobCancellation.Token);
+            var executionTask = executor.ExecuteAsync(job, jobCancellation.Token);
+            var payload = await AwaitExecutionWithHeartbeatAsync(executionTask, heartbeatLoopTask, jobCancellation);
             if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
                 _logger.LogInformation("Discarding monitoring job {JobId} result because the job was cancelled or otherwise finalized.", job.JobId);
@@ -362,6 +363,14 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                 {
                     break;
                 }
+                catch (SqlException ex) when (IsFatalHeartbeatException(ex))
+                {
+                    LogProcessorException(ex, $"job {jobId} heartbeat");
+                    _logger.LogError(ex,
+                        "Heartbeat update failed for monitoring job {JobId} with a non-retryable SQL error. Stopping the worker.",
+                        jobId);
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     LogProcessorException(ex, $"job {jobId} heartbeat");
@@ -372,6 +381,39 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
+    }
+
+    private static async Task<MonitoringJobResultPayload> AwaitExecutionWithHeartbeatAsync(
+        Task<MonitoringJobResultPayload> executionTask,
+        Task heartbeatLoopTask,
+        CancellationTokenSource jobCancellation)
+    {
+        var completedTask = await Task.WhenAny(executionTask, heartbeatLoopTask);
+        if (completedTask == executionTask)
+        {
+            return await executionTask;
+        }
+
+        try
+        {
+            await heartbeatLoopTask;
+        }
+        catch (Exception)
+        {
+            jobCancellation.Cancel();
+
+            try
+            {
+                await executionTask;
+            }
+            catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
+            {
+            }
+
+            throw;
+        }
+
+        return await executionTask;
     }
 
     private static async Task StopHeartbeatLoopAsync(CancellationTokenSource? heartbeatLoopCts, Task? heartbeatLoopTask)
@@ -388,6 +430,9 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             await heartbeatLoopTask;
         }
         catch (OperationCanceledException)
+        {
+        }
+        catch (Exception) when (heartbeatLoopTask.IsFaulted)
         {
         }
         finally
@@ -532,6 +577,11 @@ public sealed class MonitoringJobProcessingService : BackgroundService
     }
 
     private sealed record ActiveMonitoringJob(MonitoringJobRecord Job, Task Task);
+
+    private static bool IsFatalHeartbeatException(SqlException ex)
+    {
+        return SqlDataHelper.IsSqlTimeout(ex) || SqlDataHelper.IsSqlConnectionFailure(ex);
+    }
 
     private void LogProcessorException(Exception ex, string context)
     {

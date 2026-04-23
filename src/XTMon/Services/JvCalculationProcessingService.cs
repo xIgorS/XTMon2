@@ -17,6 +17,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
     private readonly ILogger<JvCalculationProcessingService> _logger;
     private readonly JvCalculationOptions _jvCalculationOptions;
     private readonly TimeSpan _idleDelay;
+    private readonly TimeSpan _heartbeatInterval;
     private readonly JobCancellationRegistry _jobCancellationRegistry;
 
     public JvCalculationProcessingService(
@@ -24,7 +25,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
         IOptions<JvCalculationOptions> jvCalculationOptions,
         ILogger<JvCalculationProcessingService> logger,
         JobCancellationRegistry jobCancellationRegistry)
-        : this(scopeFactory, jvCalculationOptions, logger, DefaultIdleDelay, jobCancellationRegistry)
+        : this(scopeFactory, jvCalculationOptions, logger, DefaultIdleDelay, null, jobCancellationRegistry)
     {
     }
 
@@ -33,12 +34,14 @@ public sealed class JvCalculationProcessingService : BackgroundService
         IOptions<JvCalculationOptions> jvCalculationOptions,
         ILogger<JvCalculationProcessingService> logger,
         TimeSpan idleDelay,
+        TimeSpan? heartbeatInterval = null,
         JobCancellationRegistry? jobCancellationRegistry = null)
     {
         _scopeFactory = scopeFactory;
         _jvCalculationOptions = jvCalculationOptions.Value;
         _logger = logger;
         _idleDelay = idleDelay;
+        _heartbeatInterval = heartbeatInterval ?? BuildHeartbeatInterval(_jvCalculationOptions);
         _jobCancellationRegistry = jobCancellationRegistry ?? new JobCancellationRegistry();
     }
 
@@ -98,6 +101,8 @@ public sealed class JvCalculationProcessingService : BackgroundService
     {
         using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _jobCancellationRegistry.RegisterJvJob(job.JobId, jobCancellation);
+        CancellationTokenSource? heartbeatLoopCts = null;
+        Task? heartbeatLoopTask = null;
 
         try
         {
@@ -119,25 +124,23 @@ public sealed class JvCalculationProcessingService : BackgroundService
                 return;
             }
 
+            heartbeatLoopCts = CancellationTokenSource.CreateLinkedTokenSource(jobCancellation.Token);
+            heartbeatLoopTask = KeepHeartbeatAliveAsync(job.JobId, heartbeatLoopCts.Token);
+
             string? queryFix = null;
             if (string.Equals(job.RequestType, "FixAndCheck", StringComparison.OrdinalIgnoreCase))
             {
-                queryFix = await repository.FixJvCalculationAsync(job.PnlDate, executeCatchup: true, jobCancellation.Token);
+                var fixTask = repository.FixJvCalculationAsync(job.PnlDate, executeCatchup: true, jobCancellation.Token);
+                queryFix = await AwaitExecutionWithHeartbeatAsync(fixTask, heartbeatLoopTask, jobCancellation);
                 if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
                 {
                     _logger.LogInformation("Discarding JV fix result for job {JobId} because it is no longer active.", job.JobId);
                     return;
                 }
-
-                await repository.HeartbeatJvJobAsync(job.JobId, jobCancellation.Token);
-                if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
-                {
-                    _logger.LogInformation("Stopping JV job {JobId} after fix heartbeat because it is no longer active.", job.JobId);
-                    return;
-                }
             }
 
-            var checkResult = await repository.CheckJvCalculationAsync(job.PnlDate, jobCancellation.Token);
+            var checkTask = repository.CheckJvCalculationAsync(job.PnlDate, jobCancellation.Token);
+            var checkResult = await AwaitExecutionWithHeartbeatAsync(checkTask, heartbeatLoopTask, jobCancellation);
             if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
             {
                 _logger.LogInformation("Discarding JV check result for job {JobId} because it is no longer active.", job.JobId);
@@ -151,21 +154,28 @@ public sealed class JvCalculationProcessingService : BackgroundService
                 return;
             }
 
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            heartbeatLoopCts = null;
+            heartbeatLoopTask = null;
+
             await repository.MarkJvJobCompletedAsync(job.JobId, jobCancellation.Token);
 
             _logger.LogInformation("JV job {JobId} completed.", job.JobId);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             throw;
         }
         catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
         {
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             _logger.LogInformation("JV job {JobId} cancellation was requested.", job.JobId);
             await EnsureJvJobMarkedCancelledAsync(job.JobId);
         }
         catch (Exception ex)
         {
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             LogProcessorException(ex, $"job {job.JobId}");
             _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, ex, "JV job {JobId} failed.", job.JobId);
             for (var attempt = 1; attempt <= 2; attempt++)
@@ -190,7 +200,104 @@ public sealed class JvCalculationProcessingService : BackgroundService
         }
         finally
         {
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             _jobCancellationRegistry.UnregisterJvJob(job.JobId, jobCancellation);
+        }
+    }
+
+    private async Task KeepHeartbeatAliveAsync(long jobId, CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
+        using var timer = new PeriodicTimer(_heartbeatInterval);
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                try
+                {
+                    await repository.HeartbeatJvJobAsync(jobId, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (SqlException ex) when (IsFatalHeartbeatException(ex))
+                {
+                    LogProcessorException(ex, $"job {jobId} heartbeat");
+                    _logger.LogError(ex,
+                        "Heartbeat update failed for JV job {JobId} with a non-retryable SQL error. Stopping the worker.",
+                        jobId);
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    LogProcessorException(ex, $"job {jobId} heartbeat");
+                    _logger.LogWarning(ex, "Heartbeat update failed for JV job {JobId}. Will retry while the job remains active.", jobId);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private static async Task<T> AwaitExecutionWithHeartbeatAsync<T>(
+        Task<T> executionTask,
+        Task heartbeatLoopTask,
+        CancellationTokenSource jobCancellation)
+    {
+        var completedTask = await Task.WhenAny(executionTask, heartbeatLoopTask);
+        if (completedTask == executionTask)
+        {
+            return await executionTask;
+        }
+
+        try
+        {
+            await heartbeatLoopTask;
+        }
+        catch (Exception)
+        {
+            jobCancellation.Cancel();
+
+            try
+            {
+                await executionTask;
+            }
+            catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
+            {
+            }
+
+            throw;
+        }
+
+        return await executionTask;
+    }
+
+    private static async Task StopHeartbeatLoopAsync(CancellationTokenSource? heartbeatLoopCts, Task? heartbeatLoopTask)
+    {
+        if (heartbeatLoopCts is null || heartbeatLoopTask is null)
+        {
+            return;
+        }
+
+        heartbeatLoopCts.Cancel();
+
+        try
+        {
+            await heartbeatLoopTask;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception) when (heartbeatLoopTask.IsFaulted)
+        {
+        }
+        finally
+        {
+            heartbeatLoopCts.Dispose();
         }
     }
 
@@ -246,6 +353,17 @@ public sealed class JvCalculationProcessingService : BackgroundService
                 sqlException.State,
                 sqlException.Class);
         }
+    }
+
+    private static TimeSpan BuildHeartbeatInterval(JvCalculationOptions options)
+    {
+        var seconds = Math.Clamp(options.JobRunningStaleTimeoutSeconds / 3, 5, 30);
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static bool IsFatalHeartbeatException(SqlException ex)
+    {
+        return SqlDataHelper.IsSqlTimeout(ex) || SqlDataHelper.IsSqlConnectionFailure(ex);
     }
 
 }

@@ -1,7 +1,9 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using System.Reflection;
 using XTMon.Helpers;
 using XTMon.Models;
 using XTMon.Options;
@@ -652,6 +654,58 @@ public class MonitoringJobProcessingServiceTests
     }
 
     [Fact]
+    public async Task LongRunningJob_WhenHeartbeatTimesOut_StopsWorkerAndMarksFailed()
+    {
+        var executorCancelledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.SetupSequence(r => r.HeartbeatMonitoringJobAsync(1L, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask)
+            .ThrowsAsync(MakeSqlException(-2, "Heartbeat timeout"));
+        repo.Setup(r => r.MarkMonitoringJobFailedAsync(1L, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback(() => failedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            async (_, token) =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    executorCancelledTcs.TrySetResult(true);
+                    throw;
+                }
+
+                return new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+            });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            idleDelay: TimeSpan.FromMilliseconds(10),
+            heartbeatInterval: TimeSpan.FromMilliseconds(20));
+
+        await service.StartAsync(CancellationToken.None);
+
+        await executorCancelledTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await failedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await service.StopAsync(CancellationToken.None);
+
+        repo.Verify(r => r.MarkMonitoringJobFailedAsync(1L, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.MarkMonitoringJobCompletedAsync(1L, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task WhenMonitoringJobIsCancelled_DoesNotMarkCompleted()
     {
         var heartbeatTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -810,6 +864,88 @@ public class MonitoringJobProcessingServiceTests
             timeoutCts.Token.ThrowIfCancellationRequested();
             await Task.Delay(25, timeoutCts.Token);
         }
+    }
+
+    private static SqlException MakeSqlException(int number, string message)
+    {
+        const BindingFlags NonPublicInstance = BindingFlags.NonPublic | BindingFlags.Instance;
+
+        var errorCtor = typeof(SqlError)
+            .GetConstructors(NonPublicInstance)
+            .OrderByDescending(constructor => constructor.GetParameters().Length)
+            .First();
+
+        var errorArgs = errorCtor.GetParameters()
+            .Select(parameter => parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType) : null)
+            .ToArray();
+
+        for (var index = 0; index < errorCtor.GetParameters().Length; index++)
+        {
+            var parameter = errorCtor.GetParameters()[index];
+            if (parameter.ParameterType == typeof(int) && string.Equals(parameter.Name, "infoNumber", StringComparison.OrdinalIgnoreCase))
+            {
+                errorArgs[index] = number;
+            }
+            else if (parameter.ParameterType == typeof(byte) && string.Equals(parameter.Name, "errorClass", StringComparison.OrdinalIgnoreCase))
+            {
+                errorArgs[index] = (byte)16;
+            }
+            else if (parameter.ParameterType == typeof(byte) && string.Equals(parameter.Name, "state", StringComparison.OrdinalIgnoreCase))
+            {
+                errorArgs[index] = (byte)1;
+            }
+            else if (parameter.ParameterType == typeof(string) && string.Equals(parameter.Name, "server", StringComparison.OrdinalIgnoreCase))
+            {
+                errorArgs[index] = "server";
+            }
+            else if (parameter.ParameterType == typeof(string) && string.Equals(parameter.Name, "message", StringComparison.OrdinalIgnoreCase))
+            {
+                errorArgs[index] = message;
+            }
+            else if (parameter.ParameterType == typeof(string) && string.Equals(parameter.Name, "procedure", StringComparison.OrdinalIgnoreCase))
+            {
+                errorArgs[index] = "procedure";
+            }
+            else if (parameter.ParameterType == typeof(int) && string.Equals(parameter.Name, "lineNumber", StringComparison.OrdinalIgnoreCase))
+            {
+                errorArgs[index] = 1;
+            }
+        }
+
+        var error = (SqlError)errorCtor.Invoke(errorArgs);
+
+        var collectionCtor = typeof(SqlErrorCollection).GetConstructors(NonPublicInstance).First();
+        var errors = (SqlErrorCollection)collectionCtor.Invoke(null);
+        var addMethod = typeof(SqlErrorCollection).GetMethod("Add", NonPublicInstance)!;
+        addMethod.Invoke(errors, [error]);
+
+        var exceptionCtor = typeof(SqlException).GetConstructors(NonPublicInstance).First();
+        var exceptionArgs = exceptionCtor.GetParameters()
+            .Select(parameter => parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType) : null)
+            .ToArray();
+
+        for (var index = 0; index < exceptionCtor.GetParameters().Length; index++)
+        {
+            var parameter = exceptionCtor.GetParameters()[index];
+            if (parameter.ParameterType == typeof(string))
+            {
+                exceptionArgs[index] = message;
+            }
+            else if (parameter.ParameterType == typeof(SqlErrorCollection))
+            {
+                exceptionArgs[index] = errors;
+            }
+            else if (parameter.ParameterType == typeof(Exception))
+            {
+                exceptionArgs[index] = null;
+            }
+            else if (parameter.ParameterType.FullName == "System.Guid")
+            {
+                exceptionArgs[index] = Guid.NewGuid();
+            }
+        }
+
+        return (SqlException)exceptionCtor.Invoke(exceptionArgs);
     }
 
     private sealed class StubExecutor : IMonitoringJobExecutor

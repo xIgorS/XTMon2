@@ -45,6 +45,33 @@
         }
     </div>
 
+    <div class="surface !border-sky-200/80">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+                <p class="section-label">Startup Recovery</p>
+                <h2 class="mt-1 text-lg font-bold text-heading">Reset orphaned running statuses</h2>
+                <p class="muted mt-1 text-sm">Runs the same recovery used on application startup: any monitoring or JV job row still marked <strong>Running</strong> is treated as orphaned and moved out of the running state so the UI and queues can recover cleanly.</p>
+            </div>
+            <span class="pill text-xs shrink-0">Matches startup behavior</span>
+        </div>
+
+        <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button class="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    @onclick="RecoverStartupJobsAsync"
+                    disabled="@(isRecoveringStartupJobs || isCancellingAllJobs || isRunning)">
+                @(isRecoveringStartupJobs ? "Resetting running statuses..." : "Reset Running Statuses")
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(recoveryMessage))
+        {
+            <div class="mt-4 rounded-2xl border px-4 py-3 @(recoveryIsError ? "border-rose-500/30 bg-rose-50/80 text-rose-700" : "border-emerald-500/30 bg-emerald-50/80 text-emerald-700")">
+                <p class="text-sm font-semibold">@(recoveryIsError ? "Recovery failed" : "Recovery summary")</p>
+                <p class="mt-1 text-sm">@recoveryMessage</p>
+            </div>
+        }
+    </div>
+
     @if (ShowCleanupButtons)
     {
         <div class="surface !border-amber-200/80">

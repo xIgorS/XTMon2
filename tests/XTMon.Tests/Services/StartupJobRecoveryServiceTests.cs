@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using XTMon.Models;
 using XTMon.Repositories;
 using XTMon.Services;
 
@@ -46,6 +47,26 @@ public class StartupJobRecoveryServiceTests
         var service = CreateService(monitoringRepository.Object, jvRepository.Object);
 
         await service.StartAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task RecoverAsync_ReturnsRecoveryCounts()
+    {
+        var monitoringRepository = new Mock<IMonitoringJobRepository>();
+        monitoringRepository
+            .Setup(repository => repository.FailRunningMonitoringJobsAsync(StartupJobRecoveryService.MonitoringStartupRecoveryMessage, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+
+        var jvRepository = new Mock<IJvCalculationRepository>();
+        jvRepository
+            .Setup(repository => repository.FailRunningJvJobsAsync(StartupJobRecoveryService.JvStartupRecoveryMessage, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+
+        var service = CreateService(monitoringRepository.Object, jvRepository.Object);
+
+        var result = await service.RecoverAsync(CancellationToken.None);
+
+        Assert.Equal(new StartupJobRecoveryResult(3, 2), result);
     }
 
     private static StartupJobRecoveryService CreateService(

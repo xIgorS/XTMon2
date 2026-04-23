@@ -65,8 +65,6 @@ public sealed class DataValidationNavAlertState
         }
         catch (Exception ex)
         {
-            ResetStatuses();
-            NotifyStatusesChanged();
             _logger.LogWarning(ex, "Unable to refresh data-validation nav statuses.");
         }
     }

@@ -1,3 +1,4 @@
+using XTMon.Models;
 using XTMon.Repositories;
 
 namespace XTMon.Services;
@@ -22,14 +23,9 @@ public sealed class StartupJobRecoveryService : IHostedService
     {
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var monitoringRepository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
-            var jvRepository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
+            var result = await RecoverAsync(cancellationToken);
 
-            var recoveredMonitoringJobs = await monitoringRepository.FailRunningMonitoringJobsAsync(MonitoringStartupRecoveryMessage, cancellationToken);
-            var recoveredJvJobs = await jvRepository.FailRunningJvJobsAsync(JvStartupRecoveryMessage, cancellationToken);
-
-            if (recoveredMonitoringJobs == 0 && recoveredJvJobs == 0)
+            if (result.TotalRecoveredJobs == 0)
             {
                 _logger.LogInformation("Startup job recovery found no orphaned running jobs.");
                 return;
@@ -37,8 +33,8 @@ public sealed class StartupJobRecoveryService : IHostedService
 
             _logger.LogWarning(
                 "Startup job recovery failed {RecoveredMonitoringJobs} monitoring job(s) and {RecoveredJvJobs} JV job(s) left in Running state by an earlier application instance.",
-                recoveredMonitoringJobs,
-                recoveredJvJobs);
+                result.RecoveredMonitoringJobs,
+                result.RecoveredJvJobs);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -49,6 +45,18 @@ public sealed class StartupJobRecoveryService : IHostedService
             _logger.LogError(ex,
                 "Startup job recovery failed. The application will continue starting, but orphaned running jobs may remain blocked until regular stale-job expiry runs.");
         }
+    }
+
+    public async Task<StartupJobRecoveryResult> RecoverAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var monitoringRepository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
+        var jvRepository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
+
+        var recoveredMonitoringJobs = await monitoringRepository.FailRunningMonitoringJobsAsync(MonitoringStartupRecoveryMessage, cancellationToken);
+        var recoveredJvJobs = await jvRepository.FailRunningJvJobsAsync(JvStartupRecoveryMessage, cancellationToken);
+
+        return new StartupJobRecoveryResult(recoveredMonitoringJobs, recoveredJvJobs);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
