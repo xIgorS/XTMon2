@@ -58,6 +58,7 @@ CREATE TABLE [monitoring].[JvCalculationJobs]
     [CompletedAt] DATETIME2(3) NULL,
     [FailedAt] DATETIME2(3) NULL,
     [ErrorMessage] NVARCHAR(MAX) NULL,
+    [ActivityAt] AS COALESCE([LastHeartbeatAt], [StartedAt], [EnqueuedAt]) PERSISTED,
     CONSTRAINT [PK_JvCalculationJobs] PRIMARY KEY CLUSTERED ([JobId] ASC),
     CONSTRAINT [CK_JvCalculationJobs_Status] CHECK ([Status] IN ('Queued','Running','Completed','Failed')),
     CONSTRAINT [CK_JvCalculationJobs_RequestType] CHECK ([RequestType] IN ('CheckOnly','FixAndCheck'))
@@ -83,12 +84,24 @@ CREATE UNIQUE NONCLUSTERED INDEX [UX_JvCalculationJobs_Active_User_PnlDate_Reque
     WHERE [Status] IN ('Queued','Running');
 GO
 
-CREATE NONCLUSTERED INDEX [IX_JvCalculationJobs_Status_EnqueuedAt_JobId]
-    ON [monitoring].[JvCalculationJobs]([Status],[EnqueuedAt],[JobId]);
+CREATE NONCLUSTERED INDEX [IX_JvCalculationJobs_Queued_EnqueuedAt_JobId]
+    ON [monitoring].[JvCalculationJobs]([EnqueuedAt],[JobId])
+    WHERE [Status] = 'Queued';
+GO
+
+CREATE NONCLUSTERED INDEX [IX_JvCalculationJobs_Running_ActivityAt_JobId]
+    ON [monitoring].[JvCalculationJobs]([ActivityAt],[JobId])
+    WHERE [Status] = 'Running';
 GO
 
 CREATE NONCLUSTERED INDEX [IX_JvCalculationJobs_User_PnlDate_RequestType_JobId]
-    ON [monitoring].[JvCalculationJobs]([UserId],[PnlDate],[RequestType],[JobId] DESC);
+    ON [monitoring].[JvCalculationJobs]([UserId],[PnlDate],[RequestType],[JobId] DESC)
+    INCLUDE ([Status],[WorkerId],[EnqueuedAt],[StartedAt],[LastHeartbeatAt],[CompletedAt],[FailedAt],[ErrorMessage]);
+GO
+
+CREATE NONCLUSTERED INDEX [IX_JvCalculationJobs_User_PnlDate_JobId]
+    ON [monitoring].[JvCalculationJobs]([UserId],[PnlDate],[JobId] DESC)
+    INCLUDE ([RequestType],[Status],[WorkerId],[EnqueuedAt],[StartedAt],[LastHeartbeatAt],[CompletedAt],[FailedAt],[ErrorMessage]);
 GO
 
 SET ANSI_NULLS ON
@@ -105,7 +118,8 @@ CREATE PROCEDURE [monitoring].[UspJvJobEnqueue]
 AS
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+    SET XACT_ABORT ON;
+    SET LOCK_TIMEOUT 5000;
 
     IF @RequestType IS NULL
         SET @RequestType = 'FixAndCheck';
@@ -162,7 +176,8 @@ CREATE PROCEDURE [monitoring].[UspJvJobTakeNext]
 AS
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+    SET XACT_ABORT ON;
+    SET LOCK_TIMEOUT 5000;
 
     DECLARE @Now DATETIME2(3) = SYSUTCDATETIME();
     DECLARE @Claimed TABLE ([JobId] BIGINT PRIMARY KEY);
@@ -352,6 +367,35 @@ BEGIN
     SET NOCOUNT ON;
     SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
+    IF @RequestType IS NULL
+    BEGIN
+        SELECT TOP (1)
+            j.[JobId],
+            j.[UserId],
+            j.[PnlDate],
+            j.[RequestType],
+            j.[Status],
+            j.[WorkerId],
+            j.[EnqueuedAt],
+            j.[StartedAt],
+            j.[LastHeartbeatAt],
+            j.[CompletedAt],
+            j.[FailedAt],
+            j.[ErrorMessage],
+            r.[QueryCheck],
+            r.[QueryFix],
+            r.[GridColumnsJson],
+            r.[GridRowsJson],
+            r.[SavedAt]
+        FROM [monitoring].[JvCalculationJobs] j
+        LEFT JOIN [monitoring].[JvCalculationJobResults] r ON r.[JobId] = j.[JobId]
+        WHERE j.[UserId] = @UserId
+          AND j.[PnlDate] = @PnlDate
+        ORDER BY j.[JobId] DESC;
+
+        RETURN;
+    END
+
     SELECT TOP (1)
         j.[JobId],
         j.[UserId],
@@ -374,7 +418,7 @@ BEGIN
     LEFT JOIN [monitoring].[JvCalculationJobResults] r ON r.[JobId] = j.[JobId]
     WHERE j.[UserId] = @UserId
       AND j.[PnlDate] = @PnlDate
-      AND (@RequestType IS NULL OR j.[RequestType] = @RequestType)
+            AND j.[RequestType] = @RequestType
     ORDER BY j.[JobId] DESC;
 END
 GO
@@ -385,8 +429,11 @@ CREATE PROCEDURE [monitoring].[UspJvJobExpireStale]
 AS
 BEGIN
     SET NOCOUNT OFF;
+    SET LOCK_TIMEOUT 5000;
 
-    UPDATE [monitoring].[JvCalculationJobs]
+    DECLARE @Cutoff DATETIME2(3) = DATEADD(SECOND, -@StaleTimeoutSeconds, SYSUTCDATETIME());
+
+    UPDATE [jobs]
     SET
         [Status] = 'Failed',
         [FailedAt] = SYSUTCDATETIME(),
@@ -398,8 +445,9 @@ BEGIN
                             ELSE [ErrorMessage]
                          END,
         [LastHeartbeatAt] = SYSUTCDATETIME()
-    WHERE [Status] = 'Running'
-      AND DATEADD(SECOND, @StaleTimeoutSeconds, COALESCE([LastHeartbeatAt], [StartedAt], [EnqueuedAt])) <= SYSUTCDATETIME();
+        FROM [monitoring].[JvCalculationJobs] AS [jobs] WITH (READPAST, UPDLOCK, ROWLOCK)
+        WHERE [jobs].[Status] = 'Running'
+            AND [jobs].[ActivityAt] <= @Cutoff;
 END
 GO
 
@@ -441,11 +489,13 @@ CREATE NONCLUSTERED INDEX [IX_MonitoringJobs_Running_ActivityAt_JobId]
 GO
 
 CREATE NONCLUSTERED INDEX [IX_MonitoringJobs_KeyHash_JobId]
-    ON [monitoring].[MonitoringJobs]([KeyHash], [JobId] DESC);
+    ON [monitoring].[MonitoringJobs]([KeyHash], [JobId] DESC)
+    INCLUDE ([Category],[SubmenuKey],[DisplayName],[PnlDate],[Status],[WorkerId],[ParameterSummary],[EnqueuedAt],[StartedAt],[LastHeartbeatAt],[CompletedAt],[FailedAt],[ErrorMessage]);
 GO
 
 CREATE NONCLUSTERED INDEX [IX_MonitoringJobs_Category_PnlDate_KeyHash_JobId]
-    ON [monitoring].[MonitoringJobs]([Category], [PnlDate], [KeyHash], [JobId] DESC);
+    ON [monitoring].[MonitoringJobs]([Category], [PnlDate], [KeyHash], [JobId] DESC)
+    INCLUDE ([SubmenuKey],[DisplayName],[Status],[WorkerId],[ParameterSummary],[EnqueuedAt],[StartedAt],[LastHeartbeatAt],[CompletedAt],[FailedAt],[ErrorMessage]);
 GO
 
 CREATE TABLE [monitoring].[MonitoringLatestResults]
@@ -551,36 +601,66 @@ BEGIN
     SET LOCK_TIMEOUT 5000;
 
     DECLARE @Selected TABLE ([JobId] BIGINT NOT NULL);
+    DECLARE @ExcludedCategories TABLE ([Category] VARCHAR(64) NOT NULL PRIMARY KEY);
+
+    IF @ExcludedCategoriesCsv IS NOT NULL
+    BEGIN
+        INSERT INTO @ExcludedCategories ([Category])
+        SELECT DISTINCT CONVERT(VARCHAR(64), LTRIM(RTRIM([value])))
+        FROM STRING_SPLIT(@ExcludedCategoriesCsv, ',')
+        WHERE LTRIM(RTRIM([value])) <> '';
+    END
 
     BEGIN TRANSACTION;
 
-    ;WITH [next_job] AS
-    (
-        SELECT TOP (1) [JobId]
-        FROM [monitoring].[MonitoringJobs] WITH (UPDLOCK, READPAST, ROWLOCK)
-        WHERE [Status] = 'Queued'
-          AND (
-                @ExcludedCategoriesCsv IS NULL
-                OR NOT EXISTS
-                (
-                    SELECT 1
-                    FROM STRING_SPLIT(@ExcludedCategoriesCsv, ',') AS [excluded]
-                    WHERE LTRIM(RTRIM([excluded].[value])) = [MonitoringJobs].[Category]
-                )
+    IF EXISTS (SELECT 1 FROM @ExcludedCategories)
+    BEGIN
+        ;WITH [next_job] AS
+        (
+            SELECT TOP (1) [JobId]
+            FROM [monitoring].[MonitoringJobs] WITH (UPDLOCK, READPAST, ROWLOCK)
+            WHERE [Status] = 'Queued'
+              AND NOT EXISTS
+              (
+                  SELECT 1
+                  FROM @ExcludedCategories AS [excluded]
+                  WHERE [excluded].[Category] = [MonitoringJobs].[Category]
               )
-        ORDER BY [EnqueuedAt], [JobId]
-    )
-    UPDATE [jobs]
-        SET [Status] = 'Running',
-            [WorkerId] = @WorkerId,
-            [StartedAt] = COALESCE([StartedAt], SYSUTCDATETIME()),
-            [LastHeartbeatAt] = SYSUTCDATETIME(),
-            [CompletedAt] = NULL,
-            [FailedAt] = NULL,
-            [ErrorMessage] = NULL
-    OUTPUT INSERTED.[JobId] INTO @Selected([JobId])
-    FROM [monitoring].[MonitoringJobs] AS [jobs]
-    INNER JOIN [next_job] ON [next_job].[JobId] = [jobs].[JobId];
+            ORDER BY [EnqueuedAt], [JobId]
+        )
+        UPDATE [jobs]
+            SET [Status] = 'Running',
+                [WorkerId] = @WorkerId,
+                [StartedAt] = COALESCE([StartedAt], SYSUTCDATETIME()),
+                [LastHeartbeatAt] = SYSUTCDATETIME(),
+                [CompletedAt] = NULL,
+                [FailedAt] = NULL,
+                [ErrorMessage] = NULL
+        OUTPUT INSERTED.[JobId] INTO @Selected([JobId])
+        FROM [monitoring].[MonitoringJobs] AS [jobs]
+        INNER JOIN [next_job] ON [next_job].[JobId] = [jobs].[JobId];
+    END
+    ELSE
+    BEGIN
+        ;WITH [next_job] AS
+        (
+            SELECT TOP (1) [JobId]
+            FROM [monitoring].[MonitoringJobs] WITH (UPDLOCK, READPAST, ROWLOCK)
+            WHERE [Status] = 'Queued'
+            ORDER BY [EnqueuedAt], [JobId]
+        )
+        UPDATE [jobs]
+            SET [Status] = 'Running',
+                [WorkerId] = @WorkerId,
+                [StartedAt] = COALESCE([StartedAt], SYSUTCDATETIME()),
+                [LastHeartbeatAt] = SYSUTCDATETIME(),
+                [CompletedAt] = NULL,
+                [FailedAt] = NULL,
+                [ErrorMessage] = NULL
+        OUTPUT INSERTED.[JobId] INTO @Selected([JobId])
+        FROM [monitoring].[MonitoringJobs] AS [jobs]
+        INNER JOIN [next_job] ON [next_job].[JobId] = [jobs].[JobId];
+    END
 
     COMMIT TRANSACTION;
 
@@ -792,25 +872,11 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    WITH [LatestJobs] AS
+    WITH [LatestJobIds] AS
     (
         SELECT
-            [jobs].[JobId],
-            [jobs].[Category],
-            [jobs].[SubmenuKey],
-            [jobs].[DisplayName],
-            [jobs].[PnlDate],
-            [jobs].[Status],
-            [jobs].[WorkerId],
-            [jobs].[ParametersJson],
-            [jobs].[ParameterSummary],
-            [jobs].[EnqueuedAt],
-            [jobs].[StartedAt],
-            [jobs].[LastHeartbeatAt],
-            [jobs].[CompletedAt],
-            [jobs].[FailedAt],
-            [jobs].[ErrorMessage],
             [jobs].[KeyHash],
+            [jobs].[JobId],
             ROW_NUMBER() OVER (PARTITION BY [jobs].[KeyHash] ORDER BY [jobs].[JobId] DESC) AS [RowNumber]
         FROM [monitoring].[MonitoringJobs] AS [jobs]
         WHERE [jobs].[Category] = @Category
@@ -837,10 +903,12 @@ BEGIN
         NULL AS [GridRowsJson],
         [results].[MetadataJson],
         [results].[SavedAt]
-    FROM [LatestJobs] AS [jobs]
+    FROM [LatestJobIds] AS [latest]
+    INNER JOIN [monitoring].[MonitoringJobs] AS [jobs]
+        ON [jobs].[JobId] = [latest].[JobId]
     LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results]
-        ON [results].[KeyHash] = [jobs].[KeyHash]
-    WHERE [jobs].[RowNumber] = 1
+        ON [results].[KeyHash] = [latest].[KeyHash]
+    WHERE [latest].[RowNumber] = 1
     ORDER BY [jobs].[SubmenuKey];
 END
 GO
