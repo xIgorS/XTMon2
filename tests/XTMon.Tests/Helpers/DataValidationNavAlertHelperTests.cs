@@ -18,6 +18,26 @@ public class DataValidationNavAlertHelperTests
     }
 
     [Fact]
+    public void GetRunState_ReturnsNotRunForCancelledJobThatNeverStarted()
+    {
+        var job = CreateJob("batch-status", status: MonitoringJobHelper.CancelledStatus, startedAt: null, failedAt: null);
+
+        var result = DataValidationNavAlertHelper.GetRunState(job);
+
+        Assert.Equal(DataValidationNavRunState.NotRun, result);
+    }
+
+    [Fact]
+    public void GetRunState_ReturnsCancelledForCancelledJobThatStarted()
+    {
+        var job = CreateJob("batch-status", status: MonitoringJobHelper.CancelledStatus, startedAt: DateTime.UtcNow, failedAt: DateTime.UtcNow);
+
+        var result = DataValidationNavAlertHelper.GetRunState(job);
+
+        Assert.Equal(DataValidationNavRunState.Cancelled, result);
+    }
+
+    [Fact]
     public void GetRunState_ReturnsRunningForActiveJob()
     {
         var job = CreateJob("daily-balance", status: "Running");
@@ -223,6 +243,7 @@ public class DataValidationNavAlertHelperTests
     private static MonitoringJobRecord CreateJob(
         string submenuKey,
         string status,
+        DateTime? startedAt = null,
         DateTime? completedAt = null,
         DateTime? failedAt = null,
         string? columnsJson = null,
@@ -240,8 +261,8 @@ public class DataValidationNavAlertHelperTests
             ParametersJson: null,
             ParameterSummary: null,
             EnqueuedAt: DateTime.UtcNow,
-            StartedAt: DateTime.UtcNow,
-            LastHeartbeatAt: DateTime.UtcNow,
+            StartedAt: startedAt,
+            LastHeartbeatAt: startedAt,
             CompletedAt: completedAt,
             FailedAt: failedAt,
             ErrorMessage: null,

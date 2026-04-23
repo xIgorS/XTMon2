@@ -422,7 +422,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                 return;
             }
 
-            await repository.MarkMonitoringJobFailedAsync(jobId, BackgroundJobCancellationService.MonitoringJobCanceledMessage, cts.Token);
+            await repository.MarkMonitoringJobCancelledAsync(jobId, BackgroundJobCancellationService.MonitoringJobCanceledMessage, cts.Token);
         }
         catch (OperationCanceledException)
         {

@@ -492,6 +492,7 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
             DataValidationNavRunState.Alert => "submenu-status-badge--failed",
             DataValidationNavRunState.Succeeded => "submenu-status-badge--succeeded",
             DataValidationNavRunState.Running => "submenu-status-badge--running",
+            DataValidationNavRunState.Cancelled => "submenu-status-badge--not-run",
             _ => "submenu-status-badge--not-run"
         };
     }
@@ -519,9 +520,14 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
             return "Completed";
         }
 
+        if (runState == DataValidationNavRunState.Cancelled)
+        {
+            return "Cancelled";
+        }
+
         if (MonitoringJobHelper.IsActiveStatus(job.Status))
         {
-            return string.Equals(job.Status, "Queued", StringComparison.OrdinalIgnoreCase)
+            return MonitoringJobHelper.IsQueuedStatus(job.Status)
                 ? "Queued"
                 : "Running";
         }
@@ -532,6 +538,11 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
     private static string GetLastRunText(MonitoringJobRecord? job)
     {
         if (job is null)
+        {
+            return "-";
+        }
+
+        if (MonitoringJobHelper.ShouldTreatAsNotRun(job.Status, job.StartedAt))
         {
             return "-";
         }
@@ -562,6 +573,7 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
         return row.LastSubmissionOutcome switch
         {
             BatchSubmissionOutcome.Completed => "text-success",
+            BatchSubmissionOutcome.Cancelled => "text-slate-600",
             BatchSubmissionOutcome.Queued => "text-success",
             BatchSubmissionOutcome.Running => "text-amber-600",
             BatchSubmissionOutcome.AlreadyActive => "text-amber-600",
@@ -577,14 +589,28 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
             return;
         }
 
-        if (string.Equals(row.LatestJob.Status, "Completed", StringComparison.OrdinalIgnoreCase) || row.LatestJob.CompletedAt is not null)
+        if (MonitoringJobHelper.IsCompletedStatus(row.LatestJob.Status) || row.LatestJob.CompletedAt is not null)
         {
             row.LastSubmissionOutcome = BatchSubmissionOutcome.Completed;
             row.LastSubmissionMessage = "Completed";
             return;
         }
 
-        if (string.Equals(row.LatestJob.Status, "Failed", StringComparison.OrdinalIgnoreCase) || row.LatestJob.FailedAt is not null)
+        if (MonitoringJobHelper.ShouldTreatAsNotRun(row.LatestJob.Status, row.LatestJob.StartedAt))
+        {
+            row.LastSubmissionOutcome = null;
+            row.LastSubmissionMessage = null;
+            return;
+        }
+
+        if (MonitoringJobHelper.IsCancelledStatus(row.LatestJob.Status))
+        {
+            row.LastSubmissionOutcome = BatchSubmissionOutcome.Cancelled;
+            row.LastSubmissionMessage = "Cancelled";
+            return;
+        }
+
+        if (MonitoringJobHelper.IsFailedStatus(row.LatestJob.Status))
         {
             row.LastSubmissionOutcome = BatchSubmissionOutcome.Failed;
             row.LastSubmissionMessage = "Failed";
@@ -593,7 +619,7 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
 
         if (MonitoringJobHelper.IsActiveStatus(row.LatestJob.Status))
         {
-            row.LastSubmissionOutcome = string.Equals(row.LatestJob.Status, "Queued", StringComparison.OrdinalIgnoreCase)
+            row.LastSubmissionOutcome = MonitoringJobHelper.IsQueuedStatus(row.LatestJob.Status)
                 ? BatchSubmissionOutcome.Queued
                 : BatchSubmissionOutcome.Running;
             row.LastSubmissionMessage = GetStatusLabel(row.LatestJob);
@@ -630,6 +656,7 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
     private enum BatchSubmissionOutcome
     {
         Completed,
+        Cancelled,
         Queued,
         Running,
         AlreadyActive,

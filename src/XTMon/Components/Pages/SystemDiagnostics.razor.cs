@@ -15,11 +15,20 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     [Inject]
     private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
+    [Inject]
+    private IBackgroundJobCancellationService BackgroundJobCancellationService { get; set; } = default!;
+
+    [Inject]
+    private ILogger<SystemDiagnostics> Logger { get; set; } = default!;
+
     private readonly CancellationTokenSource disposeCts = new();
 
     private DiagnosticsReport? report => StartupDiagnosticsState.Report;
     private bool isRunning => StartupDiagnosticsState.IsRunning;
     private string? runError => StartupDiagnosticsState.Error;
+    private bool isCancellingAllJobs;
+    private string? bulkCancellationMessage;
+    private bool bulkCancellationIsError;
     private MonitoringJobConcurrencyPolicy EffectiveMonitoringJobConcurrencyPolicy => BuildMonitoringJobConcurrencyPolicy(MonitoringJobsOptions.Value);
 
     protected override void OnInitialized()
@@ -32,6 +41,34 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         await StartupDiagnosticsState.RunAsync(disposeCts.Token);
     }
 
+    private async Task CancelAllBackgroundJobsAsync()
+    {
+        isCancellingAllJobs = true;
+        bulkCancellationMessage = null;
+        bulkCancellationIsError = false;
+
+        try
+        {
+            var result = await BackgroundJobCancellationService.CancelAllBackgroundJobsAsync(disposeCts.Token);
+            bulkCancellationMessage = result.TotalJobsCancelled == 0
+                ? "No active monitoring or JV background jobs were found."
+                : BuildBulkCancellationMessage(result);
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to cancel all background jobs from System Diagnostics.");
+            bulkCancellationMessage = "Unable to cancel all background jobs right now.";
+            bulkCancellationIsError = true;
+        }
+        finally
+        {
+            isCancellingAllJobs = false;
+        }
+    }
+
     private static string FormatDuration(TimeSpan duration) =>
         duration.TotalMilliseconds < 1000
             ? $"{duration.TotalMilliseconds:0} ms"
@@ -39,6 +76,19 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
 
     private static string FormatParameters(IReadOnlyList<StoredProcedureParameterInfo> parameters) =>
         string.Join(", ", parameters.Select(p => p.IsOutput ? $"{p.Name} ({p.TypeName} OUT)" : $"{p.Name} ({p.TypeName})"));
+
+    private static string BuildBulkCancellationMessage(BackgroundJobBulkCancellationResult result)
+    {
+        var summary = $"Marked {result.MonitoringJobsCancelled} monitoring job(s) and {result.JvJobsCancelled} JV job(s) as cancelled.";
+        var workers = $" Cancellation was requested for {result.TotalWorkersCancellationRequested} active worker(s).";
+
+        if (result.CancellationConfirmed)
+        {
+            return summary + workers + " Status verification shows no active background jobs remain.";
+        }
+
+        return summary + workers + $" Status verification still reports {result.TotalActiveJobsRemaining} active job(s), so another refresh may be needed while long-running queries unwind.";
+    }
 
     public ValueTask DisposeAsync()
     {

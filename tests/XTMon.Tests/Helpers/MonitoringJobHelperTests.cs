@@ -94,4 +94,20 @@ public class MonitoringJobHelperTests
 
         Assert.Equal(parameters, roundTrip);
     }
+
+    [Fact]
+    public void ShouldTreatAsNotRun_ReturnsTrueForCancelledJobWithoutStartTime()
+    {
+        var result = MonitoringJobHelper.ShouldTreatAsNotRun(MonitoringJobHelper.CancelledStatus, startedAt: null);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void ShouldTreatAsNotRun_ReturnsFalseForCancelledJobAfterStart()
+    {
+        var result = MonitoringJobHelper.ShouldTreatAsNotRun(MonitoringJobHelper.CancelledStatus, DateTime.UtcNow);
+
+        Assert.False(result);
+    }
 }

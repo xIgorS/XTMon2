@@ -90,6 +90,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         "QUEUED" => "jv-status-badge--queued",
         "RUNNING" => "jv-status-badge--running",
         "COMPLETED" => "jv-status-badge--completed",
+        "CANCELLED" => "jv-status-badge--queued",
         "FAILED" => "jv-status-badge--failed",
         _ => "jv-status-badge--queued"
     };
@@ -225,6 +226,12 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
                 return;
             }
 
+            if (MonitoringJobHelper.ShouldTreatAsNotRun(latestJob.Status, latestJob.StartedAt))
+            {
+                ClearLoadedState();
+                return;
+            }
+
             activeJobId = latestJob.JobId;
             ApplyJob(latestJob);
         }
@@ -266,7 +273,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
             return;
         }
 
-        if (activeJobStatus is "Completed" or "Failed")
+        if (MonitoringJobHelper.IsTerminalStatus(activeJobStatus))
         {
             return;
         }
@@ -309,6 +316,14 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         }
 
         job = await ResolveStaleRunningJobAsync(job, cancellationToken);
+
+        if (MonitoringJobHelper.ShouldTreatAsNotRun(job.Status, job.StartedAt))
+        {
+            ClearLoadedState();
+            isCancellingJob = false;
+            return;
+        }
+
         ApplyJob(job);
         if (!MonitoringJobHelper.IsActiveStatus(activeJobStatus))
         {
@@ -377,18 +392,16 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         activeJobStartedAt = job.StartedAt;
         activeJobCompletedAt = job.CompletedAt;
 
-        if (string.Equals(job.Status, "Running", StringComparison.OrdinalIgnoreCase))
+        if (MonitoringJobHelper.IsRunningStatus(job.Status))
         {
             showJobStatusDetails = true;
         }
-        else if (string.Equals(job.Status, "Completed", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+        else if (MonitoringJobHelper.IsTerminalStatus(job.Status))
         {
             showJobStatusDetails = false;
         }
 
-        var isInProgress = string.Equals(job.Status, "Queued", StringComparison.OrdinalIgnoreCase) ||
-                           string.Equals(job.Status, "Running", StringComparison.OrdinalIgnoreCase);
+        var isInProgress = MonitoringJobHelper.IsActiveStatus(job.Status);
 
         isChecking = isInProgress && string.Equals(job.RequestType, CheckOnlyRequestType, StringComparison.OrdinalIgnoreCase);
         isFixing = isInProgress && string.Equals(job.RequestType, FixAndCheckRequestType, StringComparison.OrdinalIgnoreCase);
@@ -397,11 +410,21 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         parsedFixQuery = job.QueryFix ?? string.Empty;
         result = DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
 
-        if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+        if (MonitoringJobHelper.IsFailedStatus(job.Status))
         {
             checkError = string.IsNullOrWhiteSpace(job.ErrorMessage)
                 ? "JV background job failed."
                 : job.ErrorMessage;
+        }
+        else if (MonitoringJobHelper.IsCancelledStatus(job.Status))
+        {
+            checkError = string.IsNullOrWhiteSpace(job.ErrorMessage)
+                ? "JV background job was cancelled."
+                : job.ErrorMessage;
+        }
+        else
+        {
+            checkError = null;
         }
     }
 

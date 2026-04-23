@@ -33,6 +33,29 @@ public sealed class JobCancellationRegistry
         return true;
     }
 
+    public int CancelAllMonitoringJobs()
+    {
+        var cancelledCount = 0;
+
+        foreach (var entry in _monitoringJobTokens)
+        {
+            if (entry.Value.IsCancellationRequested)
+            {
+                continue;
+            }
+
+            entry.Value.Cancel();
+            cancelledCount++;
+        }
+
+        if (cancelledCount > 0)
+        {
+            _monitoringJobCancellationSignal.Release();
+        }
+
+        return cancelledCount;
+    }
+
     public bool IsMonitoringJobCancellationRequested(long jobId)
     {
         return _monitoringJobTokens.TryGetValue(jobId, out var cancellationTokenSource)
@@ -66,5 +89,23 @@ public sealed class JobCancellationRegistry
 
         cancellationTokenSource.Cancel();
         return true;
+    }
+
+    public int CancelAllJvJobs()
+    {
+        var cancelledCount = 0;
+
+        foreach (var entry in _jvJobTokens)
+        {
+            if (entry.Value.IsCancellationRequested)
+            {
+                continue;
+            }
+
+            entry.Value.Cancel();
+            cancelledCount++;
+        }
+
+        return cancelledCount;
     }
 }

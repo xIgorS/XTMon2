@@ -332,9 +332,137 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         return ExecuteMonitoringJobStateProcedureAsync(_options.JobMarkFailedStoredProcedure, jobId, errorMessage, cancellationToken);
     }
 
+    public async Task MarkMonitoringJobCancelledAsync(long jobId, string errorMessage, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string commandName = "mark-monitoring-job-cancelled";
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+UPDATE [monitoring].[MonitoringJobs]
+   SET [Status] = 'Cancelled',
+       [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+       [CompletedAt] = NULL,
+       [ErrorMessage] = @ErrorMessage,
+       [LastHeartbeatAt] = SYSUTCDATETIME()
+ WHERE [JobId] = @JobId
+   AND [Status] IN ('Running', 'Queued');";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt) { Value = jobId });
+            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
+            {
+                Value = string.IsNullOrWhiteSpace(errorMessage) ? "Monitoring background job was cancelled by user." : errorMessage
+            });
+
+            await connection.OpenAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(MarkMonitoringJobCancelledAsync), commandName, stopwatch.ElapsedMilliseconds, $"JobId={jobId}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring job cancellation update failed for JobId {JobId}.", jobId);
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(MarkMonitoringJobCancelledAsync), commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     public Task HeartbeatMonitoringJobAsync(long jobId, CancellationToken cancellationToken)
     {
         return ExecuteMonitoringJobStateProcedureAsync(_options.JobHeartbeatStoredProcedure, jobId, null, cancellationToken);
+    }
+
+    public async Task<int> CancelActiveMonitoringJobsAsync(string errorMessage, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string operationName = nameof(CancelActiveMonitoringJobsAsync);
+        const string commandName = "bulk-cancel-active-monitoring-jobs";
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+UPDATE [monitoring].[MonitoringJobs]
+   SET [Status] = 'Cancelled',
+       [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+       [CompletedAt] = NULL,
+       [ErrorMessage] = @ErrorMessage,
+       [LastHeartbeatAt] = SYSUTCDATETIME()
+ WHERE [Status] IN ('Queued', 'Running');";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
+            {
+                Value = string.IsNullOrWhiteSpace(errorMessage)
+                    ? "Monitoring background jobs were cancelled by user."
+                    : errorMessage
+            });
+
+            await connection.OpenAsync(cancellationToken);
+            return await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, operationName, commandName, stopwatch.ElapsedMilliseconds);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring bulk cancellation failed while failing active jobs.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(operationName, commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    public async Task<int> CountActiveMonitoringJobsAsync(CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string operationName = nameof(CountActiveMonitoringJobsAsync);
+        const string commandName = "count-active-monitoring-jobs";
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT COUNT_BIG(*)
+FROM [monitoring].[MonitoringJobs]
+WHERE [Status] IN ('Queued', 'Running');";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+
+            await connection.OpenAsync(cancellationToken);
+            var count = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt32(count, CultureInfo.InvariantCulture);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, operationName, commandName, stopwatch.ElapsedMilliseconds);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring active job count query failed.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(operationName, commandName, stopwatch.ElapsedMilliseconds);
+        }
     }
 
     public async Task<int> FailRunningMonitoringJobsAsync(string errorMessage, CancellationToken cancellationToken)

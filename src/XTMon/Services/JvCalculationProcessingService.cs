@@ -211,7 +211,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
                 return;
             }
 
-            await repository.MarkJvJobFailedAsync(jobId, BackgroundJobCancellationService.JvJobCanceledMessage, CancellationToken.None);
+            await repository.MarkJvJobCancelledAsync(jobId, BackgroundJobCancellationService.JvJobCanceledMessage, CancellationToken.None);
         }
         catch (Exception ex)
         {

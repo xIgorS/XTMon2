@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using XTMon.Helpers;
 using XTMon.Repositories;
 using XTMon.Services;
 using XTMon.Models;
@@ -323,7 +324,7 @@ public class JvCalculationProcessingServiceTests
         repo.Setup(r => r.GetJvJobByIdAsync(1L, It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => MakeJob("CheckOnly") with
             {
-                Status = isCancelled ? "Failed" : "Running",
+                Status = isCancelled ? MonitoringJobHelper.CancelledStatus : "Running",
                 FailedAt = isCancelled ? DateTime.UtcNow : null,
                 ErrorMessage = isCancelled ? BackgroundJobCancellationService.JvJobCanceledMessage : null
             });
@@ -340,7 +341,7 @@ public class JvCalculationProcessingServiceTests
                 await Task.Delay(Timeout.InfiniteTimeSpan, token);
                 return new JvCalculationCheckResult("SELECT 1", new MonitoringTableResult([], []));
             });
-        repo.Setup(r => r.MarkJvJobFailedAsync(1L, BackgroundJobCancellationService.JvJobCanceledMessage, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.MarkJvJobCancelledAsync(1L, BackgroundJobCancellationService.JvJobCanceledMessage, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var (service, _) = CreateService(repo, idleDelay: TimeSpan.FromMilliseconds(10), jobCancellationRegistry: registry);

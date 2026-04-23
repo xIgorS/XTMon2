@@ -11,12 +11,38 @@
             <h1 class="text-2xl font-bold text-heading mt-1">System Diagnostics</h1>
             <p class="muted mt-1">Checks database connections and stored procedure signatures for monitoring, pricing validation, out-of-scope portfolio, missing SOG check, adjustment links check, column store check, trading vs Fivr check, mirrorization, result transfer, rollovered portfolios, sas tables, non XTG portfolio, rejected XTG portfolio, feedout extraction, future cash, fact PV/CA consistency, multiple feed version, replay flows, JV calculation, logging, and UAM authorization.</p>
         </div>
-        <button class="primary-button-filled" @onclick="RunCheckAsync" disabled="@isRunning">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1 0 12.728 12.728M5.636 5.636a9 9 0 1 1 12.728 12.728M5.636 5.636 12 12m0 0 6.364-6.364" />
-            </svg>
-            @(isRunning ? "Running checks..." : (report is null ? "Run Diagnostics" : "Re-run Diagnostics"))
-        </button>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button class="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    @onclick="CancelAllBackgroundJobsAsync"
+                    disabled="@isCancellingAllJobs">
+                @(isCancellingAllJobs ? "Cancelling all jobs..." : "Cancel All Background Jobs")
+            </button>
+            <button class="primary-button-filled" @onclick="RunCheckAsync" disabled="@isRunning">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1 0 12.728 12.728M5.636 5.636a9 9 0 1 1 12.728 12.728M5.636 5.636 12 12m0 0 6.364-6.364" />
+                </svg>
+                @(isRunning ? "Running checks..." : (report is null ? "Run Diagnostics" : "Re-run Diagnostics"))
+            </button>
+        </div>
+    </div>
+
+    <div class="surface !border-slate-200/80">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+                <p class="section-label">Operational controls</p>
+                <h2 class="mt-1 text-lg font-bold text-heading">Global background job stop</h2>
+                <p class="muted mt-1 text-sm">Stops all active monitoring and JV background jobs, requests cancellation for any in-memory workers, and verifies that queued or running rows are no longer active.</p>
+            </div>
+            <span class="pill text-xs shrink-0">Affects monitoring and JV jobs</span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(bulkCancellationMessage))
+        {
+            <div class="mt-4 rounded-2xl border px-4 py-3 @(bulkCancellationIsError ? "border-rose-500/30 bg-rose-50/80 text-rose-700" : "border-emerald-500/30 bg-emerald-50/80 text-emerald-700")">
+                <p class="text-sm font-semibold">@(bulkCancellationIsError ? "Bulk cancellation failed" : "Bulk cancellation summary")</p>
+                <p class="mt-1 text-sm">@bulkCancellationMessage</p>
+            </div>
+        }
     </div>
 
     <div class="surface">

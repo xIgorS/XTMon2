@@ -38,6 +38,11 @@ internal static class MonitoringDisplayHelper
             return "-";
         }
 
+        if (MonitoringJobHelper.ShouldTreatAsNotRun(job.Status, job.StartedAt))
+        {
+            return "-";
+        }
+
         var completedAt = job.CompletedAt ?? job.FailedAt;
         if (!completedAt.HasValue)
         {

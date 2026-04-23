@@ -30,7 +30,7 @@ public sealed class BackgroundJobCancellationService : IBackgroundJobCancellatio
             return BackgroundJobCancellationResult.AlreadyInactive;
         }
 
-        await repository.MarkMonitoringJobFailedAsync(jobId, MonitoringJobCanceledMessage, cancellationToken);
+        await repository.MarkMonitoringJobCancelledAsync(jobId, MonitoringJobCanceledMessage, cancellationToken);
         _jobCancellationRegistry.CancelMonitoringJob(jobId);
         return await VerifyMonitoringJobCancellationAsync(repository, jobId, cancellationToken);
     }
@@ -45,9 +45,33 @@ public sealed class BackgroundJobCancellationService : IBackgroundJobCancellatio
             return BackgroundJobCancellationResult.AlreadyInactive;
         }
 
-        await repository.MarkJvJobFailedAsync(jobId, JvJobCanceledMessage, cancellationToken);
+        await repository.MarkJvJobCancelledAsync(jobId, JvJobCanceledMessage, cancellationToken);
         _jobCancellationRegistry.CancelJvJob(jobId);
         return await VerifyJvJobCancellationAsync(repository, jobId, cancellationToken);
+    }
+
+    public async Task<BackgroundJobBulkCancellationResult> CancelAllBackgroundJobsAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var monitoringRepository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
+        var jvRepository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
+
+        var monitoringWorkersCancellationRequested = _jobCancellationRegistry.CancelAllMonitoringJobs();
+        var jvWorkersCancellationRequested = _jobCancellationRegistry.CancelAllJvJobs();
+
+        var monitoringJobsCancelled = await monitoringRepository.CancelActiveMonitoringJobsAsync(MonitoringJobCanceledMessage, cancellationToken);
+        var jvJobsCancelled = await jvRepository.CancelActiveJvJobsAsync(JvJobCanceledMessage, cancellationToken);
+
+        var activeMonitoringJobsRemaining = await monitoringRepository.CountActiveMonitoringJobsAsync(cancellationToken);
+        var activeJvJobsRemaining = await jvRepository.CountActiveJvJobsAsync(cancellationToken);
+
+        return new BackgroundJobBulkCancellationResult(
+            monitoringJobsCancelled,
+            jvJobsCancelled,
+            monitoringWorkersCancellationRequested,
+            jvWorkersCancellationRequested,
+            activeMonitoringJobsRemaining,
+            activeJvJobsRemaining);
     }
 
     private static async Task<BackgroundJobCancellationResult> VerifyMonitoringJobCancellationAsync(

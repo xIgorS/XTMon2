@@ -23,7 +23,7 @@ BEGIN
         [FailedAt] DATETIME2(3) NULL,
         [ErrorMessage] NVARCHAR(MAX) NULL,
         CONSTRAINT [PK_JvCalculationJobs] PRIMARY KEY CLUSTERED ([JobId] ASC),
-        CONSTRAINT [CK_JvCalculationJobs_Status] CHECK ([Status] IN ('Queued','Running','Completed','Failed')),
+        CONSTRAINT [CK_JvCalculationJobs_Status] CHECK ([Status] IN ('Queued','Running','Completed','Failed','Cancelled')),
         CONSTRAINT [CK_JvCalculationJobs_RequestType] CHECK ([RequestType] IN ('CheckOnly','FixAndCheck'))
     )
 END

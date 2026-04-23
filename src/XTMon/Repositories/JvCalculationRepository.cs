@@ -496,9 +496,138 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
         await ExecuteJvJobStateProcedureAsync(_jvCalculationOptions.JobMarkFailedStoredProcedure, jobId, errorMessage, cancellationToken);
     }
 
+    public async Task MarkJvJobCancelledAsync(long jobId, string errorMessage, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string commandName = "mark-jv-job-cancelled";
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+UPDATE [monitoring].[JvCalculationJobs]
+   SET [Status] = 'Cancelled',
+       [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+       [CompletedAt] = NULL,
+       [ErrorMessage] = @ErrorMessage,
+       [LastHeartbeatAt] = SYSUTCDATETIME()
+ WHERE [JobId] = @JobId
+   AND [Status] IN ('Running', 'Queued');";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt) { Value = jobId });
+            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
+            {
+                Value = string.IsNullOrWhiteSpace(errorMessage) ? "JV background job was cancelled by user." : errorMessage
+            });
+
+            await connection.OpenAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, operationName: nameof(MarkJvJobCancelledAsync), _jvCalculationOptions.JobConnectionStringName, commandName, _jvCalculationOptions.CommandTimeoutSeconds,
+                $"JobId={jobId}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "JV job cancellation update failed for JobId {JobId}.", jobId);
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(MarkJvJobCancelledAsync), commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     public async Task HeartbeatJvJobAsync(long jobId, CancellationToken cancellationToken)
     {
         await ExecuteJvJobStateProcedureAsync(_jvCalculationOptions.JobHeartbeatStoredProcedure, jobId, null, cancellationToken);
+    }
+
+    public async Task<int> CancelActiveJvJobsAsync(string errorMessage, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string operationName = nameof(CancelActiveJvJobsAsync);
+        const string commandName = "bulk-cancel-active-jv-jobs";
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+UPDATE [monitoring].[JvCalculationJobs]
+   SET [Status] = 'Cancelled',
+       [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+       [CompletedAt] = NULL,
+       [ErrorMessage] = @ErrorMessage,
+       [LastHeartbeatAt] = SYSUTCDATETIME()
+ WHERE [Status] IN ('Queued', 'Running');";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
+            {
+                Value = string.IsNullOrWhiteSpace(errorMessage)
+                    ? "JV background jobs were cancelled by user."
+                    : errorMessage
+            });
+
+            await connection.OpenAsync(cancellationToken);
+            return await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, operationName, _jvCalculationOptions.JobConnectionStringName, commandName, _jvCalculationOptions.CommandTimeoutSeconds);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "JV bulk cancellation failed while failing active jobs.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(operationName, commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    public async Task<int> CountActiveJvJobsAsync(CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string operationName = nameof(CountActiveJvJobsAsync);
+        const string commandName = "count-active-jv-jobs";
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT COUNT_BIG(*)
+FROM [monitoring].[JvCalculationJobs]
+WHERE [Status] IN ('Queued', 'Running');";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
+
+            await connection.OpenAsync(cancellationToken);
+            var count = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt32(count, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, operationName, _jvCalculationOptions.JobConnectionStringName, commandName, _jvCalculationOptions.CommandTimeoutSeconds);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "JV active job count query failed.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(operationName, commandName, stopwatch.ElapsedMilliseconds);
+        }
     }
 
     public async Task<int> ExpireStaleRunningJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken)

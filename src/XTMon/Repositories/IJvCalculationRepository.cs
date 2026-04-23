@@ -14,7 +14,10 @@ public interface IJvCalculationRepository
     Task SaveJvJobResultAsync(long jobId, string? queryCheck, string? queryFix, MonitoringTableResult? table, CancellationToken cancellationToken);
     Task MarkJvJobCompletedAsync(long jobId, CancellationToken cancellationToken);
     Task MarkJvJobFailedAsync(long jobId, string errorMessage, CancellationToken cancellationToken);
+    Task MarkJvJobCancelledAsync(long jobId, string errorMessage, CancellationToken cancellationToken);
     Task HeartbeatJvJobAsync(long jobId, CancellationToken cancellationToken);
+    Task<int> CancelActiveJvJobsAsync(string errorMessage, CancellationToken cancellationToken);
+    Task<int> CountActiveJvJobsAsync(CancellationToken cancellationToken);
     Task<int> FailRunningJvJobsAsync(string errorMessage, CancellationToken cancellationToken);
     Task<int> ExpireStaleRunningJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken);
 }

@@ -12,7 +12,7 @@ public class BackgroundJobCancellationServiceTests
     private static readonly DateOnly TestDate = new(2026, 1, 15);
 
     [Fact]
-    public async Task CancelMonitoringJobAsync_WhenStatusTransitionsToFailed_ReturnsConfirmed()
+    public async Task CancelMonitoringJobAsync_WhenStatusTransitionsToCancelled_ReturnsConfirmed()
     {
         var cancellationRegistry = new JobCancellationRegistry();
         using var registeredToken = new CancellationTokenSource();
@@ -22,9 +22,9 @@ public class BackgroundJobCancellationServiceTests
         repository
             .SetupSequence(current => current.GetMonitoringJobByIdAsync(1L, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateMonitoringJob("Running"))
-            .ReturnsAsync(CreateMonitoringJob("Failed"));
+            .ReturnsAsync(CreateMonitoringJob(MonitoringJobHelper.CancelledStatus));
         repository
-            .Setup(current => current.MarkMonitoringJobFailedAsync(1L, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .Setup(current => current.MarkMonitoringJobCancelledAsync(1L, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var service = CreateService(repository.Object, Mock.Of<IJvCalculationRepository>(), cancellationRegistry);
@@ -44,7 +44,7 @@ public class BackgroundJobCancellationServiceTests
             .Setup(current => current.GetMonitoringJobByIdAsync(1L, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateMonitoringJob("Running"));
         repository
-            .Setup(current => current.MarkMonitoringJobFailedAsync(1L, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .Setup(current => current.MarkMonitoringJobCancelledAsync(1L, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var service = CreateService(repository.Object, Mock.Of<IJvCalculationRepository>());
@@ -56,7 +56,7 @@ public class BackgroundJobCancellationServiceTests
     }
 
     [Fact]
-    public async Task CancelJvJobAsync_WhenStatusTransitionsToFailed_ReturnsConfirmed()
+    public async Task CancelJvJobAsync_WhenStatusTransitionsToCancelled_ReturnsConfirmed()
     {
         var cancellationRegistry = new JobCancellationRegistry();
         using var registeredToken = new CancellationTokenSource();
@@ -66,9 +66,9 @@ public class BackgroundJobCancellationServiceTests
         repository
             .SetupSequence(current => current.GetJvJobByIdAsync(1L, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateJvJob("Running"))
-            .ReturnsAsync(CreateJvJob("Failed"));
+            .ReturnsAsync(CreateJvJob(MonitoringJobHelper.CancelledStatus));
         repository
-            .Setup(current => current.MarkJvJobFailedAsync(1L, BackgroundJobCancellationService.JvJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .Setup(current => current.MarkJvJobCancelledAsync(1L, BackgroundJobCancellationService.JvJobCanceledMessage, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var service = CreateService(Mock.Of<IMonitoringJobRepository>(), repository.Object, cancellationRegistry);
@@ -78,6 +78,71 @@ public class BackgroundJobCancellationServiceTests
         Assert.True(result.WasActive);
         Assert.True(result.CancellationConfirmed);
         Assert.True(registeredToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task CancelAllBackgroundJobsAsync_CancelsWorkersAndConfirmsStatuses()
+    {
+        var cancellationRegistry = new JobCancellationRegistry();
+        using var monitoringToken = new CancellationTokenSource();
+        using var jvToken = new CancellationTokenSource();
+        cancellationRegistry.RegisterMonitoringJob(11L, monitoringToken);
+        cancellationRegistry.RegisterJvJob(22L, jvToken);
+
+        var monitoringRepository = new Mock<IMonitoringJobRepository>();
+        monitoringRepository
+            .Setup(current => current.CancelActiveMonitoringJobsAsync(BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+        monitoringRepository
+            .Setup(current => current.CountActiveMonitoringJobsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var jvRepository = new Mock<IJvCalculationRepository>();
+        jvRepository
+            .Setup(current => current.CancelActiveJvJobsAsync(BackgroundJobCancellationService.JvJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+        jvRepository
+            .Setup(current => current.CountActiveJvJobsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var service = CreateService(monitoringRepository.Object, jvRepository.Object, cancellationRegistry);
+
+        var result = await service.CancelAllBackgroundJobsAsync(CancellationToken.None);
+
+        Assert.Equal(3, result.MonitoringJobsCancelled);
+        Assert.Equal(2, result.JvJobsCancelled);
+        Assert.Equal(1, result.MonitoringWorkersCancellationRequested);
+        Assert.Equal(1, result.JvWorkersCancellationRequested);
+        Assert.True(result.CancellationConfirmed);
+        Assert.True(monitoringToken.IsCancellationRequested);
+        Assert.True(jvToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task CancelAllBackgroundJobsAsync_WhenActiveJobsRemain_ReturnsPendingSummary()
+    {
+        var monitoringRepository = new Mock<IMonitoringJobRepository>();
+        monitoringRepository
+            .Setup(current => current.CancelActiveMonitoringJobsAsync(BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        monitoringRepository
+            .Setup(current => current.CountActiveMonitoringJobsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        var jvRepository = new Mock<IJvCalculationRepository>();
+        jvRepository
+            .Setup(current => current.CancelActiveJvJobsAsync(BackgroundJobCancellationService.JvJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+        jvRepository
+            .Setup(current => current.CountActiveJvJobsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var service = CreateService(monitoringRepository.Object, jvRepository.Object);
+
+        var result = await service.CancelAllBackgroundJobsAsync(CancellationToken.None);
+
+        Assert.False(result.CancellationConfirmed);
+        Assert.Equal(1, result.TotalActiveJobsRemaining);
     }
 
     private static BackgroundJobCancellationService CreateService(
@@ -119,8 +184,8 @@ public class BackgroundJobCancellationServiceTests
             StartedAt: DateTime.UtcNow,
             LastHeartbeatAt: DateTime.UtcNow,
             CompletedAt: status == "Completed" ? DateTime.UtcNow : null,
-            FailedAt: status == "Failed" ? DateTime.UtcNow : null,
-            ErrorMessage: status == "Failed" ? BackgroundJobCancellationService.MonitoringJobCanceledMessage : null,
+            FailedAt: status is "Failed" or "Cancelled" ? DateTime.UtcNow : null,
+            ErrorMessage: status is "Failed" or "Cancelled" ? BackgroundJobCancellationService.MonitoringJobCanceledMessage : null,
             ParsedQuery: null,
             GridColumnsJson: null,
             GridRowsJson: null,
@@ -141,8 +206,8 @@ public class BackgroundJobCancellationServiceTests
             StartedAt: DateTime.UtcNow,
             LastHeartbeatAt: DateTime.UtcNow,
             CompletedAt: status == "Completed" ? DateTime.UtcNow : null,
-            FailedAt: status == "Failed" ? DateTime.UtcNow : null,
-            ErrorMessage: status == "Failed" ? BackgroundJobCancellationService.JvJobCanceledMessage : null,
+            FailedAt: status is "Failed" or "Cancelled" ? DateTime.UtcNow : null,
+            ErrorMessage: status is "Failed" or "Cancelled" ? BackgroundJobCancellationService.JvJobCanceledMessage : null,
             QueryCheck: null,
             QueryFix: null,
             GridColumnsJson: null,

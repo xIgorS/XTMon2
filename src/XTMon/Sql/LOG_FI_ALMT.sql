@@ -222,7 +222,7 @@ ALTER TABLE [monitoring].[JvCalculationJobs]  WITH CHECK ADD  CONSTRAINT [CK_JvC
 GO
 ALTER TABLE [monitoring].[JvCalculationJobs] CHECK CONSTRAINT [CK_JvCalculationJobs_RequestType]
 GO
-ALTER TABLE [monitoring].[JvCalculationJobs]  WITH CHECK ADD  CONSTRAINT [CK_JvCalculationJobs_Status] CHECK  (([Status]='Failed' OR [Status]='Completed' OR [Status]='Running' OR [Status]='Queued'))
+ALTER TABLE [monitoring].[JvCalculationJobs]  WITH CHECK ADD  CONSTRAINT [CK_JvCalculationJobs_Status] CHECK  (([Status]='Cancelled' OR [Status]='Failed' OR [Status]='Completed' OR [Status]='Running' OR [Status]='Queued'))
 GO
 ALTER TABLE [monitoring].[JvCalculationJobs] CHECK CONSTRAINT [CK_JvCalculationJobs_Status]
 GO

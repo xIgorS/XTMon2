@@ -8,6 +8,11 @@ internal static class MonitoringJobHelper
     public const string DataValidationCategory = "DataValidation";
     public const string FunctionalRejectionCategory = "FunctionalRejection";
     public const string BatchStatusSubmenuKey = "batch-status";
+    public const string QueuedStatus = "Queued";
+    public const string RunningStatus = "Running";
+    public const string CompletedStatus = "Completed";
+    public const string FailedStatus = "Failed";
+    public const string CancelledStatus = "Cancelled";
 
     public static string BuildDataValidationSubmenuKey(string route)
     {
@@ -120,13 +125,44 @@ internal static class MonitoringJobHelper
 
     public static bool IsTerminalStatus(string? status)
     {
-        return string.Equals(status, "Completed", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase);
+        return IsCompletedStatus(status)
+            || IsFailedStatus(status)
+            || IsCancelledStatus(status);
     }
 
     public static bool IsActiveStatus(string? status)
     {
-        return string.Equals(status, "Queued", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, "Running", StringComparison.OrdinalIgnoreCase);
+        return IsQueuedStatus(status)
+            || IsRunningStatus(status);
+    }
+
+    public static bool IsQueuedStatus(string? status)
+    {
+        return string.Equals(status, QueuedStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsRunningStatus(string? status)
+    {
+        return string.Equals(status, RunningStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsCompletedStatus(string? status)
+    {
+        return string.Equals(status, CompletedStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsFailedStatus(string? status)
+    {
+        return string.Equals(status, FailedStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsCancelledStatus(string? status)
+    {
+        return string.Equals(status, CancelledStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool ShouldTreatAsNotRun(string? status, DateTime? startedAt)
+    {
+        return IsCancelledStatus(status) && !startedAt.HasValue;
     }
 }

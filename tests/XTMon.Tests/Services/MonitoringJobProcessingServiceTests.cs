@@ -669,14 +669,14 @@ public class MonitoringJobProcessingServiceTests
                 MonitoringJobHelper.DataValidationCategory,
                 MonitoringJobHelper.BatchStatusSubmenuKey) with
             {
-                Status = isCancelled ? "Failed" : "Running",
+                Status = isCancelled ? MonitoringJobHelper.CancelledStatus : "Running",
                 FailedAt = isCancelled ? DateTime.UtcNow : null,
                 ErrorMessage = isCancelled ? BackgroundJobCancellationService.MonitoringJobCanceledMessage : null
             });
         repo.Setup(r => r.HeartbeatMonitoringJobAsync(1L, It.IsAny<CancellationToken>()))
             .Callback(() => heartbeatTcs.TrySetResult(true))
             .Returns(Task.CompletedTask);
-        repo.Setup(r => r.MarkMonitoringJobFailedAsync(1L, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.MarkMonitoringJobCancelledAsync(1L, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var executor = new StubExecutor(
@@ -728,7 +728,7 @@ public class MonitoringJobProcessingServiceTests
                 jobId == firstJob.JobId ? firstJob.SubmenuKey : secondJob.SubmenuKey,
                 jobId) with
             {
-                Status = cancelledJobIds.Contains(jobId) ? "Failed" : "Running",
+                Status = cancelledJobIds.Contains(jobId) ? MonitoringJobHelper.CancelledStatus : "Running",
                 StartedAt = DateTime.UtcNow,
                 FailedAt = cancelledJobIds.Contains(jobId) ? DateTime.UtcNow : null,
                 ErrorMessage = cancelledJobIds.Contains(jobId)
@@ -743,7 +743,7 @@ public class MonitoringJobProcessingServiceTests
         repo.Setup(r => r.MarkMonitoringJobCompletedAsync(secondJob.JobId, It.IsAny<CancellationToken>()))
             .Callback(() => Interlocked.Increment(ref completionCount))
             .Returns(Task.CompletedTask);
-        repo.Setup(r => r.MarkMonitoringJobFailedAsync(firstJob.JobId, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.MarkMonitoringJobCancelledAsync(firstJob.JobId, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var executor = new StubExecutor(

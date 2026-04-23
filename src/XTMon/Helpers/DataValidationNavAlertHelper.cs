@@ -8,6 +8,7 @@ public enum DataValidationNavRunState
     Running,
     Succeeded,
     Alert,
+    Cancelled,
     Failed
 }
 
@@ -79,12 +80,23 @@ internal static class DataValidationNavAlertHelper
             return DataValidationNavRunState.NotRun;
         }
 
-        if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) || job.FailedAt is not null)
+        if (MonitoringJobHelper.ShouldTreatAsNotRun(job.Status, job.StartedAt))
+        {
+            return DataValidationNavRunState.NotRun;
+        }
+
+        if (MonitoringJobHelper.IsFailedStatus(job.Status)
+            || (job.FailedAt.HasValue && !MonitoringJobHelper.IsCancelledStatus(job.Status)))
         {
             return DataValidationNavRunState.Failed;
         }
 
-        if (string.Equals(job.Status, "Completed", StringComparison.OrdinalIgnoreCase) || job.CompletedAt is not null)
+        if (MonitoringJobHelper.IsCancelledStatus(job.Status))
+        {
+            return DataValidationNavRunState.Cancelled;
+        }
+
+        if (MonitoringJobHelper.IsCompletedStatus(job.Status) || job.CompletedAt is not null)
         {
             if (HasAlertCondition(job))
             {
