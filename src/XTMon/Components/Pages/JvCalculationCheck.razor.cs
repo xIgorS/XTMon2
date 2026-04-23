@@ -304,6 +304,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         var job = await Repository.GetJvJobByIdAsync(activeJobId.Value, cancellationToken);
         if (job is null)
         {
+            isCancellingJob = false;
             return;
         }
 
@@ -311,6 +312,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         ApplyJob(job);
         if (!MonitoringJobHelper.IsActiveStatus(activeJobStatus))
         {
+            isCancellingJob = false;
             StopPolling();
         }
     }
@@ -416,14 +418,18 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         }
 
         isCancellingJob = true;
+        var keepCancellationPending = false;
 
         try
         {
             var cancelled = await BackgroundJobCancellationService.CancelJvJobAsync(activeJobId.Value, disposeCts.Token);
-            if (!cancelled)
+            checkError = cancelled switch
             {
-                checkError = "JV job is no longer active.";
-            }
+                { WasActive: false } => "JV job is no longer active.",
+                { CancellationConfirmed: true } => "JV cancellation was recorded. Long-running queries can still take up to 3 minutes to stop completely.",
+                _ => "JV cancellation was requested. Long-running queries can take up to 3 minutes to stop."
+            };
+            keepCancellationPending = cancelled.WasActive && !cancelled.CancellationConfirmed;
 
             await RefreshActiveJobAsync(disposeCts.Token);
             await InvokeAsync(StateHasChanged);
@@ -438,7 +444,10 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         }
         finally
         {
-            isCancellingJob = false;
+            if (!keepCancellationPending)
+            {
+                isCancellingJob = false;
+            }
         }
     }
 

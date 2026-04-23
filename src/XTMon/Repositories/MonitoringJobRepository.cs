@@ -337,6 +337,52 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         return ExecuteMonitoringJobStateProcedureAsync(_options.JobHeartbeatStoredProcedure, jobId, null, cancellationToken);
     }
 
+    public async Task<int> FailRunningMonitoringJobsAsync(string errorMessage, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string operationName = nameof(FailRunningMonitoringJobsAsync);
+        const string commandName = "startup-running-monitoring-job-recovery";
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+UPDATE [monitoring].[MonitoringJobs]
+   SET [Status] = 'Failed',
+       [FailedAt] = SYSUTCDATETIME(),
+       [CompletedAt] = NULL,
+       [ErrorMessage] = @ErrorMessage,
+       [LastHeartbeatAt] = SYSUTCDATETIME()
+ WHERE [Status] = 'Running';";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
+            {
+                Value = string.IsNullOrWhiteSpace(errorMessage)
+                    ? "Monitoring background job was failed during startup recovery."
+                    : errorMessage
+            });
+
+            await connection.OpenAsync(cancellationToken);
+            return await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, operationName, commandName, stopwatch.ElapsedMilliseconds);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring startup recovery failed while failing running jobs.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(operationName, commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     public async Task<int> ExpireStaleRunningMonitoringJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();

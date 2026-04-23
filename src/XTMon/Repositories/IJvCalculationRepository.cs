@@ -15,5 +15,6 @@ public interface IJvCalculationRepository
     Task MarkJvJobCompletedAsync(long jobId, CancellationToken cancellationToken);
     Task MarkJvJobFailedAsync(long jobId, string errorMessage, CancellationToken cancellationToken);
     Task HeartbeatJvJobAsync(long jobId, CancellationToken cancellationToken);
+    Task<int> FailRunningJvJobsAsync(string errorMessage, CancellationToken cancellationToken);
     Task<int> ExpireStaleRunningJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken);
 }

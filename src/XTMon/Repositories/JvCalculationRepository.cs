@@ -533,6 +533,52 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
         }
     }
 
+    public async Task<int> FailRunningJvJobsAsync(string errorMessage, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string operationName = nameof(FailRunningJvJobsAsync);
+        const string commandName = "startup-running-jv-job-recovery";
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+UPDATE [monitoring].[JvCalculationJobs]
+   SET [Status] = 'Failed',
+       [FailedAt] = SYSUTCDATETIME(),
+       [CompletedAt] = NULL,
+       [ErrorMessage] = @ErrorMessage,
+       [LastHeartbeatAt] = SYSUTCDATETIME()
+ WHERE [Status] = 'Running';";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
+            {
+                Value = string.IsNullOrWhiteSpace(errorMessage)
+                    ? "JV background job was failed during startup recovery."
+                    : errorMessage
+            });
+
+            await connection.OpenAsync(cancellationToken);
+            return await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, operationName, _jvCalculationOptions.JobConnectionStringName, commandName, _jvCalculationOptions.CommandTimeoutSeconds);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "JV startup recovery failed while failing running jobs.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(operationName, commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     private async Task ExecuteJvJobStateProcedureAsync(string procedureName, long jobId, string? errorMessage, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();

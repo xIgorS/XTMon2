@@ -7,6 +7,7 @@ public sealed class BackgroundJobCancellationService : IBackgroundJobCancellatio
 {
     public const string MonitoringJobCanceledMessage = "Monitoring background job was cancelled by user.";
     public const string JvJobCanceledMessage = "JV background job was cancelled by user.";
+    private static readonly TimeSpan VerificationRetryDelay = TimeSpan.FromMilliseconds(100);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly JobCancellationRegistry _jobCancellationRegistry;
@@ -19,33 +20,77 @@ public sealed class BackgroundJobCancellationService : IBackgroundJobCancellatio
         _jobCancellationRegistry = jobCancellationRegistry;
     }
 
-    public async Task<bool> CancelMonitoringJobAsync(long jobId, CancellationToken cancellationToken)
+    public async Task<BackgroundJobCancellationResult> CancelMonitoringJobAsync(long jobId, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
         var job = await repository.GetMonitoringJobByIdAsync(jobId, cancellationToken);
         if (job is null || !MonitoringJobHelper.IsActiveStatus(job.Status))
         {
-            return false;
+            return BackgroundJobCancellationResult.AlreadyInactive;
         }
 
         await repository.MarkMonitoringJobFailedAsync(jobId, MonitoringJobCanceledMessage, cancellationToken);
         _jobCancellationRegistry.CancelMonitoringJob(jobId);
-        return true;
+        return await VerifyMonitoringJobCancellationAsync(repository, jobId, cancellationToken);
     }
 
-    public async Task<bool> CancelJvJobAsync(long jobId, CancellationToken cancellationToken)
+    public async Task<BackgroundJobCancellationResult> CancelJvJobAsync(long jobId, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
         var job = await repository.GetJvJobByIdAsync(jobId, cancellationToken);
         if (job is null || !MonitoringJobHelper.IsActiveStatus(job.Status))
         {
-            return false;
+            return BackgroundJobCancellationResult.AlreadyInactive;
         }
 
         await repository.MarkJvJobFailedAsync(jobId, JvJobCanceledMessage, cancellationToken);
         _jobCancellationRegistry.CancelJvJob(jobId);
-        return true;
+        return await VerifyJvJobCancellationAsync(repository, jobId, cancellationToken);
+    }
+
+    private static async Task<BackgroundJobCancellationResult> VerifyMonitoringJobCancellationAsync(
+        IMonitoringJobRepository repository,
+        long jobId,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var job = await repository.GetMonitoringJobByIdAsync(jobId, cancellationToken);
+            if (job is null || !MonitoringJobHelper.IsActiveStatus(job.Status))
+            {
+                return BackgroundJobCancellationResult.Confirmed;
+            }
+
+            if (attempt < 2)
+            {
+                await Task.Delay(VerificationRetryDelay, cancellationToken);
+            }
+        }
+
+        return BackgroundJobCancellationResult.Pending;
+    }
+
+    private static async Task<BackgroundJobCancellationResult> VerifyJvJobCancellationAsync(
+        IJvCalculationRepository repository,
+        long jobId,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var job = await repository.GetJvJobByIdAsync(jobId, cancellationToken);
+            if (job is null || !MonitoringJobHelper.IsActiveStatus(job.Status))
+            {
+                return BackgroundJobCancellationResult.Confirmed;
+            }
+
+            if (attempt < 2)
+            {
+                await Task.Delay(VerificationRetryDelay, cancellationToken);
+            }
+        }
+
+        return BackgroundJobCancellationResult.Pending;
     }
 }

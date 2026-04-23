@@ -196,6 +196,8 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
                 UpdateSubmissionState(row);
             }
 
+            ReconcilePendingCancellationState();
+
             DataValidationNavAlertState.ApplyStatuses(selectedPnlDate.Value, jobs);
 
             lastRefreshAt = DateTime.Now;
@@ -391,13 +393,19 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
         cancellingJobIds.Add(jobId.Value);
         statusMessage = null;
         statusIsError = false;
+        var keepCancellationPending = false;
 
         try
         {
             var cancelled = await BackgroundJobCancellationService.CancelMonitoringJobAsync(jobId.Value, disposeCts.Token);
-            statusMessage = cancelled
-                ? $"Cancellation requested for {row.Definition.DisplayName}."
-                : $"{row.Definition.DisplayName} is no longer active.";
+            statusMessage = cancelled switch
+            {
+                { WasActive: false } => $"{row.Definition.DisplayName} is no longer active.",
+                { CancellationConfirmed: true } => $"Cancellation was recorded for {row.Definition.DisplayName}. Long-running queries can still take up to 3 minutes to stop completely.",
+                _ => $"Cancellation was requested for {row.Definition.DisplayName}. Long-running queries can take up to 3 minutes to stop."
+            };
+            keepCancellationPending = cancelled.WasActive && !cancelled.CancellationConfirmed;
+            statusIsError = false;
             await RefreshStatusesCoreAsync();
         }
         catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
@@ -411,8 +419,21 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
         }
         finally
         {
-            cancellingJobIds.Remove(jobId.Value);
+            if (!keepCancellationPending)
+            {
+                cancellingJobIds.Remove(jobId.Value);
+            }
         }
+    }
+
+    private void ReconcilePendingCancellationState()
+    {
+        var activeJobIds = rows
+            .Where(row => row.LatestJob is not null && MonitoringJobHelper.IsActiveStatus(row.LatestJob.Status))
+            .Select(row => row.LatestJob!.JobId)
+            .ToHashSet();
+
+        cancellingJobIds.RemoveWhere(jobId => !activeJobIds.Contains(jobId));
     }
 
     private static bool CanCancelJob(BatchRunRow row)

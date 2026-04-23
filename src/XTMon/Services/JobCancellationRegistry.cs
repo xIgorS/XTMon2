@@ -6,6 +6,7 @@ public sealed class JobCancellationRegistry
 {
     private readonly ConcurrentDictionary<long, CancellationTokenSource> _monitoringJobTokens = new();
     private readonly ConcurrentDictionary<long, CancellationTokenSource> _jvJobTokens = new();
+    private readonly SemaphoreSlim _monitoringJobCancellationSignal = new(0);
 
     public void RegisterMonitoringJob(long jobId, CancellationTokenSource cancellationTokenSource)
     {
@@ -28,7 +29,19 @@ public sealed class JobCancellationRegistry
         }
 
         cancellationTokenSource.Cancel();
+        _monitoringJobCancellationSignal.Release();
         return true;
+    }
+
+    public bool IsMonitoringJobCancellationRequested(long jobId)
+    {
+        return _monitoringJobTokens.TryGetValue(jobId, out var cancellationTokenSource)
+            && cancellationTokenSource.IsCancellationRequested;
+    }
+
+    public Task WaitForMonitoringJobCancellationAsync(CancellationToken cancellationToken)
+    {
+        return _monitoringJobCancellationSignal.WaitAsync(cancellationToken);
     }
 
     public void RegisterJvJob(long jobId, CancellationTokenSource cancellationTokenSource)

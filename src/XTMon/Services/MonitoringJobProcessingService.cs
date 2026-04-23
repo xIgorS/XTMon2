@@ -94,7 +94,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                         _logger.LogWarning("Marked {ExpiredCount} stale monitoring job(s) as failed.", expiredCount);
                     }
 
-                    while (!stoppingToken.IsCancellationRequested && activeJobs.Count < _options.MaxConcurrentJobs)
+                    while (!stoppingToken.IsCancellationRequested && CountDispatchActiveJobs(activeJobs) < _options.MaxConcurrentJobs)
                     {
                         MonitoringJobRecord? job;
                         var preferredExcludedCategories = BuildPreferredExcludedCategories(activeJobs);
@@ -140,9 +140,11 @@ public sealed class MonitoringJobProcessingService : BackgroundService
 
                 if (claimedJobs > 0 || activeJobs.Count > 0)
                 {
+                    var dispatchActiveJobs = CountDispatchActiveJobs(activeJobs);
                     _logger.LogDebug(
-                        "Monitoring processor cycle claimed {ClaimedJobs} job(s); {ActiveJobs} job(s) are active out of {MaxConcurrentJobs} slot(s).",
+                        "Monitoring processor cycle claimed {ClaimedJobs} job(s); {DispatchActiveJobs} dispatch-active job(s) and {TrackedJobs} tracked job(s) are present out of {MaxConcurrentJobs} slot(s).",
                         claimedJobs,
+                        dispatchActiveJobs,
                         activeJobs.Count,
                         _options.MaxConcurrentJobs);
                 }
@@ -442,7 +444,8 @@ public sealed class MonitoringJobProcessingService : BackgroundService
 
         var nextActiveJob = Task.WhenAny(activeJobs.Select(activeJob => activeJob.Task));
         var idleDelayTask = Task.Delay(_idleDelay, stoppingToken);
-        await Task.WhenAny(nextActiveJob, idleDelayTask);
+        var cancellationSignalTask = _jobCancellationRegistry.WaitForMonitoringJobCancellationAsync(stoppingToken);
+        await Task.WhenAny(nextActiveJob, idleDelayTask, cancellationSignalTask);
     }
 
     private async Task DrainActiveJobsAsync(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
@@ -482,12 +485,13 @@ public sealed class MonitoringJobProcessingService : BackgroundService
 
     private IReadOnlyCollection<string> BuildPreferredExcludedCategories(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
     {
-        if (activeJobs.Count == 0)
+        var dispatchActiveJobs = GetDispatchActiveJobs(activeJobs);
+        if (dispatchActiveJobs.Count == 0)
         {
             return Array.Empty<string>();
         }
 
-        return activeJobs
+        return dispatchActiveJobs
             .Select(activeJob => activeJob.Job.Category)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
@@ -495,18 +499,36 @@ public sealed class MonitoringJobProcessingService : BackgroundService
 
     private IReadOnlyCollection<string> BuildHardExcludedCategories(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
     {
-        if (activeJobs.Count == 0 || _options.CategoryMaxConcurrentJobs.Count == 0)
+        var dispatchActiveJobs = GetDispatchActiveJobs(activeJobs);
+        if (dispatchActiveJobs.Count == 0 || _options.CategoryMaxConcurrentJobs.Count == 0)
         {
             return Array.Empty<string>();
         }
 
-        return activeJobs
+        return dispatchActiveJobs
             .GroupBy(activeJob => activeJob.Job.Category, StringComparer.Ordinal)
             .Where(group =>
                 _options.CategoryMaxConcurrentJobs.TryGetValue(group.Key, out var categoryLimit)
                 && group.Count() >= categoryLimit)
             .Select(group => group.Key)
             .ToArray();
+    }
+
+    private int CountDispatchActiveJobs(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
+    {
+        return GetDispatchActiveJobs(activeJobs).Count;
+    }
+
+    private List<ActiveMonitoringJob> GetDispatchActiveJobs(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
+    {
+        if (activeJobs.Count == 0)
+        {
+            return [];
+        }
+
+        return activeJobs
+            .Where(activeJob => !_jobCancellationRegistry.IsMonitoringJobCancellationRequested(activeJob.Job.JobId))
+            .ToList();
     }
 
     private sealed record ActiveMonitoringJob(MonitoringJobRecord Job, Task Task);

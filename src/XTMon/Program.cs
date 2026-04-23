@@ -465,6 +465,7 @@ builder.Services.AddSingleton<IDeploymentCheckService, DeploymentCheckService>()
 builder.Services.AddSingleton<StartupDiagnosticsState>();
 builder.Services.AddSingleton<ReplayFlowProcessingQueue>();
 builder.Services.AddHostedService<ReplayFlowProcessingService>();
+builder.Services.AddHostedService<StartupJobRecoveryService>();
 builder.Services.AddHostedService<JvCalculationProcessingService>();
 builder.Services.AddHostedService<MonitoringJobProcessingService>();
 

@@ -702,6 +702,105 @@ public class MonitoringJobProcessingServiceTests
         repo.Verify(r => r.MarkMonitoringJobCompletedAsync(1L, It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task WhenMonitoringJobIsCancelled_NextQueuedJobCanStartBeforeCancelledTaskFullyUnwinds()
+    {
+        var firstJobHeartbeatTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstJobCancelledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondJobStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowCancelledJobToFinishTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecondJobTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstJob = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 1L);
+        var secondJob = MakeJob(MonitoringJobHelper.DataValidationCategory, "daily-balance", 2L);
+        var registry = new JobCancellationRegistry();
+        var cancelledJobIds = new HashSet<long>();
+        var completionCount = 0;
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(firstJob)
+            .ReturnsAsync(secondJob)
+            .ReturnsAsync((MonitoringJobRecord?)null)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.GetMonitoringJobByIdAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((long jobId, CancellationToken _) => MakeJob(
+                MonitoringJobHelper.DataValidationCategory,
+                jobId == firstJob.JobId ? firstJob.SubmenuKey : secondJob.SubmenuKey,
+                jobId) with
+            {
+                Status = cancelledJobIds.Contains(jobId) ? "Failed" : "Running",
+                StartedAt = DateTime.UtcNow,
+                FailedAt = cancelledJobIds.Contains(jobId) ? DateTime.UtcNow : null,
+                ErrorMessage = cancelledJobIds.Contains(jobId)
+                    ? BackgroundJobCancellationService.MonitoringJobCanceledMessage
+                    : null
+            });
+        repo.Setup(r => r.HeartbeatMonitoringJobAsync(firstJob.JobId, It.IsAny<CancellationToken>()))
+            .Callback(() => firstJobHeartbeatTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.HeartbeatMonitoringJobAsync(secondJob.JobId, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(secondJob.JobId, It.IsAny<CancellationToken>()))
+            .Callback(() => Interlocked.Increment(ref completionCount))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.MarkMonitoringJobFailedAsync(firstJob.JobId, BackgroundJobCancellationService.MonitoringJobCanceledMessage, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            async (job, token) =>
+            {
+                if (job.JobId == firstJob.JobId)
+                {
+                    await firstJobHeartbeatTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    cancelledJobIds.Add(firstJob.JobId);
+                    registry.CancelMonitoringJob(firstJob.JobId);
+                    firstJobCancelledTcs.TrySetResult(true);
+
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(30), token);
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
+                    {
+                        await allowCancelledJobToFinishTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        throw;
+                    }
+
+                    return new MonitoringJobResultPayload(null, null, null);
+                }
+
+                secondJobStartedTcs.TrySetResult(true);
+                await releaseSecondJobTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+            });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            options: CreateOptions(maxConcurrentJobs: 1),
+            idleDelay: TimeSpan.FromMilliseconds(10),
+            jobCancellationRegistry: registry);
+
+        await service.StartAsync(CancellationToken.None);
+
+        try
+        {
+            await firstJobCancelledTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await secondJobStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+            releaseSecondJobTcs.TrySetResult(true);
+
+            await EventuallyAsync(() => Volatile.Read(ref completionCount) == 1);
+        }
+        finally
+        {
+            allowCancelledJobToFinishTcs.TrySetResult(true);
+            releaseSecondJobTcs.TrySetResult(true);
+            await service.StopAsync(CancellationToken.None);
+        }
+    }
+
     private static async Task EventuallyAsync(Func<bool> condition)
     {
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));

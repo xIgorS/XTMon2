@@ -22,5 +22,6 @@ public interface IMonitoringJobRepository
     Task MarkMonitoringJobCompletedAsync(long jobId, CancellationToken cancellationToken);
     Task MarkMonitoringJobFailedAsync(long jobId, string errorMessage, CancellationToken cancellationToken);
     Task HeartbeatMonitoringJobAsync(long jobId, CancellationToken cancellationToken);
+    Task<int> FailRunningMonitoringJobsAsync(string errorMessage, CancellationToken cancellationToken);
     Task<int> ExpireStaleRunningMonitoringJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken);
 }
