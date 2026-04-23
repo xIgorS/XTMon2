@@ -45,6 +45,41 @@
         }
     </div>
 
+    @if (ShowCleanupButtons)
+    {
+        <div class="surface !border-amber-200/80">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <p class="section-label">Maintenance</p>
+                    <h2 class="mt-1 text-lg font-bold text-heading">LOG database cleanup</h2>
+                    <p class="muted mt-1 text-sm">Clean Logging deletes APS Actions application log rows. Clean History deletes monitoring and JV orchestration history stored in the LOG database. History cleanup is blocked while any monitoring or JV job is queued or running.</p>
+                </div>
+                <span class="pill text-xs shrink-0">Hidden unless enabled in config</span>
+            </div>
+
+            <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <button class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        @onclick="CleanLoggingAsync"
+                        disabled="@(isCleaningLogging || isCleaningHistory)">
+                    @(isCleaningLogging ? "Cleaning logging..." : "Clean Logging")
+                </button>
+                <button class="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        @onclick="CleanHistoryAsync"
+                        disabled="@(isCleaningHistory || isCleaningLogging)">
+                    @(isCleaningHistory ? "Cleaning history..." : "Clean History")
+                </button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(cleanupMessage))
+            {
+                <div class="mt-4 rounded-2xl border px-4 py-3 @(cleanupIsError ? "border-rose-500/30 bg-rose-50/80 text-rose-700" : "border-emerald-500/30 bg-emerald-50/80 text-emerald-700")">
+                    <p class="text-sm font-semibold">@(cleanupIsError ? "Cleanup failed" : "Cleanup summary")</p>
+                    <p class="mt-1 text-sm">@cleanupMessage</p>
+                </div>
+            }
+        </div>
+    }
+
     <div class="surface">
         <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>

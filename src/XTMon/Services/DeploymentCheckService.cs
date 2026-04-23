@@ -17,6 +17,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         SqlConnectionFactory connectionFactory,
         IConfiguration configuration,
         IOptions<MonitoringOptions> monitoringOptions,
+        IOptions<SystemDiagnosticsOptions> systemDiagnosticsOptions,
         IOptions<ReplayFlowsOptions> replayFlowsOptions,
         IOptions<JvCalculationOptions> jvOptions,
         IOptions<MonitoringJobsOptions> monitoringJobsOptions,
@@ -55,6 +56,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         _checks = BuildChecks(
             configuration,
             monitoringOptions.Value,
+            systemDiagnosticsOptions.Value,
             replayFlowsOptions.Value,
             jvOptions.Value,
             monitoringJobsOptions.Value,
@@ -93,6 +95,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
     private static IReadOnlyList<(string, string)> BuildChecks(
         IConfiguration configuration,
         MonitoringOptions monitoring,
+        SystemDiagnosticsOptions systemDiagnostics,
         ReplayFlowsOptions replay,
         JvCalculationOptions jv,
         MonitoringJobsOptions monitoringJobs,
@@ -218,6 +221,12 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             // UAM authorization
             (uam.ConnectionStringName, uam.GetAdminUserStoredProcedure),
         };
+
+        if (systemDiagnostics.ShowCleanupButtons)
+        {
+            checks.Add((systemDiagnostics.ConnectionStringName, systemDiagnostics.CleanLoggingStoredProcedure));
+            checks.Add((systemDiagnostics.ConnectionStringName, systemDiagnostics.CleanHistoryStoredProcedure));
+        }
 
         // Deduplicate: same connection + same SP (e.g. if logging conn = monitoring conn and same SP)
         return checks

@@ -4,6 +4,7 @@ using XTMon.Helpers;
 using XTMon.Services;
 using XTMon.Models;
 using XTMon.Options;
+using XTMon.Repositories;
 
 namespace XTMon.Components.Pages;
 
@@ -16,7 +17,13 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
     [Inject]
+    private IOptions<SystemDiagnosticsOptions> SystemDiagnosticsOptions { get; set; } = default!;
+
+    [Inject]
     private IBackgroundJobCancellationService BackgroundJobCancellationService { get; set; } = default!;
+
+    [Inject]
+    private ISystemDiagnosticsRepository SystemDiagnosticsRepository { get; set; } = default!;
 
     [Inject]
     private ILogger<SystemDiagnostics> Logger { get; set; } = default!;
@@ -29,6 +36,11 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private bool isCancellingAllJobs;
     private string? bulkCancellationMessage;
     private bool bulkCancellationIsError;
+    private bool isCleaningLogging;
+    private bool isCleaningHistory;
+    private string? cleanupMessage;
+    private bool cleanupIsError;
+    private bool ShowCleanupButtons => SystemDiagnosticsOptions.Value.ShowCleanupButtons;
     private MonitoringJobConcurrencyPolicy EffectiveMonitoringJobConcurrencyPolicy => BuildMonitoringJobConcurrencyPolicy(MonitoringJobsOptions.Value);
 
     protected override void OnInitialized()
@@ -69,6 +81,64 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         }
     }
 
+    private async Task CleanLoggingAsync()
+    {
+        isCleaningLogging = true;
+        cleanupMessage = null;
+        cleanupIsError = false;
+
+        try
+        {
+            var deletedRows = await SystemDiagnosticsRepository.CleanLoggingAsync(disposeCts.Token);
+            cleanupMessage = deletedRows == 0
+                ? "No APS Actions log rows were found to delete."
+                : $"Deleted {deletedRows} APS Actions log row(s).";
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to clean logging from System Diagnostics.");
+            cleanupMessage = "Unable to clean logging right now.";
+            cleanupIsError = true;
+        }
+        finally
+        {
+            isCleaningLogging = false;
+        }
+    }
+
+    private async Task CleanHistoryAsync()
+    {
+        isCleaningHistory = true;
+        cleanupMessage = null;
+        cleanupIsError = false;
+
+        try
+        {
+            var result = await SystemDiagnosticsRepository.CleanHistoryAsync(disposeCts.Token);
+            cleanupMessage = result.TotalDeleted == 0
+                ? "No monitoring or JV history rows were found to delete."
+                : BuildHistoryCleanupMessage(result);
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to clean monitoring and JV history from System Diagnostics.");
+            cleanupMessage = ex.Message.Contains("queued or running", StringComparison.OrdinalIgnoreCase)
+                ? ex.Message
+                : "Unable to clean history right now.";
+            cleanupIsError = true;
+        }
+        finally
+        {
+            isCleaningHistory = false;
+        }
+    }
+
     private static string FormatDuration(TimeSpan duration) =>
         duration.TotalMilliseconds < 1000
             ? $"{duration.TotalMilliseconds:0} ms"
@@ -88,6 +158,11 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         }
 
         return summary + workers + $" Status verification still reports {result.TotalActiveJobsRemaining} active job(s), so another refresh may be needed while long-running queries unwind.";
+    }
+
+    private static string BuildHistoryCleanupMessage(SystemDiagnosticsHistoryCleanupResult result)
+    {
+        return $"Deleted {result.MonitoringLatestResultsDeleted} monitoring latest result row(s), {result.MonitoringJobsDeleted} monitoring job row(s), {result.JvCalculationJobResultsDeleted} JV result row(s), and {result.JvCalculationJobsDeleted} JV job row(s).";
     }
 
     public ValueTask DisposeAsync()

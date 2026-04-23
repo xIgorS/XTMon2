@@ -27,6 +27,12 @@ GO
 /****** Object:  StoredProcedure [monitoring].[UspInsertAPSActionsLog]    Script Date: 2/27/2026 6:18:45 PM ******/
 DROP PROCEDURE IF EXISTS [monitoring].[UspInsertAPSActionsLog]
 GO
+/****** Object:  StoredProcedure [monitoring].[UspSystemDiagnosticsCleanLogging]    Script Date: 4/23/2026 6:18:45 PM ******/
+DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanLogging]
+GO
+/****** Object:  StoredProcedure [monitoring].[UspSystemDiagnosticsCleanHistory]    Script Date: 4/23/2026 6:18:45 PM ******/
+DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanHistory]
+GO
 /****** Object:  StoredProcedure [monitoring].[UspGetDBSizePlusDisk]    Script Date: 2/27/2026 6:18:45 PM ******/
 DROP PROCEDURE IF EXISTS [monitoring].[UspGetDBSizePlusDisk]
 GO
@@ -333,6 +339,60 @@ BEGIN
         @Properties
     );
 END;
+GO
+/****** Object:  StoredProcedure [monitoring].[UspSystemDiagnosticsCleanLogging]    Script Date: 4/23/2026 6:18:45 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [monitoring].[UspSystemDiagnosticsCleanLogging]
+    @DeletedRows INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DELETE FROM [monitoring].[APSActionsLogs];
+    SET @DeletedRows = @@ROWCOUNT;
+END
+GO
+/****** Object:  StoredProcedure [monitoring].[UspSystemDiagnosticsCleanHistory]    Script Date: 4/23/2026 6:18:45 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [monitoring].[UspSystemDiagnosticsCleanHistory]
+    @MonitoringLatestResultsDeleted INT OUTPUT,
+    @MonitoringJobsDeleted INT OUTPUT,
+    @JvCalculationJobResultsDeleted INT OUTPUT,
+    @JvCalculationJobsDeleted INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    IF EXISTS (SELECT 1 FROM [monitoring].[MonitoringJobs] WHERE [Status] IN ('Queued', 'Running'))
+       OR EXISTS (SELECT 1 FROM [monitoring].[JvCalculationJobs] WHERE [Status] IN ('Queued', 'Running'))
+    BEGIN
+        THROW 50001, 'Cannot clean history while monitoring or JV jobs are queued or running.', 1;
+    END
+
+    BEGIN TRANSACTION;
+
+    DELETE FROM [monitoring].[MonitoringLatestResults];
+    SET @MonitoringLatestResultsDeleted = @@ROWCOUNT;
+
+    DELETE FROM [monitoring].[MonitoringJobs];
+    SET @MonitoringJobsDeleted = @@ROWCOUNT;
+
+    DELETE FROM [monitoring].[JvCalculationJobResults];
+    SET @JvCalculationJobResultsDeleted = @@ROWCOUNT;
+
+    DELETE FROM [monitoring].[JvCalculationJobs];
+    SET @JvCalculationJobsDeleted = @@ROWCOUNT;
+
+    COMMIT TRANSACTION;
+END
 GO
 /****** Object:  StoredProcedure [monitoring].[UspJvJobEnqueue]    Script Date: 2/27/2026 6:18:45 PM ******/
 SET ANSI_NULLS ON

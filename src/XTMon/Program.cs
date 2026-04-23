@@ -86,6 +86,16 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services
+    .AddOptions<SystemDiagnosticsOptions>()
+    .Bind(builder.Configuration.GetSection(SystemDiagnosticsOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.CleanLoggingStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.CleanHistoryStoredProcedure),
+        "SystemDiagnostics options must define the required connection and stored procedure names.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<UamAuthorizationOptions>()
     .Bind(builder.Configuration.GetSection(UamAuthorizationOptions.SectionName))
     .ValidateDataAnnotations()
@@ -418,6 +428,7 @@ builder.Services
     .ValidateOnStart();
 builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
+builder.Services.AddScoped<ISystemDiagnosticsRepository, SystemDiagnosticsRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IMonitoringJobRepository, MonitoringJobRepository>();
 builder.Services.AddSingleton<JobCancellationRegistry>();

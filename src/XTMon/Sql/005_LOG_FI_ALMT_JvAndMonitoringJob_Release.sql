@@ -22,6 +22,8 @@ DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobSaveResult];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobHeartbeat];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobTakeNext];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobEnqueue];
+DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanHistory];
+DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanLogging];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobExpireStale];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobGetLatestByUserPnlDate];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobGetById];
@@ -168,6 +170,52 @@ BEGIN
     SET @AlreadyActive = 0;
 
     COMMIT TRAN;
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspSystemDiagnosticsCleanLogging]
+    @DeletedRows INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DELETE FROM [monitoring].[APSActionsLogs];
+    SET @DeletedRows = @@ROWCOUNT;
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspSystemDiagnosticsCleanHistory]
+    @MonitoringLatestResultsDeleted INT OUTPUT,
+    @MonitoringJobsDeleted INT OUTPUT,
+    @JvCalculationJobResultsDeleted INT OUTPUT,
+    @JvCalculationJobsDeleted INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    IF EXISTS (SELECT 1 FROM [monitoring].[MonitoringJobs] WHERE [Status] IN ('Queued', 'Running'))
+       OR EXISTS (SELECT 1 FROM [monitoring].[JvCalculationJobs] WHERE [Status] IN ('Queued', 'Running'))
+    BEGIN
+        THROW 50001, 'Cannot clean history while monitoring or JV jobs are queued or running.', 1;
+    END
+
+    BEGIN TRANSACTION;
+
+    DELETE FROM [monitoring].[MonitoringLatestResults];
+    SET @MonitoringLatestResultsDeleted = @@ROWCOUNT;
+
+    DELETE FROM [monitoring].[MonitoringJobs];
+    SET @MonitoringJobsDeleted = @@ROWCOUNT;
+
+    DELETE FROM [monitoring].[JvCalculationJobResults];
+    SET @JvCalculationJobResultsDeleted = @@ROWCOUNT;
+
+    DELETE FROM [monitoring].[JvCalculationJobs];
+    SET @JvCalculationJobsDeleted = @@ROWCOUNT;
+
+    COMMIT TRANSACTION;
 END
 GO
 

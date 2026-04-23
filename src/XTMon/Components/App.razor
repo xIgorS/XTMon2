@@ -63,6 +63,19 @@
             }
         }
 
+        function focusPageContentWithoutScroll() {
+            var pageContent = document.getElementById('page-content');
+            if (!pageContent || typeof pageContent.focus !== 'function') {
+                return;
+            }
+
+            try {
+                pageContent.focus({ preventScroll: true });
+            } catch {
+                pageContent.focus();
+            }
+        }
+
         window.themeToggle = function () {
             var isDark = document.documentElement.classList.toggle('dark');
             try {
@@ -91,6 +104,7 @@
             Blazor.addEventListener('enhancedload', function () {
                 applyStoredTheme();
                 syncThemeIcons();
+                focusPageContentWithoutScroll();
             });
         }
 
