@@ -1,5 +1,5 @@
-<span class="submenu-link__content">
-    <span class="submenu-link__text">@Text</span>
+<span class="@ContentClass">
+    <span class="@TextClass">@Text</span>
     <span class="@IndicatorClass" aria-hidden="true"></span>
     <span class="sr-only">@StatusDescription</span>
 </span>
@@ -10,6 +10,13 @@
 
     [Parameter]
     public XTMon.Helpers.DataValidationNavRunState Status { get; set; }
+
+    [Parameter]
+    public bool UseMainNavLayout { get; set; }
+
+    private string ContentClass => UseMainNavLayout ? "nav-link__content" : "submenu-link__content";
+
+    private string TextClass => UseMainNavLayout ? "nav-link__text" : "submenu-link__text";
 
     private string IndicatorClass => $"submenu-status-indicator {GetBadgeVariantClass(Status)}";
 

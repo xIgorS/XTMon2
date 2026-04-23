@@ -39,6 +39,9 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     [Inject]
     private ILogger<ReplayFlows> Logger { get; set; } = default!;
 
+    [Inject]
+    private ReplayFlowsNavAlertState ReplayFlowsNavAlertState { get; set; } = default!;
+
     [CascadingParameter]
     private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
 
@@ -217,6 +220,7 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
             }
 
             UpdateFilteredRows();
+            SyncNavStatus();
         }
         catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
         {
@@ -344,6 +348,7 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
         lastPnlDate = null;
         loadError = null;
         StopPolling();
+        ReplayFlowsNavAlertState.ApplyStatus(null, Array.Empty<FailedFlowRow>(), Array.Empty<ReplayFlowStatusRow>());
     }
 
     private bool TryGetReplayFlowSet(out string? replayFlowSet)
@@ -515,6 +520,7 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
             pendingCount = statusRows.Count(r => ReplayFlowsHelper.GetStatusKind(r) == ReplayStatusKind.Pending);
             inProgressCount = statusRows.Count(r => ReplayFlowsHelper.GetStatusKind(r) == ReplayStatusKind.InProgress);
             completedCount = statusRows.Count(r => ReplayFlowsHelper.GetStatusKind(r) == ReplayStatusKind.Completed);
+            SyncNavStatus();
         }
         catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
         {
@@ -596,6 +602,14 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
         pollCts = null;
         pollTimer?.Dispose();
         pollTimer = null;
+    }
+
+    private void SyncNavStatus()
+    {
+        ReplayFlowsNavAlertState.ApplyStatus(
+            lastPnlDate,
+            rows.Select(row => row.Source).ToArray(),
+            statusRows.ToArray());
     }
 
     private static string GetStatusBadgeClass(ReplayFlowStatusRow row)

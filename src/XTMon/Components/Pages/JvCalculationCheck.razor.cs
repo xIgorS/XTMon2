@@ -41,6 +41,9 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     [Inject]
     private IBackgroundJobCancellationService BackgroundJobCancellationService { get; set; } = default!;
 
+    [Inject]
+    private JvCalculationNavAlertState JvCalculationNavAlertState { get; set; } = default!;
+
     [CascadingParameter]
     private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
 
@@ -262,6 +265,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         showFixQuery = false;
         isChecking = false;
         isFixing = false;
+        JvCalculationNavAlertState.ApplyStatus(selectedCobDate, job: null);
     }
 
     private void StartPollingIfNeeded()
@@ -426,6 +430,8 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         {
             checkError = null;
         }
+
+        JvCalculationNavAlertState.ApplyStatus(selectedCobDate ?? job.PnlDate, job);
     }
 
     private void ToggleJobStatusDetails()

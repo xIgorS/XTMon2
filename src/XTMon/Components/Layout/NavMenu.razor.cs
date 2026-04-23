@@ -22,6 +22,12 @@ public partial class NavMenu : ComponentBase, IDisposable
 	private DataValidationNavAlertState DataValidationNavAlertState { get; set; } = default!;
 
 	[Inject]
+	private JvCalculationNavAlertState JvCalculationNavAlertState { get; set; } = default!;
+
+	[Inject]
+	private ReplayFlowsNavAlertState ReplayFlowsNavAlertState { get; set; } = default!;
+
+	[Inject]
 	private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
 	protected override void OnInitialized()
@@ -29,6 +35,8 @@ public partial class NavMenu : ComponentBase, IDisposable
 		NavigationManager.LocationChanged += OnLocationChanged;
 		PnlDateState.OnDateChanged += OnPnlDateChanged;
 		DataValidationNavAlertState.StatusesChanged += OnDataValidationStatusesChanged;
+		JvCalculationNavAlertState.StatusChanged += OnJvCalculationStatusChanged;
+		ReplayFlowsNavAlertState.StatusChanged += OnReplayFlowsStatusChanged;
 	}
 
 	protected override async Task OnInitializedAsync()
@@ -50,6 +58,8 @@ public partial class NavMenu : ComponentBase, IDisposable
 		NavigationManager.LocationChanged -= OnLocationChanged;
 		PnlDateState.OnDateChanged -= OnPnlDateChanged;
 		DataValidationNavAlertState.StatusesChanged -= OnDataValidationStatusesChanged;
+		JvCalculationNavAlertState.StatusChanged -= OnJvCalculationStatusChanged;
+		ReplayFlowsNavAlertState.StatusChanged -= OnReplayFlowsStatusChanged;
 		StopAlertsPolling();
 		_disposeCts.Cancel();
 		_disposeCts.Dispose();
@@ -76,6 +86,16 @@ public partial class NavMenu : ComponentBase, IDisposable
 	}
 
 	private void OnDataValidationStatusesChanged()
+	{
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	private void OnJvCalculationStatusChanged()
+	{
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	private void OnReplayFlowsStatusChanged()
 	{
 		_ = InvokeAsync(StateHasChanged);
 	}
@@ -137,6 +157,16 @@ public partial class NavMenu : ComponentBase, IDisposable
 	private DataValidationNavRunState GetDataValidationRunState(string route)
 	{
 		return DataValidationNavAlertState.GetStatus(route);
+	}
+
+	private DataValidationNavRunState GetJvCalculationRunState()
+	{
+		return JvCalculationNavAlertState.GetStatus();
+	}
+
+	private DataValidationNavRunState GetReplayFlowsRunState()
+	{
+		return ReplayFlowsNavAlertState.GetStatus();
 	}
 
 	private string GetDataValidationRunnerLinkClass()
