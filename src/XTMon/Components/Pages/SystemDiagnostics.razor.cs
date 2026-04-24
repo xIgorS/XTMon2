@@ -29,6 +29,9 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private StartupJobRecoveryService StartupJobRecoveryService { get; set; } = default!;
 
     [Inject]
+    private JobDiagnosticsService JobDiagnosticsService { get; set; } = default!;
+
+    [Inject]
     private ILogger<SystemDiagnostics> Logger { get; set; } = default!;
 
     private readonly CancellationTokenSource disposeCts = new();
@@ -46,6 +49,11 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private bool cleanupIsError;
     private string? recoveryMessage;
     private bool recoveryIsError;
+    private bool isLoadingStuckJobs;
+    private bool isForceExpiring;
+    private StuckJobsReport? stuckJobsReport;
+    private string? stuckJobsMessage;
+    private bool stuckJobsIsError;
     private bool ShowCleanupButtons => SystemDiagnosticsOptions.Value.ShowCleanupButtons;
     private MonitoringJobConcurrencyPolicy EffectiveMonitoringJobConcurrencyPolicy => BuildMonitoringJobConcurrencyPolicy(MonitoringJobsOptions.Value);
 
@@ -140,6 +148,66 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         finally
         {
             isRecoveringStartupJobs = false;
+        }
+    }
+
+    private async Task LoadStuckJobsAsync()
+    {
+        isLoadingStuckJobs = true;
+        stuckJobsMessage = null;
+        stuckJobsIsError = false;
+
+        try
+        {
+            stuckJobsReport = await JobDiagnosticsService.GetStuckJobsReportAsync(disposeCts.Token);
+            if (stuckJobsReport.TotalStuckCount == 0)
+            {
+                stuckJobsMessage = "No stuck background jobs found.";
+            }
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load stuck jobs report.");
+            stuckJobsMessage = "Unable to load stuck jobs right now.";
+            stuckJobsIsError = true;
+        }
+        finally
+        {
+            isLoadingStuckJobs = false;
+        }
+    }
+
+    private async Task ForceExpireStuckJobsAsync()
+    {
+        isForceExpiring = true;
+        stuckJobsMessage = null;
+        stuckJobsIsError = false;
+
+        try
+        {
+            var result = await JobDiagnosticsService.ForceExpireAllStuckAsync(disposeCts.Token);
+            stuckJobsMessage = result.TotalExpired == 0
+                ? "No stuck rows were force-expired."
+                : $"Force-expired {result.MonitoringJobsExpired} monitoring job(s), {result.JvJobsExpired} JV job(s), and {result.ReplayBatchesExpired} replay batch row(s).";
+
+            // Refresh the panel so the operator sees the cleared state immediately.
+            stuckJobsReport = await JobDiagnosticsService.GetStuckJobsReportAsync(disposeCts.Token);
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to force-expire stuck jobs.");
+            stuckJobsMessage = "Unable to force-expire stuck jobs right now.";
+            stuckJobsIsError = true;
+        }
+        finally
+        {
+            isForceExpiring = false;
         }
     }
 

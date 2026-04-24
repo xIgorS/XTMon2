@@ -72,6 +72,145 @@
         }
     </div>
 
+    <div class="surface !border-amber-200/80">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+                <p class="section-label">Stuck Jobs</p>
+                <h2 class="mt-1 text-lg font-bold text-heading">Background jobs with silent workers</h2>
+                <p class="muted mt-1 text-sm">Shows monitoring, JV, and replay rows currently in an Active state whose worker has not reported activity recently. Use Force-Expire to mark any stuck rows as failed so the menu can return to a green state; in-memory workers, if still alive, will observe the DB change on their next heartbeat cycle and stop.</p>
+            </div>
+            <span class="pill text-xs shrink-0">Escape hatch</span>
+        </div>
+
+        <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    @onclick="LoadStuckJobsAsync"
+                    disabled="@(isLoadingStuckJobs || isForceExpiring)">
+                @(isLoadingStuckJobs ? "Loading stuck jobs..." : (stuckJobsReport is null ? "Load Stuck Jobs" : "Refresh Stuck Jobs"))
+            </button>
+            <button class="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    @onclick="ForceExpireStuckJobsAsync"
+                    disabled="@(isForceExpiring || isLoadingStuckJobs)">
+                @(isForceExpiring ? "Force-expiring..." : "Force-Expire All Stuck Jobs")
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(stuckJobsMessage))
+        {
+            <div class="mt-4 rounded-2xl border px-4 py-3 @(stuckJobsIsError ? "border-rose-500/30 bg-rose-50/80 text-rose-700" : "border-emerald-500/30 bg-emerald-50/80 text-emerald-700")">
+                <p class="text-sm font-semibold">@(stuckJobsIsError ? "Stuck jobs action failed" : "Stuck jobs summary")</p>
+                <p class="mt-1 text-sm">@stuckJobsMessage</p>
+            </div>
+        }
+
+        @if (stuckJobsReport is not null && stuckJobsReport.TotalStuckCount > 0)
+        {
+            <div class="mt-4 space-y-4">
+                @if (stuckJobsReport.StuckMonitoringJobs.Count > 0)
+                {
+                    <div>
+                        <p class="stat-label">Stuck Monitoring Jobs (@stuckJobsReport.StuckMonitoringJobs.Count)</p>
+                        <div class="db-grid__wrap mt-2">
+                            <table class="db-grid">
+                                <thead>
+                                    <tr>
+                                        <th class="db-grid__head db-grid__cell--text">Job</th>
+                                        <th class="db-grid__head db-grid__cell--text">Category / Submenu</th>
+                                        <th class="db-grid__head db-grid__cell--text">PnlDate</th>
+                                        <th class="db-grid__head db-grid__cell--text">Status</th>
+                                        <th class="db-grid__head db-grid__cell--text">Last Heartbeat (UTC)</th>
+                                        <th class="db-grid__head db-grid__cell--text">Worker</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var job in stuckJobsReport.StuckMonitoringJobs)
+                                    {
+                                        <tr class="db-grid__row">
+                                            <td class="db-grid__cell db-grid__cell--text font-mono text-xs">#@job.JobId</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@job.Category / @job.SubmenuKey</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@job.PnlDate.ToString("yyyy-MM-dd")</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@job.Status</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@(job.LastHeartbeatAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@(job.WorkerId ?? "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+
+                @if (stuckJobsReport.StuckJvJobs.Count > 0)
+                {
+                    <div>
+                        <p class="stat-label">Stuck JV Jobs (@stuckJobsReport.StuckJvJobs.Count)</p>
+                        <div class="db-grid__wrap mt-2">
+                            <table class="db-grid">
+                                <thead>
+                                    <tr>
+                                        <th class="db-grid__head db-grid__cell--text">Job</th>
+                                        <th class="db-grid__head db-grid__cell--text">User</th>
+                                        <th class="db-grid__head db-grid__cell--text">PnlDate</th>
+                                        <th class="db-grid__head db-grid__cell--text">Request</th>
+                                        <th class="db-grid__head db-grid__cell--text">Status</th>
+                                        <th class="db-grid__head db-grid__cell--text">Last Heartbeat (UTC)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var job in stuckJobsReport.StuckJvJobs)
+                                    {
+                                        <tr class="db-grid__row">
+                                            <td class="db-grid__cell db-grid__cell--text font-mono text-xs">#@job.JobId</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@job.UserId</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@job.PnlDate.ToString("yyyy-MM-dd")</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@job.RequestType</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@job.Status</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@(job.LastHeartbeatAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+
+                @if (stuckJobsReport.StuckReplayBatches.Count > 0)
+                {
+                    <div>
+                        <p class="stat-label">Stuck Replay Batches (@stuckJobsReport.StuckReplayBatches.Count)</p>
+                        <div class="db-grid__wrap mt-2">
+                            <table class="db-grid">
+                                <thead>
+                                    <tr>
+                                        <th class="db-grid__head db-grid__cell--text">FlowId</th>
+                                        <th class="db-grid__head db-grid__cell--text">PnlDate</th>
+                                        <th class="db-grid__head db-grid__cell--text">CreatedBy</th>
+                                        <th class="db-grid__head db-grid__cell--text">DateStarted</th>
+                                        <th class="db-grid__head db-grid__cell--text">ReplayStatus</th>
+                                        <th class="db-grid__head db-grid__cell--text">Age (s)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var batch in stuckJobsReport.StuckReplayBatches)
+                                    {
+                                        <tr class="db-grid__row">
+                                            <td class="db-grid__cell db-grid__cell--text font-mono text-xs">@batch.FlowId</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@batch.PnlDate.ToString("yyyy-MM-dd")</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@(batch.CreatedBy ?? "—")</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@(batch.DateStarted?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@(batch.ReplayStatus ?? "—")</td>
+                                            <td class="db-grid__cell db-grid__cell--text text-xs">@batch.AgeSeconds</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
     @if (ShowCleanupButtons)
     {
         <div class="surface !border-amber-200/80">

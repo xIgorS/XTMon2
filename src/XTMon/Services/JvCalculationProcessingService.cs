@@ -11,6 +11,10 @@ namespace XTMon.Services;
 public sealed class JvCalculationProcessingService : BackgroundService
 {
     private static readonly TimeSpan DefaultIdleDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MarkStateShutdownGrace = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan MarkStateRetryDelay = TimeSpan.FromSeconds(2);
+    private const int HeartbeatMaxConsecutiveFailures = 3;
+    private const int MarkStateMaxAttempts = 3;
     private const string StaleRunningJobErrorMessage = "JV background job timed out while in Running status and was auto-failed.";
 
     private readonly IServiceScopeFactory _scopeFactory;
@@ -47,7 +51,10 @@ public sealed class JvCalculationProcessingService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("JV calculation processing service started.");
+        _logger.LogInformation(
+            "JV calculation processing service started with StaleTimeoutSeconds={StaleTimeoutSeconds}, HeartbeatIntervalSeconds={HeartbeatIntervalSeconds}.",
+            _jvCalculationOptions.JobRunningStaleTimeoutSeconds,
+            _heartbeatInterval.TotalSeconds);
 
         try
         {
@@ -109,7 +116,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
             using var scope = _scopeFactory.CreateScope();
             var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
 
-            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
                 _logger.LogInformation("Skipping JV job {JobId} because it is no longer active.", job.JobId);
                 return;
@@ -118,21 +125,21 @@ public sealed class JvCalculationProcessingService : BackgroundService
             _logger.LogInformation("Processing JV job {JobId}, request {RequestType}, pnl date {PnlDate}.", job.JobId, job.RequestType, job.PnlDate);
 
             await repository.HeartbeatJvJobAsync(job.JobId, jobCancellation.Token);
-            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
                 _logger.LogInformation("Stopping JV job {JobId} after heartbeat because it is no longer active.", job.JobId);
                 return;
             }
 
             heartbeatLoopCts = CancellationTokenSource.CreateLinkedTokenSource(jobCancellation.Token);
-            heartbeatLoopTask = KeepHeartbeatAliveAsync(job.JobId, heartbeatLoopCts.Token);
+            heartbeatLoopTask = KeepHeartbeatAliveAsync(job.JobId, jobCancellation, heartbeatLoopCts.Token);
 
             string? queryFix = null;
             if (string.Equals(job.RequestType, "FixAndCheck", StringComparison.OrdinalIgnoreCase))
             {
                 var fixTask = repository.FixJvCalculationAsync(job.PnlDate, executeCatchup: true, jobCancellation.Token);
                 queryFix = await AwaitExecutionWithHeartbeatAsync(fixTask, heartbeatLoopTask, jobCancellation);
-                if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+                if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
                 {
                     _logger.LogInformation("Discarding JV fix result for job {JobId} because it is no longer active.", job.JobId);
                     return;
@@ -141,14 +148,14 @@ public sealed class JvCalculationProcessingService : BackgroundService
 
             var checkTask = repository.CheckJvCalculationAsync(job.PnlDate, jobCancellation.Token);
             var checkResult = await AwaitExecutionWithHeartbeatAsync(checkTask, heartbeatLoopTask, jobCancellation);
-            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
                 _logger.LogInformation("Discarding JV check result for job {JobId} because it is no longer active.", job.JobId);
                 return;
             }
 
             await repository.SaveJvJobResultAsync(job.JobId, checkResult.ParsedQuery, queryFix, checkResult.Table, jobCancellation.Token);
-            if (!await IsJobActiveAsync(repository, job.JobId, CancellationToken.None))
+            if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
                 _logger.LogInformation("Skipping completion for JV job {JobId} because it is no longer active.", job.JobId);
                 return;
@@ -158,7 +165,19 @@ public sealed class JvCalculationProcessingService : BackgroundService
             heartbeatLoopCts = null;
             heartbeatLoopTask = null;
 
-            await repository.MarkJvJobCompletedAsync(job.JobId, jobCancellation.Token);
+            var completed = await MarkJobTerminalAsync(
+                job.JobId,
+                (repository, ct) => repository.MarkJvJobCompletedAsync(job.JobId, ct),
+                "mark-completed",
+                cancellationToken);
+
+            if (!completed)
+            {
+                _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed,
+                    "JV job {JobId} finished execution but could not be marked Completed after {MaxAttempts} attempt(s); stale-job expiry will reclaim it.",
+                    job.JobId, MarkStateMaxAttempts);
+                return;
+            }
 
             _logger.LogInformation("JV job {JobId} completed.", job.JobId);
         }
@@ -171,32 +190,19 @@ public sealed class JvCalculationProcessingService : BackgroundService
         {
             await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             _logger.LogInformation("JV job {JobId} cancellation was requested.", job.JobId);
-            await EnsureJvJobMarkedCancelledAsync(job.JobId);
+            await EnsureJvJobMarkedCancelledAsync(job.JobId, cancellationToken);
         }
         catch (Exception ex)
         {
             await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
             LogProcessorException(ex, $"job {job.JobId}");
             _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, ex, "JV job {JobId} failed.", job.JobId);
-            for (var attempt = 1; attempt <= 2; attempt++)
-            {
-                try
-                {
-                    using var scope = _scopeFactory.CreateScope();
-                    var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
-                    await repository.MarkJvJobFailedAsync(job.JobId, ex.Message, CancellationToken.None);
-                    break;
-                }
-                catch (Exception markFailedException)
-                {
-                    _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, markFailedException,
-                        "Failed to mark JV job {JobId} as failed (attempt {Attempt}/2).", job.JobId, attempt);
-                    if (attempt < 2)
-                    {
-                        await Task.Delay(TimeSpan.FromSeconds(2));
-                    }
-                }
-            }
+
+            await MarkJobTerminalAsync(
+                job.JobId,
+                (repository, ct) => repository.MarkJvJobFailedAsync(job.JobId, ex.Message, ct),
+                "mark-failed",
+                cancellationToken);
         }
         finally
         {
@@ -205,11 +211,13 @@ public sealed class JvCalculationProcessingService : BackgroundService
         }
     }
 
-    private async Task KeepHeartbeatAliveAsync(long jobId, CancellationToken cancellationToken)
+    private async Task KeepHeartbeatAliveAsync(long jobId, CancellationTokenSource jobCancellation, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
         using var timer = new PeriodicTimer(_heartbeatInterval);
+
+        var consecutiveFailures = 0;
 
         try
         {
@@ -218,29 +226,105 @@ public sealed class JvCalculationProcessingService : BackgroundService
                 try
                 {
                     await repository.HeartbeatJvJobAsync(jobId, cancellationToken);
+                    consecutiveFailures = 0;
+
+                    if (await IsDbCancelObservedAsync(repository, jobId, cancellationToken))
+                    {
+                        _logger.LogInformation(
+                            "JV job {JobId} is no longer Active in the database; requesting execution cancellation.",
+                            jobId);
+                        jobCancellation.Cancel();
+                        return;
+                    }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    break;
-                }
-                catch (SqlException ex) when (IsFatalHeartbeatException(ex))
-                {
-                    LogProcessorException(ex, $"job {jobId} heartbeat");
-                    _logger.LogError(ex,
-                        "Heartbeat update failed for JV job {JobId} with a non-retryable SQL error. Stopping the worker.",
-                        jobId);
-                    throw;
+                    return;
                 }
                 catch (Exception ex)
                 {
+                    consecutiveFailures++;
                     LogProcessorException(ex, $"job {jobId} heartbeat");
-                    _logger.LogWarning(ex, "Heartbeat update failed for JV job {JobId}. Will retry while the job remains active.", jobId);
+
+                    if (consecutiveFailures >= HeartbeatMaxConsecutiveFailures)
+                    {
+                        _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, ex,
+                            "Heartbeat failed {ConsecutiveFailures} consecutive times for JV job {JobId}; failing the job.",
+                            consecutiveFailures, jobId);
+                        throw;
+                    }
+
+                    _logger.LogWarning(ex,
+                        "Heartbeat update failed for JV job {JobId} (consecutive failures: {ConsecutiveFailures}/{Max}). Will retry while the job remains active.",
+                        jobId, consecutiveFailures, HeartbeatMaxConsecutiveFailures);
                 }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
+    }
+
+    private static async Task<bool> IsDbCancelObservedAsync(IJvCalculationRepository repository, long jobId, CancellationToken cancellationToken)
+    {
+        var current = await repository.GetJvJobByIdAsync(jobId, cancellationToken);
+        return current is not null && !MonitoringJobHelper.IsActiveStatus(current.Status);
+    }
+
+    private async Task<bool> MarkJobTerminalAsync(
+        long jobId,
+        Func<IJvCalculationRepository, CancellationToken, Task> action,
+        string stage,
+        CancellationToken outerToken)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
+        cts.CancelAfter(MarkStateShutdownGrace);
+
+        for (var attempt = 1; attempt <= MarkStateMaxAttempts; attempt++)
+        {
+            if (cts.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    "Skipping remaining {Stage} attempts for JV job {JobId} because shutdown or grace period was reached; stale-job expiry will reclaim it.",
+                    stage, jobId);
+                return false;
+            }
+
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
+                await action(repository, cts.Token);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning(
+                    "{Stage} for JV job {JobId} was cancelled; stale-job expiry will reclaim it.",
+                    stage, jobId);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, ex,
+                    "Failed {Stage} for JV job {JobId} (attempt {Attempt}/{MaxAttempts}).",
+                    stage, jobId, attempt, MarkStateMaxAttempts);
+
+                if (attempt < MarkStateMaxAttempts && !cts.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(MarkStateRetryDelay, cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     private static async Task<T> AwaitExecutionWithHeartbeatAsync<T>(
@@ -307,23 +391,21 @@ public sealed class JvCalculationProcessingService : BackgroundService
         return currentJob is not null && MonitoringJobHelper.IsActiveStatus(currentJob.Status);
     }
 
-    private async Task EnsureJvJobMarkedCancelledAsync(long jobId)
+    private async Task EnsureJvJobMarkedCancelledAsync(long jobId, CancellationToken cancellationToken)
     {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var repository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
-            if (!await IsJobActiveAsync(repository, jobId, CancellationToken.None))
+        await MarkJobTerminalAsync(
+            jobId,
+            async (repository, ct) =>
             {
-                return;
-            }
+                if (!await IsJobActiveAsync(repository, jobId, ct))
+                {
+                    return;
+                }
 
-            await repository.MarkJvJobCancelledAsync(jobId, BackgroundJobCancellationService.JvJobCanceledMessage, CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Unable to mark JV job {JobId} as cancelled.", jobId);
-        }
+                await repository.MarkJvJobCancelledAsync(jobId, BackgroundJobCancellationService.JvJobCanceledMessage, ct);
+            },
+            "mark-cancelled",
+            cancellationToken);
     }
 
     private void LogProcessorException(Exception ex, string context)
@@ -360,10 +442,4 @@ public sealed class JvCalculationProcessingService : BackgroundService
         var seconds = Math.Clamp(options.JobRunningStaleTimeoutSeconds / 3, 5, 30);
         return TimeSpan.FromSeconds(seconds);
     }
-
-    private static bool IsFatalHeartbeatException(SqlException ex)
-    {
-        return SqlDataHelper.IsSqlTimeout(ex) || SqlDataHelper.IsSqlConnectionFailure(ex);
-    }
-
 }

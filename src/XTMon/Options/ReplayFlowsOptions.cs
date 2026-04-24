@@ -27,6 +27,15 @@ public sealed class ReplayFlowsOptions
     [Required]
     public string GetReplayFlowProcessStatusStoredProcedure { get; set; } = "Replay.UspGetReplayFlowProcessStatus";
 
+    [Required]
+    public string FailStaleReplayBatchesStoredProcedure { get; set; } = "Replay.UspFailStaleReplayBatches";
+
+    [Required]
+    public string FailRunningReplayBatchesStoredProcedure { get; set; } = "Replay.UspFailRunningReplayBatches";
+
+    [Required]
+    public string GetStuckReplayBatchesStoredProcedure { get; set; } = "Replay.UspGetStuckReplayBatches";
+
     [Range(1, 3600)]
     public int CommandTimeoutSeconds { get; set; } = 30;
 
@@ -35,4 +44,7 @@ public sealed class ReplayFlowsOptions
 
     [Range(1, 3600)]
     public int StatusPollIntervalSeconds { get; set; } = 15;
+
+    [Range(1, 7200)]
+    public int RunningStaleTimeoutSeconds { get; set; } = 900;
 }

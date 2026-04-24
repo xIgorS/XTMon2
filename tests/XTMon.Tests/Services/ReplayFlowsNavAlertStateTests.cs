@@ -1,5 +1,7 @@
+using Moq;
 using XTMon.Helpers;
 using XTMon.Models;
+using XTMon.Repositories;
 using XTMon.Services;
 
 namespace XTMon.Tests.Services;
@@ -14,7 +16,7 @@ public class ReplayFlowsNavAlertStateTests
     {
         var pnlDateState = new PnlDateState();
         pnlDateState.SetDate(TestDate);
-        var state = new ReplayFlowsNavAlertState(pnlDateState);
+        var state = new ReplayFlowsNavAlertState(pnlDateState, Mock.Of<IReplayFlowRepository>());
 
         state.ApplyStatus(null, Array.Empty<FailedFlowRow>(), Array.Empty<ReplayFlowStatusRow>());
         Assert.Equal(DataValidationNavRunState.NotRun, state.GetStatus());
@@ -34,7 +36,7 @@ public class ReplayFlowsNavAlertStateTests
     {
         var pnlDateState = new PnlDateState();
         pnlDateState.SetDate(TestDate);
-        var state = new ReplayFlowsNavAlertState(pnlDateState);
+        var state = new ReplayFlowsNavAlertState(pnlDateState, Mock.Of<IReplayFlowRepository>());
 
         state.ApplyStatus(OtherDate, [CreateFailedFlowRow(OtherDate)], Array.Empty<ReplayFlowStatusRow>());
 

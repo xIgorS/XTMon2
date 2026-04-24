@@ -9,4 +9,7 @@ public interface IReplayFlowRepository
     Task ProcessReplayFlowsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<ReplayFlowStatusRow>> GetReplayFlowStatusAsync(DateOnly? pnlDate, CancellationToken cancellationToken);
     Task RefreshReplayFlowProcessStatusAsync(CancellationToken cancellationToken);
+    Task<int> FailStaleReplayBatchesAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken);
+    Task<int> FailRunningReplayBatchesAsync(string errorMessage, CancellationToken cancellationToken);
+    Task<IReadOnlyList<StuckReplayBatchRow>> GetStuckReplayBatchesAsync(CancellationToken cancellationToken);
 }

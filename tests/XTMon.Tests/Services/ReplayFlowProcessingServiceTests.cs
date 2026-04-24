@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
+using XTMon.Options;
 using XTMon.Repositories;
 using XTMon.Services;
 
@@ -20,7 +22,7 @@ public class ReplayFlowProcessingServiceTests
         var queue = new ReplayFlowProcessingQueue();
         var logger = NullLogger<ReplayFlowProcessingService>.Instance;
 
-        var service = new ReplayFlowProcessingService(scopeFactory, queue, logger);
+        var service = new ReplayFlowProcessingService(scopeFactory, queue, Microsoft.Extensions.Options.Options.Create(new ReplayFlowsOptions()), logger);
         return (service, repo);
     }
 
@@ -66,7 +68,7 @@ public class ReplayFlowProcessingServiceTests
         var scopeFactory = BuildScopeFactory(repo2.Object);
         var queue = new ReplayFlowProcessingQueue();
         var logger = NullLogger<ReplayFlowProcessingService>.Instance;
-        var svc = new ReplayFlowProcessingService(scopeFactory, queue, logger);
+        var svc = new ReplayFlowProcessingService(scopeFactory, queue, Microsoft.Extensions.Options.Options.Create(new ReplayFlowsOptions()), logger);
 
         await svc.StartAsync(CancellationToken.None);
         await queue.EnqueueAsync(CancellationToken.None);
@@ -76,6 +78,47 @@ public class ReplayFlowProcessingServiceTests
 
         await svc.StopAsync(CancellationToken.None);
         repo2.Verify(x => x.ProcessReplayFlowsAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task WhenItemDequeued_CallsFailStaleReplayBatches_BeforeProcessing()
+    {
+        var staleCalledFirst = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var processingDoneTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var callOrder = new System.Collections.Concurrent.ConcurrentQueue<string>();
+
+        var repo = new Mock<IReplayFlowRepository>();
+        repo.Setup(x => x.FailStaleReplayBatchesAsync(It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                callOrder.Enqueue("stale");
+                staleCalledFirst.TrySetResult(true);
+                return Task.FromResult(0);
+            });
+        repo.Setup(x => x.ProcessReplayFlowsAsync(It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                callOrder.Enqueue("process");
+                processingDoneTcs.TrySetResult(true);
+                return Task.CompletedTask;
+            });
+
+        var scopeFactory = BuildScopeFactory(repo.Object);
+        var queue = new ReplayFlowProcessingQueue();
+        var logger = NullLogger<ReplayFlowProcessingService>.Instance;
+        var svc = new ReplayFlowProcessingService(scopeFactory, queue, Microsoft.Extensions.Options.Options.Create(new ReplayFlowsOptions()), logger);
+
+        await svc.StartAsync(CancellationToken.None);
+        await queue.EnqueueAsync(CancellationToken.None);
+
+        await processingDoneTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await svc.StopAsync(CancellationToken.None);
+
+        var ordered = callOrder.ToArray();
+        Assert.Equal("stale", ordered[0]);
+        Assert.Equal("process", ordered[1]);
     }
 
     [Fact]
@@ -103,7 +146,7 @@ public class ReplayFlowProcessingServiceTests
         var scopeFactory = BuildScopeFactory(repo.Object);
         var queue = new ReplayFlowProcessingQueue();
         var logger = NullLogger<ReplayFlowProcessingService>.Instance;
-        var svc = new ReplayFlowProcessingService(scopeFactory, queue, logger);
+        var svc = new ReplayFlowProcessingService(scopeFactory, queue, Microsoft.Extensions.Options.Options.Create(new ReplayFlowsOptions()), logger);
 
         await svc.StartAsync(CancellationToken.None);
 

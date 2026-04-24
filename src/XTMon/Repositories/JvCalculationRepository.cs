@@ -416,7 +416,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
             command.CommandText = _jvCalculationOptions.JobGetLatestStoredProcedure;
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
-            command.Parameters.Add(new SqlParameter("@UserId", SqlDbType.VarChar, 256) { Value = userId });
+            command.Parameters.Add(new SqlParameter("@UserId", SqlDbType.VarChar, 256) { Value = string.IsNullOrWhiteSpace(userId) ? DBNull.Value : userId });
             command.Parameters.Add(new SqlParameter("@PnlDate", SqlDbType.Date) { Value = pnlDate.ToDateTime(TimeOnly.MinValue) });
             command.Parameters.Add(new SqlParameter("@RequestType", SqlDbType.VarChar, 20) { Value = string.IsNullOrWhiteSpace(requestType) ? DBNull.Value : requestType });
 
@@ -622,6 +622,60 @@ WHERE [Status] IN ('Queued', 'Running');";
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "JV active job count query failed.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(operationName, commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    public async Task<IReadOnlyList<JvJobRecord>> GetStuckJvJobsAsync(TimeSpan activityOlderThan, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string operationName = nameof(GetStuckJvJobsAsync);
+        const string commandName = "get-stuck-jv-jobs";
+        var thresholdSeconds = Math.Max(1, Convert.ToInt32(activityOlderThan.TotalSeconds, System.Globalization.CultureInfo.InvariantCulture));
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT [JobId], [UserId], [PnlDate], [RequestType], [Status], [WorkerId],
+       [EnqueuedAt], [StartedAt], [LastHeartbeatAt], [CompletedAt], [FailedAt], [ErrorMessage],
+       CAST(NULL AS NVARCHAR(MAX)) AS [QueryCheck],
+       CAST(NULL AS NVARCHAR(MAX)) AS [QueryFix],
+       CAST(NULL AS NVARCHAR(MAX)) AS [GridColumnsJson],
+       CAST(NULL AS NVARCHAR(MAX)) AS [GridRowsJson],
+       CAST(NULL AS DATETIME2(3))  AS [SavedAt]
+  FROM [monitoring].[JvCalculationJobs]
+ WHERE [Status] = 'Running'
+   AND DATEDIFF(SECOND, [ActivityAt], SYSUTCDATETIME()) > @ThresholdSeconds
+ ORDER BY [ActivityAt];";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@ThresholdSeconds", SqlDbType.Int) { Value = thresholdSeconds });
+
+            var jobs = new List<JvJobRecord>();
+
+            await connection.OpenAsync(cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                jobs.Add(ReadJvJobRecord(reader));
+            }
+
+            return jobs;
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, operationName, _jvCalculationOptions.JobConnectionStringName, commandName, _jvCalculationOptions.CommandTimeoutSeconds, $"ThresholdSeconds={thresholdSeconds}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "JV stuck-job query failed.");
             throw;
         }
         finally

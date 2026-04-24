@@ -27,4 +27,5 @@ public interface IMonitoringJobRepository
     Task<int> CountActiveMonitoringJobsAsync(CancellationToken cancellationToken);
     Task<int> FailRunningMonitoringJobsAsync(string errorMessage, CancellationToken cancellationToken);
     Task<int> ExpireStaleRunningMonitoringJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken);
+    Task<IReadOnlyList<MonitoringJobRecord>> GetStuckMonitoringJobsAsync(TimeSpan activityOlderThan, CancellationToken cancellationToken);
 }

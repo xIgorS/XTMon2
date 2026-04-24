@@ -20,4 +20,5 @@ public interface IJvCalculationRepository
     Task<int> CountActiveJvJobsAsync(CancellationToken cancellationToken);
     Task<int> FailRunningJvJobsAsync(string errorMessage, CancellationToken cancellationToken);
     Task<int> ExpireStaleRunningJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken);
+    Task<IReadOnlyList<JvJobRecord>> GetStuckJvJobsAsync(TimeSpan activityOlderThan, CancellationToken cancellationToken);
 }

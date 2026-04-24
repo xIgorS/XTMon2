@@ -33,6 +33,9 @@ public partial class NavMenu : ComponentBase, IDisposable
 	[Inject]
 	private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
+	[Inject]
+	private ILogger<NavMenu> Logger { get; set; } = default!;
+
 	protected override void OnInitialized()
 	{
 		NavigationManager.LocationChanged += OnLocationChanged;
@@ -45,8 +48,8 @@ public partial class NavMenu : ComponentBase, IDisposable
 
 	protected override async Task OnInitializedAsync()
 	{
-		await RefreshDataValidationAlertsAsync();
-		RestartAlertsPollingIfNeeded();
+		await RefreshAllNavAlertsAsync();
+		StartAlertsPolling();
 	}
 
 	private bool IsDataValidationRoute =>
@@ -74,8 +77,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 	{
 		_ = InvokeAsync(async () =>
 		{
-			await RefreshDataValidationAlertsAsync();
-			RestartAlertsPollingIfNeeded();
+			await RefreshAllNavAlertsAsync();
 			StateHasChanged();
 		});
 	}
@@ -84,8 +86,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 	{
 		_ = InvokeAsync(async () =>
 		{
-			await RefreshDataValidationAlertsAsync();
-			RestartAlertsPollingIfNeeded();
+			await RefreshAllNavAlertsAsync();
 			StateHasChanged();
 		});
 	}
@@ -110,25 +111,36 @@ public partial class NavMenu : ComponentBase, IDisposable
 		_ = InvokeAsync(StateHasChanged);
 	}
 
-	private async Task RefreshDataValidationAlertsAsync()
+	private async Task RefreshAllNavAlertsAsync()
+	{
+		var tasks = new[]
+		{
+			RefreshNavAlertSafelyAsync("data-validation", DataValidationNavAlertState.RefreshAsync),
+			RefreshNavAlertSafelyAsync("jv-calculation",  JvCalculationNavAlertState.RefreshAsync),
+			RefreshNavAlertSafelyAsync("replay-flows",    ReplayFlowsNavAlertState.RefreshAsync)
+		};
+
+		await Task.WhenAll(tasks);
+	}
+
+	private async Task RefreshNavAlertSafelyAsync(string label, Func<CancellationToken, Task> refresh)
 	{
 		try
 		{
-			await DataValidationNavAlertState.RefreshAsync(_disposeCts.Token);
+			await refresh(_disposeCts.Token);
 		}
 		catch (OperationCanceledException)
 		{
 		}
+		catch (Exception ex)
+		{
+			Logger.LogWarning(ex, "Unable to refresh {NavAlert} nav alerts.", label);
+		}
 	}
 
-	private void RestartAlertsPollingIfNeeded()
+	private void StartAlertsPolling()
 	{
 		StopAlertsPolling();
-
-		if (!IsDataValidationRoute)
-		{
-			return;
-		}
 
 		var pollIntervalSeconds = Math.Max(1, MonitoringJobsOptions.Value.JobPollIntervalSeconds);
 		_alertsPollCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
@@ -142,7 +154,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 		{
 			while (await timer.WaitForNextTickAsync(cancellationToken))
 			{
-				await RefreshDataValidationAlertsAsync();
+				await RefreshAllNavAlertsAsync();
 				await InvokeAsync(StateHasChanged);
 			}
 		}

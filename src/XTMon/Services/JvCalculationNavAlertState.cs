@@ -1,19 +1,27 @@
 using XTMon.Helpers;
 using XTMon.Models;
+using XTMon.Repositories;
 
 namespace XTMon.Services;
 
 public sealed class JvCalculationNavAlertState
 {
     private readonly PnlDateState _pnlDateState;
+    private readonly IJvCalculationRepository _jvCalculationRepository;
+    private readonly ILogger<JvCalculationNavAlertState>? _logger;
     private DateOnly? _trackedPnlDate;
     private DataValidationNavRunState _status;
 
     public event Action? StatusChanged;
 
-    public JvCalculationNavAlertState(PnlDateState pnlDateState)
+    public JvCalculationNavAlertState(
+        PnlDateState pnlDateState,
+        IJvCalculationRepository jvCalculationRepository,
+        ILogger<JvCalculationNavAlertState>? logger = null)
     {
         _pnlDateState = pnlDateState;
+        _jvCalculationRepository = jvCalculationRepository;
+        _logger = logger;
         _status = DataValidationNavRunState.NotRun;
     }
 
@@ -32,6 +40,31 @@ public sealed class JvCalculationNavAlertState
         _trackedPnlDate = pnlDate;
         _status = BuildStatus(pnlDate, job);
         StatusChanged?.Invoke();
+    }
+
+    public async Task RefreshAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!_pnlDateState.SelectedDate.HasValue)
+            {
+                ApplyStatus(null, null);
+                return;
+            }
+
+            var pnlDate = _pnlDateState.SelectedDate.Value;
+            // Pull the latest JV job for this date regardless of user. RequestType null means "any".
+            var job = await _jvCalculationRepository.GetLatestJvJobAsync(userId: string.Empty, pnlDate, requestType: null, cancellationToken);
+            ApplyStatus(pnlDate, job);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Unable to refresh JV calculation nav status.");
+        }
     }
 
     private static DataValidationNavRunState BuildStatus(DateOnly? pnlDate, JvJobRecord? job)

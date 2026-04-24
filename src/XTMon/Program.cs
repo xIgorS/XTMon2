@@ -111,7 +111,10 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.ReplayFlowsTableTypeName) &&
         !string.IsNullOrWhiteSpace(options.ProcessReplayFlowsStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.GetReplayFlowStatusStoredProcedure) &&
-        !string.IsNullOrWhiteSpace(options.GetReplayFlowProcessStatusStoredProcedure),
+        !string.IsNullOrWhiteSpace(options.GetReplayFlowProcessStatusStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.FailStaleReplayBatchesStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.FailRunningReplayBatchesStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.GetStuckReplayBatchesStoredProcedure),
         "ReplayFlows options must define all required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
@@ -481,6 +484,7 @@ builder.Services.AddSingleton<ReplayFlowProcessingQueue>();
 builder.Services.AddHostedService<ReplayFlowProcessingService>();
 builder.Services.AddSingleton<StartupJobRecoveryService>();
 builder.Services.AddHostedService(static serviceProvider => serviceProvider.GetRequiredService<StartupJobRecoveryService>());
+builder.Services.AddSingleton<JobDiagnosticsService>();
 builder.Services.AddHostedService<JvCalculationProcessingService>();
 builder.Services.AddHostedService<MonitoringJobProcessingService>();
 

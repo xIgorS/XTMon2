@@ -866,6 +866,225 @@ public class MonitoringJobProcessingServiceTests
         }
     }
 
+    [Fact]
+    public async Task MarkCompleted_RetriesOnTransientFailure_AndEventuallySucceeds()
+    {
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 42L);
+        var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+
+        var markCompletedCalls = 0;
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                var call = Interlocked.Increment(ref markCompletedCalls);
+                if (call == 1)
+                {
+                    throw new InvalidOperationException("transient sql blip");
+                }
+                completedTcs.TrySetResult(true);
+                return Task.CompletedTask;
+            });
+
+        var executor = new StubExecutor(_ => true, (_, _) => Task.FromResult(payload));
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            idleDelay: TimeSpan.FromMilliseconds(10));
+
+        await service.StartAsync(CancellationToken.None);
+        await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await service.StopAsync(CancellationToken.None);
+
+        // Retry helper: first attempt throws, second succeeds. No mark-failed should be attempted.
+        repo.Verify(r => r.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()), Times.AtLeast(2));
+        repo.Verify(r => r.MarkMonitoringJobFailedAsync(job.JobId, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SingleHeartbeatTimeout_DoesNotCancelExecution()
+    {
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 101L);
+        var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+
+        // Heartbeat sequence: first in-line HeartbeatMonitoringJobAsync at the top of ProcessJobAsync
+        // must succeed; subsequent heartbeat loop call fails once with a SqlException timeout
+        // (would have been "fatal" under the old code) but the execution must still complete.
+        var heartbeatCall = 0;
+        repo.Setup(r => r.HeartbeatMonitoringJobAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                var n = Interlocked.Increment(ref heartbeatCall);
+                if (n == 2)
+                {
+                    throw MakeSqlException(-2, "timeout");
+                }
+                return Task.CompletedTask;
+            });
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Callback(() => completedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+
+        var executionStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executionRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executor = new StubExecutor(_ => true, async (_, token) =>
+        {
+            executionStarted.TrySetResult(true);
+            await executionRelease.Task.WaitAsync(token);
+            return payload;
+        });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            idleDelay: TimeSpan.FromMilliseconds(10),
+            heartbeatInterval: TimeSpan.FromMilliseconds(50));
+
+        await service.StartAsync(CancellationToken.None);
+        await executionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Give the heartbeat loop time to emit at least one failing tick.
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        Assert.False(completedTcs.Task.IsCompleted, "Execution should still be running; a single heartbeat failure must not cancel it.");
+
+        executionRelease.TrySetResult(true);
+        await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ThreeConsecutiveHeartbeatFailures_MarksJobFailed()
+    {
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 202L);
+        var markFailedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+
+        // First heartbeat call (pre-loop) succeeds; every subsequent heartbeat in the loop fails.
+        var heartbeatCall = 0;
+        repo.Setup(r => r.HeartbeatMonitoringJobAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                var n = Interlocked.Increment(ref heartbeatCall);
+                if (n == 1)
+                {
+                    return Task.CompletedTask;
+                }
+                throw new InvalidOperationException("persistent heartbeat failure");
+            });
+        repo.Setup(r => r.MarkMonitoringJobFailedAsync(job.JobId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback(() => markFailedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+
+        var executionRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executor = new StubExecutor(_ => true, async (_, token) =>
+        {
+            try
+            {
+                // Block so we give the heartbeat loop time to fail 3× before returning.
+                await Task.Delay(TimeSpan.FromSeconds(30), token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                throw;
+            }
+
+            return payload;
+        });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            idleDelay: TimeSpan.FromMilliseconds(10),
+            heartbeatInterval: TimeSpan.FromMilliseconds(40));
+
+        await service.StartAsync(CancellationToken.None);
+        await markFailedTcs.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        executionRelease.TrySetResult(true);
+        await service.StopAsync(CancellationToken.None);
+
+        // 3 loop-heartbeat failures required, plus the 1 initial pre-loop heartbeat success = 4.
+        repo.Verify(r => r.HeartbeatMonitoringJobAsync(job.JobId, It.IsAny<CancellationToken>()), Times.AtLeast(4));
+        repo.Verify(r => r.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HeartbeatObservesDbCancel_CancelsExecution()
+    {
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 303L);
+        var executionCancelledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+
+        // GetMonitoringJobByIdAsync: early calls return Running (two pre-heartbeat-loop calls happen
+        // at L242 and L251); later calls (inside the heartbeat loop) return Cancelled, simulating an
+        // out-of-band cancel (e.g. from another worker or BackgroundJobCancellationService).
+        var getByIdCallCount = 0;
+        repo.Setup(r => r.GetMonitoringJobByIdAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                var call = Interlocked.Increment(ref getByIdCallCount);
+                var status = call >= 4 ? MonitoringJobHelper.CancelledStatus : "Running";
+                return MakeJob(job.Category, job.SubmenuKey, job.JobId) with
+                {
+                    Status = status,
+                    StartedAt = DateTime.UtcNow,
+                    FailedAt = status == MonitoringJobHelper.CancelledStatus ? DateTime.UtcNow : null
+                };
+            });
+
+        var executor = new StubExecutor(_ => true, async (_, token) =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                executionCancelledTcs.TrySetResult(true);
+                throw;
+            }
+
+            return payload;
+        });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            idleDelay: TimeSpan.FromMilliseconds(10),
+            heartbeatInterval: TimeSpan.FromMilliseconds(40));
+
+        await service.StartAsync(CancellationToken.None);
+
+        // Executor should get its cancellation token fired once the heartbeat loop observes
+        // the DB-side Cancelled flip — that's the whole point of the mid-run DB-cancel observation.
+        await executionCancelledTcs.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        await service.StopAsync(CancellationToken.None);
+    }
+
     private static SqlException MakeSqlException(int number, string message)
     {
         const BindingFlags NonPublicInstance = BindingFlags.NonPublic | BindingFlags.Instance;

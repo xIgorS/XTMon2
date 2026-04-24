@@ -258,7 +258,7 @@ public class JvCalculationProcessingServiceTests
     }
 
     [Fact]
-    public async Task WhenMarkFailedThrowsOnBothAttempts_DoesNotRetryMoreThanTwice()
+    public async Task WhenMarkFailedThrowsOnAllAttempts_DoesNotRetryMoreThanMax()
     {
         var job = MakeJob("CheckOnly");
 
@@ -274,11 +274,12 @@ public class JvCalculationProcessingServiceTests
         var (svc, _) = CreateService(repo);
         await svc.StartAsync(CancellationToken.None);
 
-        // Allow enough time for both attempts plus the 2s retry delay
-        await Task.Delay(TimeSpan.FromSeconds(5));
+        // Allow enough time for all retry attempts plus 2s retry delays in between.
+        await Task.Delay(TimeSpan.FromSeconds(8));
         await svc.StopAsync(CancellationToken.None);
 
-        repo.Verify(r => r.MarkJvJobFailedAsync(1L, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        // MarkStateMaxAttempts = 3; should never exceed that, even if all throw.
+        repo.Verify(r => r.MarkJvJobFailedAsync(1L, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
     }
 
     [Fact]

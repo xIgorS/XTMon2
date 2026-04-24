@@ -1,5 +1,7 @@
+using Moq;
 using XTMon.Helpers;
 using XTMon.Models;
+using XTMon.Repositories;
 using XTMon.Services;
 
 namespace XTMon.Tests.Services;
@@ -14,7 +16,7 @@ public class JvCalculationNavAlertStateTests
     {
         var pnlDateState = new PnlDateState();
         pnlDateState.SetDate(TestDate);
-        var state = new JvCalculationNavAlertState(pnlDateState);
+        var state = new JvCalculationNavAlertState(pnlDateState, Mock.Of<IJvCalculationRepository>());
 
         state.ApplyStatus(TestDate, job: null);
         Assert.Equal(DataValidationNavRunState.NotRun, state.GetStatus());
@@ -34,7 +36,7 @@ public class JvCalculationNavAlertStateTests
     {
         var pnlDateState = new PnlDateState();
         pnlDateState.SetDate(TestDate);
-        var state = new JvCalculationNavAlertState(pnlDateState);
+        var state = new JvCalculationNavAlertState(pnlDateState, Mock.Of<IJvCalculationRepository>());
 
         state.ApplyStatus(OtherDate, CreateJob("Completed", rowsJson: "[]", pnlDate: OtherDate));
 
@@ -46,7 +48,7 @@ public class JvCalculationNavAlertStateTests
     {
         var pnlDateState = new PnlDateState();
         pnlDateState.SetDate(TestDate);
-        var state = new JvCalculationNavAlertState(pnlDateState);
+        var state = new JvCalculationNavAlertState(pnlDateState, Mock.Of<IJvCalculationRepository>());
 
         state.ApplyStatus(TestDate, CreateJob("Cancelled", rowsJson: null));
 

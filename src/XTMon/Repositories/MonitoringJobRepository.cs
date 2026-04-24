@@ -511,6 +511,61 @@ UPDATE [monitoring].[MonitoringJobs]
         }
     }
 
+    public async Task<IReadOnlyList<MonitoringJobRecord>> GetStuckMonitoringJobsAsync(TimeSpan activityOlderThan, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string operationName = nameof(GetStuckMonitoringJobsAsync);
+        const string commandName = "get-stuck-monitoring-jobs";
+        var thresholdSeconds = Math.Max(1, Convert.ToInt32(activityOlderThan.TotalSeconds, CultureInfo.InvariantCulture));
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [WorkerId],
+       [ParametersJson], [ParameterSummary], [EnqueuedAt], [StartedAt], [LastHeartbeatAt],
+       [CompletedAt], [FailedAt], [ErrorMessage],
+       CAST(NULL AS NVARCHAR(MAX)) AS [ParsedQuery],
+       CAST(NULL AS NVARCHAR(MAX)) AS [GridColumnsJson],
+       CAST(NULL AS NVARCHAR(MAX)) AS [GridRowsJson],
+       CAST(NULL AS NVARCHAR(MAX)) AS [MetadataJson],
+       CAST(NULL AS DATETIME2(0))  AS [SavedAt]
+  FROM [monitoring].[MonitoringJobs]
+ WHERE [Status] = 'Running'
+   AND DATEDIFF(SECOND, [ActivityAt], SYSUTCDATETIME()) > @ThresholdSeconds
+ ORDER BY [ActivityAt];";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@ThresholdSeconds", SqlDbType.Int) { Value = thresholdSeconds });
+
+            var jobs = new List<MonitoringJobRecord>();
+
+            await connection.OpenAsync(cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                jobs.Add(ReadMonitoringJobRecord(reader));
+            }
+
+            return jobs;
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, operationName, commandName, stopwatch.ElapsedMilliseconds, $"ThresholdSeconds={thresholdSeconds}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring stuck-job query failed.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(operationName, commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     public async Task<int> ExpireStaleRunningMonitoringJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();

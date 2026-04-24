@@ -363,4 +363,104 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
             throw;
         }
     }
+
+    public async Task<int> FailStaleReplayBatchesAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken)
+    {
+        var staleSeconds = Math.Max(1, Convert.ToInt32(staleAfter.TotalSeconds, System.Globalization.CultureInfo.InvariantCulture));
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_replayOptions.ConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _replayOptions.FailStaleReplayBatchesStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _replayOptions.CommandTimeoutSeconds;
+
+            command.Parameters.Add(new SqlParameter("@StaleTimeoutSeconds", SqlDbType.Int) { Value = staleSeconds });
+            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, 400)
+            {
+                Value = string.IsNullOrWhiteSpace(errorMessage) ? DBNull.Value : errorMessage
+            });
+
+            await connection.OpenAsync(cancellationToken);
+            var result = await command.ExecuteScalarAsync(cancellationToken);
+            return result is null or DBNull ? 0 : Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryReplayStatusFailed, ex,
+                "Replay stale-batch expiration failed for procedure {StoredProcedure}.",
+                _replayOptions.FailStaleReplayBatchesStoredProcedure);
+            throw;
+        }
+    }
+
+    public async Task<int> FailRunningReplayBatchesAsync(string errorMessage, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_replayOptions.ConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _replayOptions.FailRunningReplayBatchesStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _replayOptions.CommandTimeoutSeconds;
+
+            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, 400)
+            {
+                Value = string.IsNullOrWhiteSpace(errorMessage) ? DBNull.Value : errorMessage
+            });
+
+            await connection.OpenAsync(cancellationToken);
+            var result = await command.ExecuteScalarAsync(cancellationToken);
+            return result is null or DBNull ? 0 : Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryReplayStatusFailed, ex,
+                "Replay startup recovery failed for procedure {StoredProcedure}.",
+                _replayOptions.FailRunningReplayBatchesStoredProcedure);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<StuckReplayBatchRow>> GetStuckReplayBatchesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_replayOptions.ConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _replayOptions.GetStuckReplayBatchesStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _replayOptions.CommandTimeoutSeconds;
+
+            await connection.OpenAsync(cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            var rows = new List<StuckReplayBatchRow>();
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                rows.Add(new StuckReplayBatchRow(
+                    reader.GetInt64(reader.GetOrdinal("FlowId")),
+                    reader.GetInt64(reader.GetOrdinal("FlowIdDerivedFrom")),
+                    DateOnly.FromDateTime(reader.GetDateTime(reader.GetOrdinal("PnlDate"))),
+                    reader.GetGuid(reader.GetOrdinal("PackageGuid")),
+                    SqlDataHelper.ReadNullableString(reader, reader.GetOrdinal("CreatedBy")),
+                    reader.GetDateTime(reader.GetOrdinal("DateCreated")),
+                    SqlDataHelper.ReadNullableDateTime(reader, reader.GetOrdinal("DateStarted")),
+                    SqlDataHelper.ReadNullableDateTime(reader, reader.GetOrdinal("DateCompleted")),
+                    SqlDataHelper.ReadNullableString(reader, reader.GetOrdinal("ReplayStatus")),
+                    SqlDataHelper.ReadNullableString(reader, reader.GetOrdinal("ProcessStatus")),
+                    reader.GetInt32(reader.GetOrdinal("AgeSeconds"))));
+            }
+
+            return rows;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryReplayStatusFailed, ex,
+                "Replay stuck-batch query failed for procedure {StoredProcedure}.",
+                _replayOptions.GetStuckReplayBatchesStoredProcedure);
+            throw;
+        }
+    }
 }
