@@ -348,6 +348,32 @@
             </div>
         </div>
 
+        @if (!report.AllPassed)
+        {
+            var diagnosticsIssues = BuildDiagnosticsIssueSummary(report);
+
+            @if (diagnosticsIssues.Count > 0)
+            {
+                <div class="surface !border-rose-500/30">
+                    <div class="flex items-start gap-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="mt-0.5 h-5 w-5 shrink-0 text-error">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007v.008H12v-.008Zm9.303-.382c.866-1.5-.217-3.368-1.948-3.368H4.645c-1.73 0-2.813 1.868-1.948 3.368l7.355 12.75c.866 1.5 3.032 1.5 3.898 0l7.353-12.75Z" />
+                        </svg>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-semibold text-error">Issue details</p>
+                            <p class="mt-1 text-xs text-error/80">These are the exact connection or stored procedure checks that failed.</p>
+                            <ul class="mt-3 space-y-2 text-sm text-error/90">
+                                @foreach (var issue in diagnosticsIssues)
+                                {
+                                    <li class="rounded-xl bg-rose-50/70 px-3 py-2 font-mono text-xs">@issue</li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+
         @* Per-database cards *@
         <div class="space-y-4">
             @foreach (var db in report.Databases)

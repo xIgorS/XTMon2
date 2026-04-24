@@ -267,6 +267,42 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         return $"Deleted {result.MonitoringLatestResultsDeleted} monitoring latest result row(s), {result.MonitoringJobsDeleted} monitoring job row(s), {result.JvCalculationJobResultsDeleted} JV result row(s), and {result.JvCalculationJobsDeleted} JV job row(s).";
     }
 
+    private static IReadOnlyList<string> BuildDiagnosticsIssueSummary(DiagnosticsReport report)
+    {
+        var issues = new List<string>();
+
+        foreach (var database in report.Databases)
+        {
+            if (!database.Connected)
+            {
+                issues.Add($"{database.ConnectionStringName}: connection failed{BuildIssueSuffix(database.ConnectionError)}");
+                continue;
+            }
+
+            foreach (var storedProcedure in database.StoredProcedures.Where(sp => !sp.Exists || sp.Error is not null))
+            {
+                var issueText = storedProcedure.Error is not null
+                    ? $"{storedProcedure.FullName}{BuildIssueSuffix(storedProcedure.Error)}"
+                    : $"{storedProcedure.FullName}: missing";
+
+                issues.Add($"{database.ConnectionStringName}: {issueText}");
+            }
+        }
+
+        return issues;
+    }
+
+    private static string BuildIssueSuffix(string? detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail))
+        {
+            return string.Empty;
+        }
+
+        var normalized = detail.Replace(Environment.NewLine, " ", StringComparison.Ordinal).Trim();
+        return $" ({normalized})";
+    }
+
     public ValueTask DisposeAsync()
     {
         StartupDiagnosticsState.StatusChanged -= OnDiagnosticsStatusChanged;
