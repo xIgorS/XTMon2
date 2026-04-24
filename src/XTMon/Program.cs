@@ -106,6 +106,7 @@ builder.Services
     .ValidateDataAnnotations()
     .Validate(options =>
         !string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+        !string.IsNullOrWhiteSpace(options.RecoveryConnectionStringName) &&
         !string.IsNullOrWhiteSpace(options.GetFailedFlowsStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.ReplayFlowsStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.ReplayFlowsTableTypeName) &&

@@ -27,14 +27,20 @@ public sealed class ReplayFlowsOptions
     [Required]
     public string GetReplayFlowProcessStatusStoredProcedure { get; set; } = "Replay.UspGetReplayFlowProcessStatus";
 
+    // Recovery SPs live in LOG_FI_ALMT (where administration.ReplayFlows lives) to avoid
+    // cross-database UPDATEs. The primary ConnectionStringName above points to STAGING_FI_ALMT
+    // for the existing Replay.* SPs, so these need their own connection name.
     [Required]
-    public string FailStaleReplayBatchesStoredProcedure { get; set; } = "Replay.UspFailStaleReplayBatches";
+    public string RecoveryConnectionStringName { get; set; } = "LogFiAlmt";
 
     [Required]
-    public string FailRunningReplayBatchesStoredProcedure { get; set; } = "Replay.UspFailRunningReplayBatches";
+    public string FailStaleReplayBatchesStoredProcedure { get; set; } = "administration.UspFailStaleReplayBatches";
 
     [Required]
-    public string GetStuckReplayBatchesStoredProcedure { get; set; } = "Replay.UspGetStuckReplayBatches";
+    public string FailRunningReplayBatchesStoredProcedure { get; set; } = "administration.UspFailRunningReplayBatches";
+
+    [Required]
+    public string GetStuckReplayBatchesStoredProcedure { get; set; } = "administration.UspGetStuckReplayBatches";
 
     [Range(1, 3600)]
     public int CommandTimeoutSeconds { get; set; } = 30;

@@ -370,7 +370,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
 
         try
         {
-            using var connection = _connectionFactory.CreateConnection(_replayOptions.ConnectionStringName);
+            using var connection = _connectionFactory.CreateConnection(_replayOptions.RecoveryConnectionStringName);
             using var command = connection.CreateCommand();
             command.CommandText = _replayOptions.FailStaleReplayBatchesStoredProcedure;
             command.CommandType = CommandType.StoredProcedure;
@@ -399,7 +399,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
     {
         try
         {
-            using var connection = _connectionFactory.CreateConnection(_replayOptions.ConnectionStringName);
+            using var connection = _connectionFactory.CreateConnection(_replayOptions.RecoveryConnectionStringName);
             using var command = connection.CreateCommand();
             command.CommandText = _replayOptions.FailRunningReplayBatchesStoredProcedure;
             command.CommandType = CommandType.StoredProcedure;
@@ -427,7 +427,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
     {
         try
         {
-            using var connection = _connectionFactory.CreateConnection(_replayOptions.ConnectionStringName);
+            using var connection = _connectionFactory.CreateConnection(_replayOptions.RecoveryConnectionStringName);
             using var command = connection.CreateCommand();
             command.CommandText = _replayOptions.GetStuckReplayBatchesStoredProcedure;
             command.CommandType = CommandType.StoredProcedure;
