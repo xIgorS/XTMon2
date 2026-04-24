@@ -515,7 +515,13 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             return;
         }
 
-        heartbeatLoopCts.Cancel();
+        try
+        {
+            heartbeatLoopCts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
 
         try
         {
@@ -529,7 +535,13 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         }
         finally
         {
-            heartbeatLoopCts.Dispose();
+            try
+            {
+                heartbeatLoopCts.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
     }
 

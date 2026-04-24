@@ -1188,6 +1188,25 @@ public class MonitoringJobProcessingServiceTests
         await service.StopAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task StopHeartbeatLoopAsync_WhenCalledTwice_DoesNotThrow()
+    {
+        var method = typeof(MonitoringJobProcessingService).GetMethod(
+            "StopHeartbeatLoopAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        var heartbeatLoopCts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken.None);
+        var heartbeatLoopTask = Task.CompletedTask;
+
+        var firstStop = (Task)method!.Invoke(null, [heartbeatLoopCts, heartbeatLoopTask])!;
+        await firstStop;
+
+        var secondStop = (Task)method.Invoke(null, [heartbeatLoopCts, heartbeatLoopTask])!;
+        await secondStop;
+    }
+
     private static SqlException MakeSqlException(int number, string message)
     {
         const BindingFlags NonPublicInstance = BindingFlags.NonPublic | BindingFlags.Instance;
