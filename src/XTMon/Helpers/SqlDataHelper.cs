@@ -111,6 +111,11 @@ internal static class SqlDataHelper
         return ex.Number == -2;
     }
 
+    public static bool IsSqlLockTimeout(SqlException ex)
+    {
+        return ex.Number == 1222;
+    }
+
     public static bool IsSqlConnectionFailure(SqlException ex)
     {
         return ex.Number is -1 or 2 or 20 or 53 or 64 or 233 or 4060 or 10054 or 10060;

@@ -818,11 +818,13 @@ CREATE PROCEDURE [monitoring].[UspMonitoringJobHeartbeat]
 AS
 BEGIN
     SET NOCOUNT ON;
+    SET LOCK_TIMEOUT 5000;
 
-    UPDATE [monitoring].[MonitoringJobs]
+    UPDATE [jobs]
        SET [LastHeartbeatAt] = SYSUTCDATETIME()
-         WHERE [JobId] = @JobId
-             AND [Status] = 'Running';
+    FROM [monitoring].[MonitoringJobs] AS [jobs] WITH (ROWLOCK)
+    WHERE [JobId] = @JobId
+      AND [Status] = 'Running';
 END
 GO
 

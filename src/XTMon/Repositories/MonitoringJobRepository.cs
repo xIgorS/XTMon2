@@ -694,6 +694,21 @@ SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [W
             return;
         }
 
+        if (SqlDataHelper.IsSqlLockTimeout(ex))
+        {
+            _logger.LogWarning(AppLogEvents.RepositoryMonitoringProcedureFailed, ex,
+                "Monitoring job SQL lock timeout in operation {Operation}, connection {ConnectionName}, command {CommandName}, elapsed ms {ElapsedMs}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
+                operationName,
+                _options.JobConnectionStringName,
+                commandName,
+                elapsedMilliseconds,
+                ex.Number,
+                ex.State,
+                ex.Class,
+                context ?? "N/A");
+            return;
+        }
+
         if (SqlDataHelper.IsSqlConnectionFailure(ex))
         {
             _logger.LogError(AppLogEvents.RepositoryMonitoringJobConnectionFailed, ex,

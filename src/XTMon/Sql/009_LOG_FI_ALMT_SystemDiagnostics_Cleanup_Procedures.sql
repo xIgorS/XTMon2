@@ -40,7 +40,7 @@ BEGIN
     IF EXISTS (SELECT 1 FROM [monitoring].[MonitoringJobs] WHERE [Status] IN ('Queued', 'Running'))
        OR EXISTS (SELECT 1 FROM [monitoring].[JvCalculationJobs] WHERE [Status] IN ('Queued', 'Running'))
     BEGIN
-        THROW 50001, 'Cannot clean history while monitoring or JV jobs are queued or running.', 1;
+        ;THROW 50001, 'Cannot clean history while monitoring or JV jobs are queued or running.', 1;
     END
 
     BEGIN TRANSACTION;

@@ -37,10 +37,13 @@ public sealed class JobDiagnosticsService
 
         var monitoringThreshold = ComputeActivityThreshold(_monitoringOptions.JobRunningStaleTimeoutSeconds);
         var jvThreshold = ComputeActivityThreshold(_jvOptions.JobRunningStaleTimeoutSeconds);
+        var replayThreshold = ComputeReplayActivityThreshold(_replayOptions.RunningStaleTimeoutSeconds);
 
         var monitoringStuck = await monitoringRepository.GetStuckMonitoringJobsAsync(monitoringThreshold, cancellationToken);
         var jvStuck = await jvRepository.GetStuckJvJobsAsync(jvThreshold, cancellationToken);
-        var replayStuck = await replayRepository.GetStuckReplayBatchesAsync(cancellationToken);
+        var replayStuck = (await replayRepository.GetStuckReplayBatchesAsync(cancellationToken))
+            .Where(row => row.AgeSeconds > replayThreshold.TotalSeconds)
+            .ToArray();
 
         return new StuckJobsReport(monitoringStuck, jvStuck, replayStuck, DateTime.UtcNow);
     }
@@ -52,12 +55,13 @@ public sealed class JobDiagnosticsService
         var jvRepository = scope.ServiceProvider.GetRequiredService<IJvCalculationRepository>();
         var replayRepository = scope.ServiceProvider.GetRequiredService<IReplayFlowRepository>();
 
-        // TimeSpan.FromSeconds(1) because some repos floor to 1 second minimum; use it as "any non-fresh row".
-        var zeroGrace = TimeSpan.FromSeconds(1);
+        var monitoringThreshold = ComputeActivityThreshold(_monitoringOptions.JobRunningStaleTimeoutSeconds);
+        var jvThreshold = ComputeActivityThreshold(_jvOptions.JobRunningStaleTimeoutSeconds);
+        var replayThreshold = ComputeReplayActivityThreshold(_replayOptions.RunningStaleTimeoutSeconds);
 
-        var monitoringExpired = await monitoringRepository.ExpireStaleRunningMonitoringJobsAsync(zeroGrace, MonitoringForceExpireMessage, cancellationToken);
-        var jvExpired = await jvRepository.ExpireStaleRunningJobsAsync(zeroGrace, JvForceExpireMessage, cancellationToken);
-        var replayExpired = await replayRepository.FailStaleReplayBatchesAsync(zeroGrace, ReplayForceExpireMessage, cancellationToken);
+        var monitoringExpired = await monitoringRepository.ExpireStaleRunningMonitoringJobsAsync(monitoringThreshold, MonitoringForceExpireMessage, cancellationToken);
+        var jvExpired = await jvRepository.ExpireStaleRunningJobsAsync(jvThreshold, JvForceExpireMessage, cancellationToken);
+        var replayExpired = await replayRepository.FailStaleReplayBatchesAsync(replayThreshold, ReplayForceExpireMessage, cancellationToken);
 
         return new ForceExpireResult(monitoringExpired, jvExpired, replayExpired);
     }
@@ -69,5 +73,10 @@ public sealed class JobDiagnosticsService
     {
         var heartbeatSeconds = Math.Clamp(staleTimeoutSeconds / 3, 5, 30);
         return TimeSpan.FromSeconds(Math.Max(heartbeatSeconds * 2, 60));
+    }
+
+    private static TimeSpan ComputeReplayActivityThreshold(int staleTimeoutSeconds)
+    {
+        return TimeSpan.FromSeconds(Math.Max(staleTimeoutSeconds, 1));
     }
 }

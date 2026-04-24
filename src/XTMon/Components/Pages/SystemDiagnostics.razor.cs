@@ -76,9 +76,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         try
         {
             var result = await BackgroundJobCancellationService.CancelAllBackgroundJobsAsync(disposeCts.Token);
-            bulkCancellationMessage = result.TotalJobsCancelled == 0
-                ? "No active monitoring or JV background jobs were found."
-                : BuildBulkCancellationMessage(result);
+            bulkCancellationMessage = SystemDiagnosticsBulkCancellationHelper.BuildMessage(result);
         }
         catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
         {
@@ -86,7 +84,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to cancel all background jobs from System Diagnostics.");
-            bulkCancellationMessage = "Unable to cancel all background jobs right now.";
+            bulkCancellationMessage = SystemDiagnosticsErrorHelper.BuildFailureMessage(ex, "Unable to cancel all background jobs right now.");
             bulkCancellationIsError = true;
         }
         finally
@@ -132,9 +130,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         try
         {
             var result = await StartupJobRecoveryService.RecoverAsync(disposeCts.Token);
-            recoveryMessage = result.TotalRecoveredJobs == 0
-                ? "No running monitoring or JV jobs were found to reset."
-                : $"Reset {result.RecoveredMonitoringJobs} monitoring job(s) and {result.RecoveredJvJobs} JV job(s) that were still marked Running.";
+            recoveryMessage = SystemDiagnosticsRecoveryHelper.BuildRecoveryMessage(result);
         }
         catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
         {
@@ -246,19 +242,6 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
 
     private static string FormatParameters(IReadOnlyList<StoredProcedureParameterInfo> parameters) =>
         string.Join(", ", parameters.Select(p => p.IsOutput ? $"{p.Name} ({p.TypeName} OUT)" : $"{p.Name} ({p.TypeName})"));
-
-    private static string BuildBulkCancellationMessage(BackgroundJobBulkCancellationResult result)
-    {
-        var summary = $"Marked {result.MonitoringJobsCancelled} monitoring job(s) and {result.JvJobsCancelled} JV job(s) as cancelled.";
-        var workers = $" Cancellation was requested for {result.TotalWorkersCancellationRequested} active worker(s).";
-
-        if (result.CancellationConfirmed)
-        {
-            return summary + workers + " Status verification shows no active background jobs remain.";
-        }
-
-        return summary + workers + $" Status verification still reports {result.TotalActiveJobsRemaining} active job(s), so another refresh may be needed while long-running queries unwind.";
-    }
 
     private static string BuildHistoryCleanupMessage(SystemDiagnosticsHistoryCleanupResult result)
     {

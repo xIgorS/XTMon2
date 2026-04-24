@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using XTMon.Helpers;
 using XTMon.Infrastructure;
@@ -356,6 +357,13 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                 {
                     return;
                 }
+                catch (SqlException ex) when (IsTransientHeartbeatSqlFailure(ex))
+                {
+                    LogProcessorException(ex, $"job {jobId} heartbeat");
+                    _logger.LogWarning(ex,
+                        "Transient SQL heartbeat failure for monitoring job {JobId}. The job will keep running and heartbeat will retry on the next interval.",
+                        jobId);
+                }
                 catch (Exception ex)
                 {
                     consecutiveFailures++;
@@ -384,6 +392,14 @@ public sealed class MonitoringJobProcessingService : BackgroundService
     {
         var current = await repository.GetMonitoringJobByIdAsync(jobId, cancellationToken);
         return current is not null && !MonitoringJobHelper.IsActiveStatus(current.Status);
+    }
+
+    private static bool IsTransientHeartbeatSqlFailure(SqlException ex)
+    {
+        return SqlDataHelper.IsSqlTimeout(ex)
+            || SqlDataHelper.IsSqlLockTimeout(ex)
+            || SqlDataHelper.IsSqlDeadlock(ex)
+            || SqlDataHelper.IsSqlConnectionFailure(ex);
     }
 
     private async Task<bool> MarkJobTerminalAsync(

@@ -238,6 +238,20 @@ public class SqlDataHelperTests
         Assert.False(SqlDataHelper.IsSqlTimeout(ex));
     }
 
+    [Fact]
+    public void IsSqlLockTimeout_WhenNumberIs1222_ReturnsTrue()
+    {
+        var ex = MakeSqlException(1222);
+        Assert.True(SqlDataHelper.IsSqlLockTimeout(ex));
+    }
+
+    [Fact]
+    public void IsSqlLockTimeout_WhenOtherNumber_ReturnsFalse()
+    {
+        var ex = MakeSqlException(-2);
+        Assert.False(SqlDataHelper.IsSqlLockTimeout(ex));
+    }
+
     // ─── IsSqlConnectionFailure ──────────────────────────────────────────────────
 
     [Theory]

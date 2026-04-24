@@ -1027,6 +1027,57 @@ public class MonitoringJobProcessingServiceTests
     }
 
     [Fact]
+    public async Task RepeatedTransientHeartbeatSqlFailures_DoNotMarkJobFailed()
+    {
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 212L);
+        var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+
+        var heartbeatCall = 0;
+        repo.Setup(r => r.HeartbeatMonitoringJobAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                var n = Interlocked.Increment(ref heartbeatCall);
+                if (n == 1)
+                {
+                    return Task.CompletedTask;
+                }
+
+                throw MakeSqlException(1222, "lock timeout");
+            });
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Callback(() => completedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+
+        var executionRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executor = new StubExecutor(_ => true, async (_, token) =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(250), token);
+            executionRelease.TrySetResult(true);
+            return payload;
+        });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            idleDelay: TimeSpan.FromMilliseconds(10),
+            heartbeatInterval: TimeSpan.FromMilliseconds(40));
+
+        await service.StartAsync(CancellationToken.None);
+        await executionRelease.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        repo.Verify(r => r.MarkMonitoringJobFailedAsync(job.JobId, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task HeartbeatObservesDbCancel_CancelsExecution()
     {
         var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
