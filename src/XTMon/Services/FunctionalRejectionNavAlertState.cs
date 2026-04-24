@@ -7,7 +7,7 @@ namespace XTMon.Services;
 
 public sealed class FunctionalRejectionNavAlertState
 {
-    private static readonly TimeSpan SqlFailureBackoff = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan SqlFailureBackoff = TimeSpan.FromSeconds(10);
 
     private readonly PnlDateState _pnlDateState;
     private readonly IJvCalculationRepository _pnlDateRepository;

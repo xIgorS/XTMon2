@@ -617,6 +617,7 @@ SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [W
     private async Task ExecuteMonitoringJobStateProcedureAsync(string procedureName, long jobId, string? errorMessage, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
+        var suppressSlowOperationWarning = false;
         try
         {
             using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
@@ -639,6 +640,7 @@ SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [W
         }
         catch (SqlException ex)
         {
+            suppressSlowOperationWarning = ShouldSuppressHeartbeatSlowWarning(procedureName, ex);
             LogSqlException(ex, nameof(ExecuteMonitoringJobStateProcedureAsync), procedureName, stopwatch.ElapsedMilliseconds, $"JobId={jobId}");
             throw;
         }
@@ -652,12 +654,22 @@ SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [W
         }
         finally
         {
-            LogOperationDuration(nameof(ExecuteMonitoringJobStateProcedureAsync), procedureName, stopwatch.ElapsedMilliseconds);
+            LogOperationDuration(nameof(ExecuteMonitoringJobStateProcedureAsync), procedureName, stopwatch.ElapsedMilliseconds, suppressSlowOperationWarning);
         }
     }
 
-    private void LogOperationDuration(string operationName, string commandName, long elapsedMilliseconds)
+    private void LogOperationDuration(string operationName, string commandName, long elapsedMilliseconds, bool suppressWarning = false)
     {
+        if (suppressWarning)
+        {
+            _logger.LogDebug(
+                "Monitoring job data operation {Operation} with command {CommandName} completed in {ElapsedMs} ms.",
+                operationName,
+                commandName,
+                elapsedMilliseconds);
+            return;
+        }
+
         if (elapsedMilliseconds >= SlowOperationThresholdMilliseconds)
         {
             _logger.LogWarning(AppLogEvents.RepositoryMonitoringJobSlowOperation,
@@ -678,6 +690,21 @@ SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [W
 
     private void LogSqlException(SqlException ex, string operationName, string commandName, long elapsedMilliseconds, string? context = null)
     {
+        if (IsTransientHeartbeatFailure(commandName, ex))
+        {
+            _logger.LogInformation(
+                "Monitoring heartbeat transient SQL failure in operation {Operation}, connection {ConnectionName}, command {CommandName}, elapsed ms {ElapsedMs}, SQL Number {SqlNumber}, State {SqlState}, Class {SqlClass}. Context: {Context}.",
+                operationName,
+                _options.JobConnectionStringName,
+                commandName,
+                elapsedMilliseconds,
+                ex.Number,
+                ex.State,
+                ex.Class,
+                context ?? "N/A");
+            return;
+        }
+
         if (SqlDataHelper.IsSqlTimeout(ex))
         {
             _logger.LogError(AppLogEvents.RepositoryMonitoringJobSqlTimeout, ex,
@@ -749,6 +776,20 @@ SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [W
             ex.State,
             ex.Class,
             context ?? "N/A");
+    }
+
+    private bool IsTransientHeartbeatFailure(string commandName, SqlException ex)
+    {
+        return string.Equals(commandName, _options.JobHeartbeatStoredProcedure, StringComparison.OrdinalIgnoreCase)
+            && (SqlDataHelper.IsSqlTimeout(ex)
+                || SqlDataHelper.IsSqlLockTimeout(ex)
+                || SqlDataHelper.IsSqlDeadlock(ex)
+                || SqlDataHelper.IsSqlConnectionFailure(ex));
+    }
+
+    private bool ShouldSuppressHeartbeatSlowWarning(string commandName, SqlException ex)
+    {
+        return IsTransientHeartbeatFailure(commandName, ex);
     }
 
     private static MonitoringJobRecord ReadMonitoringJobRecord(IDataRecord reader)

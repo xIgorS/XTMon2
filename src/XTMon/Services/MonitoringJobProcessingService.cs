@@ -359,10 +359,27 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                 }
                 catch (SqlException ex) when (IsTransientHeartbeatSqlFailure(ex))
                 {
-                    LogProcessorException(ex, $"job {jobId} heartbeat");
+                    consecutiveFailures++;
+
+                    if (consecutiveFailures >= HeartbeatMaxConsecutiveFailures)
+                    {
+                        _logger.LogError(AppLogEvents.MonitoringProcessorBackgroundFailed, ex,
+                            "Transient SQL heartbeat failure repeated {ConsecutiveFailures} consecutive times for monitoring job {JobId}; failing the job.",
+                            consecutiveFailures, jobId);
+                        throw;
+                    }
+
+                    if (consecutiveFailures == 1)
+                    {
+                        _logger.LogDebug(
+                            "Transient SQL heartbeat failure for monitoring job {JobId}. The job will keep running and heartbeat will retry on the next interval.",
+                            jobId);
+                        continue;
+                    }
+
                     _logger.LogWarning(ex,
-                        "Transient SQL heartbeat failure for monitoring job {JobId}. The job will keep running and heartbeat will retry on the next interval.",
-                        jobId);
+                        "Transient SQL heartbeat failure repeated for monitoring job {JobId} (consecutive failures: {ConsecutiveFailures}/{Max}). Will retry while the job remains active.",
+                        jobId, consecutiveFailures, HeartbeatMaxConsecutiveFailures);
                 }
                 catch (Exception ex)
                 {

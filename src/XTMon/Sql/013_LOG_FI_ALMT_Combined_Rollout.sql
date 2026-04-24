@@ -110,7 +110,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobEnqueue]
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobEnqueue]
+GO
+CREATE PROCEDURE [monitoring].[UspJvJobEnqueue]
     @UserId VARCHAR(256),
     @PnlDate DATE,
     @RequestType VARCHAR(20) = 'FixAndCheck',
@@ -184,7 +186,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobTakeNext]
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobTakeNext]
+GO
+CREATE PROCEDURE [monitoring].[UspJvJobTakeNext]
     @WorkerId VARCHAR(100) = NULL
 AS
 -- Example:
@@ -246,7 +250,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobHeartbeat]
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobHeartbeat]
+GO
+CREATE PROCEDURE [monitoring].[UspJvJobHeartbeat]
     @JobId BIGINT
 AS
 -- Example:
@@ -266,7 +272,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobSaveResult]
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobSaveResult]
+GO
+CREATE PROCEDURE [monitoring].[UspJvJobSaveResult]
     @JobId BIGINT,
     @QueryCheck NVARCHAR(MAX) = NULL,
     @QueryFix NVARCHAR(MAX) = NULL,
@@ -323,7 +331,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobMarkCompleted]
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobMarkCompleted]
+GO
+CREATE PROCEDURE [monitoring].[UspJvJobMarkCompleted]
     @JobId BIGINT
 AS
 -- Example:
@@ -348,7 +358,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobMarkFailed]
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobMarkFailed]
+GO
+CREATE PROCEDURE [monitoring].[UspJvJobMarkFailed]
     @JobId BIGINT,
     @ErrorMessage NVARCHAR(MAX)
 AS
@@ -376,7 +388,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobGetById]
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobGetById]
+GO
+CREATE PROCEDURE [monitoring].[UspJvJobGetById]
     @JobId BIGINT
 AS
 -- Example:
@@ -413,7 +427,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobGetLatestByUserPnlDate]
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobGetLatestByUserPnlDate]
+GO
+CREATE PROCEDURE [monitoring].[UspJvJobGetLatestByUserPnlDate]
     @UserId VARCHAR(256),
     @PnlDate DATE,
     @RequestType VARCHAR(20) = NULL
@@ -502,7 +518,9 @@ GO
 -- nav-alert refresh can query the latest JV job for a P&L date without being tied to a
 -- specific user session. Behavior for callers that still pass @UserId is unchanged.
 -- =========================================================================================
-CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobGetLatestByUserPnlDate]
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobGetLatestByUserPnlDate]
+GO
+CREATE PROCEDURE [monitoring].[UspJvJobGetLatestByUserPnlDate]
     @UserId VARCHAR(256) = NULL,
     @PnlDate DATE,
     @RequestType VARCHAR(20) = NULL
@@ -803,7 +821,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobEnqueue]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobEnqueue]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobEnqueue]
     @Category VARCHAR(64),
     @SubmenuKey NVARCHAR(512),
     @DisplayName NVARCHAR(256) = NULL,
@@ -865,7 +885,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobTakeNext]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobTakeNext]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobTakeNext]
     @WorkerId VARCHAR(100),
     @ExcludedCategoriesCsv NVARCHAR(4000) = NULL
 AS
@@ -936,7 +958,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobHeartbeat]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobHeartbeat]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobHeartbeat]
     @JobId BIGINT
 AS
 BEGIN
@@ -951,7 +975,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobSaveResult]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobSaveResult]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobSaveResult]
     @JobId BIGINT,
     @ParsedQuery NVARCHAR(MAX) = NULL,
     @GridColumnsJson NVARCHAR(MAX) = NULL,
@@ -1003,7 +1029,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobMarkCompleted]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobMarkCompleted]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobMarkCompleted]
     @JobId BIGINT
 AS
 BEGIN
@@ -1020,7 +1048,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobMarkFailed]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobMarkFailed]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobMarkFailed]
     @JobId BIGINT,
     @ErrorMessage NVARCHAR(MAX)
 AS
@@ -1038,7 +1068,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobGetById]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetById]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobGetById]
     @JobId BIGINT
 AS
 BEGIN
@@ -1072,7 +1104,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobGetLatestByKey]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetLatestByKey]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobGetLatestByKey]
     @Category VARCHAR(64),
     @SubmenuKey NVARCHAR(512),
     @PnlDate DATE
@@ -1111,7 +1145,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobGetLatestByCategory]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetLatestByCategory]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobGetLatestByCategory]
     @Category VARCHAR(64),
     @PnlDate DATE
 AS
@@ -1171,7 +1207,9 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobExpireStale]
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobExpireStale]
+GO
+CREATE PROCEDURE [monitoring].[UspMonitoringJobExpireStale]
     @StaleTimeoutSeconds INT,
     @ErrorMessage NVARCHAR(MAX)
 AS
@@ -1208,7 +1246,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspSystemDiagnosticsCleanLogging]
+DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanLogging]
+GO
+CREATE PROCEDURE [monitoring].[UspSystemDiagnosticsCleanLogging]
     @DeletedRows INT OUTPUT
 AS
 BEGIN
@@ -1224,7 +1264,9 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [monitoring].[UspSystemDiagnosticsCleanHistory]
+DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanHistory]
+GO
+CREATE PROCEDURE [monitoring].[UspSystemDiagnosticsCleanHistory]
     @MonitoringLatestResultsDeleted INT OUTPUT,
     @MonitoringJobsDeleted INT OUTPUT,
     @JvCalculationJobResultsDeleted INT OUTPUT,
