@@ -57,7 +57,7 @@ public sealed class MonitoringRepository : IMonitoringRepository
         command.CommandType = CommandType.StoredProcedure;
         command.CommandTimeout = _options.CommandTimeoutSeconds;
 
-        await connection.OpenAsync(cancellationToken);
+        await _connectionFactory.OpenAsync(connection, cancellationToken);
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         return await ReadMonitoringTableAsync(reader, cancellationToken);

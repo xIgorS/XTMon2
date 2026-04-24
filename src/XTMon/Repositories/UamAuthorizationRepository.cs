@@ -34,7 +34,7 @@ public sealed class UamAuthorizationRepository : IUamAuthorizationRepository
                 : windowsUsername;
 
             using var connection = _connectionFactory.CreateConnection(_options.ConnectionStringName);
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
 
             using var command = connection.CreateCommand();
             command.CommandType = CommandType.StoredProcedure;

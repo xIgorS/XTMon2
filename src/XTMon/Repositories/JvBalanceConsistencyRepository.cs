@@ -58,7 +58,7 @@ public sealed class JvBalanceConsistencyRepository : IJvBalanceConsistencyReposi
             };
             command.Parameters.Add(precisionParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
 
             MonitoringTableResult table;
             using (var reader = await command.ExecuteReaderAsync(cancellationToken))

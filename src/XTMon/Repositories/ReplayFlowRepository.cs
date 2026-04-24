@@ -46,7 +46,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
             };
             command.Parameters.Add(replayFlowSetParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
             var flowIdIndex = reader.GetOrdinal("FlowId");
@@ -168,7 +168,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
             };
             command.Parameters.Add(parameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
             var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -241,7 +241,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _replayOptions.ProcessCommandTimeoutSeconds;
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -267,7 +267,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
             };
             command.Parameters.Add(pnlDateParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
             var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -354,7 +354,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _replayOptions.CommandTimeoutSeconds;
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -382,7 +382,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
                 Value = string.IsNullOrWhiteSpace(errorMessage) ? DBNull.Value : errorMessage
             });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             var result = await command.ExecuteScalarAsync(cancellationToken);
             return result is null or DBNull ? 0 : Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
         }
@@ -410,7 +410,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
                 Value = string.IsNullOrWhiteSpace(errorMessage) ? DBNull.Value : errorMessage
             });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             var result = await command.ExecuteScalarAsync(cancellationToken);
             return result is null or DBNull ? 0 : Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
         }
@@ -433,7 +433,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _replayOptions.CommandTimeoutSeconds;
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
             var rows = new List<StuckReplayBatchRow>();

@@ -50,7 +50,7 @@ public sealed class ReferentialDataRepository : IReferentialDataRepository
             };
             command.Parameters.Add(queryParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
 
             MonitoringTableResult table;
             string? queryFromResults = null;

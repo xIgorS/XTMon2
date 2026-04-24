@@ -55,7 +55,7 @@ public sealed class BatchStatusRepository : IBatchStatusRepository
                 Value = string.Empty
             });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             var table = await MonitoringRepository.ReadMonitoringTableAsync(reader, cancellationToken);
 

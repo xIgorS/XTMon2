@@ -34,7 +34,7 @@ public sealed class AdjustmentsRepository : IAdjustmentsRepository
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
             var sourceSystemCodeOrdinal = SqlDataHelper.FindOrdinal(reader, "SourceSystemCode");
@@ -95,7 +95,7 @@ public sealed class AdjustmentsRepository : IAdjustmentsRepository
             };
             command.Parameters.Add(queryParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
 
             MonitoringTableResult table;
             using (var reader = await command.ExecuteReaderAsync(cancellationToken))

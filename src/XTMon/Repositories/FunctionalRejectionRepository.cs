@@ -86,7 +86,7 @@ public sealed class FunctionalRejectionRepository : IFunctionalRejectionReposito
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
             if (reader.FieldCount <= 0)
@@ -196,7 +196,7 @@ public sealed class FunctionalRejectionRepository : IFunctionalRejectionReposito
             };
             command.Parameters.Add(queryParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
 
             var columns = Array.Empty<TechnicalRejectColumn>();
             MonitoringTableResult table = new(Array.Empty<string>(), Array.Empty<IReadOnlyList<string?>>());

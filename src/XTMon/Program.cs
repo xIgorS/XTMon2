@@ -152,10 +152,14 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.JobSaveResultStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobMarkCompletedStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobMarkFailedStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobMarkCancelledStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetByIdStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestByCategoryStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobExpireStaleStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobCancelActiveStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobRecoverOrphanedStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobGetRuntimeByDmvStoredProcedure) &&
         options.CategoryMaxConcurrentJobs.All(limit =>
             !string.IsNullOrWhiteSpace(limit.Key) &&
             limit.Value >= 1 &&
@@ -431,6 +435,7 @@ builder.Services
         "VrdbStatus options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services.AddSingleton<SqlConnectionFactory>();
+builder.Services.AddSingleton<SqlExecutionContextAccessor>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<ISystemDiagnosticsRepository, SystemDiagnosticsRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();

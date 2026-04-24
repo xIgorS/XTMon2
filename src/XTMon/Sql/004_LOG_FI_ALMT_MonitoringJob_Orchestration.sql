@@ -496,6 +496,191 @@ BEGIN
 END
 GO
 
+CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobMarkCancelled]
+    @JobId BIGINT,
+    @ErrorMessage NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE [monitoring].[MonitoringJobs]
+       SET [Status] = 'Cancelled',
+           [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+           [CompletedAt] = NULL,
+           [ErrorMessage] = @ErrorMessage,
+           [LastHeartbeatAt] = SYSUTCDATETIME()
+      WHERE [JobId] = @JobId
+         AND [Status] IN ('Running', 'Queued');
+END
+GO
+
+CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobCancelActive]
+    @ErrorMessage NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE [monitoring].[MonitoringJobs]
+       SET [Status] = 'Cancelled',
+           [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+           [CompletedAt] = NULL,
+           [ErrorMessage] = @ErrorMessage,
+           [LastHeartbeatAt] = SYSUTCDATETIME()
+     WHERE [Status] IN ('Queued', 'Running');
+
+    SELECT @@ROWCOUNT AS [CancelledCount];
+END
+GO
+
+CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobGetRuntimeByDmv]
+    @JobId BIGINT = NULL
+WITH EXECUTE AS OWNER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+
+    ;WITH [runtime] AS
+    (
+        SELECT
+            [JobId] = CONVERT(BIGINT, SUBSTRING([ses].[context_info], 9, 8)),
+            [SPID] = [er].[session_id],
+            [BlkBy] = CASE WHEN [lb].[lead_blocker] = 1 THEN -1 ELSE [er].[blocking_session_id] END,
+            [ElapsedMS] = [er].[total_elapsed_time],
+            [CPU] = [er].[cpu_time],
+            [IOReads] = [er].[logical_reads] + [er].[reads],
+            [IOWrites] = [er].[writes],
+            [Executions] = [ec].[execution_count],
+            [CommandType] = [er].[command],
+            [LastWaitType] = [er].[last_wait_type],
+            [ObjectName] = OBJECT_SCHEMA_NAME([qt].[objectid], [qt].[dbid]) + N'.' + OBJECT_NAME([qt].[objectid], [qt].[dbid]),
+            [SQLStatement] = SUBSTRING(
+                [qt].[text],
+                ([er].[statement_start_offset] / 2) + 1,
+                ((CASE WHEN [er].[statement_end_offset] = -1
+                    THEN LEN(CONVERT(NVARCHAR(MAX), [qt].[text])) * 2
+                    ELSE [er].[statement_end_offset]
+                    END - [er].[statement_start_offset]) / 2) + 1),
+            [Status] = [ses].[status],
+            [Login] = [ses].[login_name],
+            [Host] = [ses].[host_name],
+            [DBName] = DB_NAME([er].[database_id]),
+            [StartTime] = [er].[start_time],
+            [Protocol] = [con].[net_transport],
+            [TransactionIsolation] = CASE [ses].[transaction_isolation_level]
+                WHEN 0 THEN 'Unspecified'
+                WHEN 1 THEN 'Read Uncommitted'
+                WHEN 2 THEN 'Read Committed'
+                WHEN 3 THEN 'Repeatable'
+                WHEN 4 THEN 'Serializable'
+                WHEN 5 THEN 'Snapshot'
+            END,
+            [ConnectionWrites] = [con].[num_writes],
+            [ConnectionReads] = [con].[num_reads],
+            [ClientAddress] = [con].[client_net_address],
+            [Authentication] = [con].[auth_scheme],
+            [DatetimeSnapshot] = GETDATE()
+        FROM [sys].[dm_exec_requests] AS [er]
+        INNER JOIN [sys].[dm_exec_sessions] AS [ses]
+            ON [ses].[session_id] = [er].[session_id]
+        LEFT JOIN [sys].[dm_exec_connections] AS [con]
+            ON [con].[session_id] = [ses].[session_id]
+        CROSS APPLY [sys].[dm_exec_sql_text]([er].[sql_handle]) AS [qt]
+        OUTER APPLY
+        (
+            SELECT [execution_count] = MAX([cp].[usecounts])
+            FROM [sys].[dm_exec_cached_plans] AS [cp]
+            WHERE [cp].[plan_handle] = [er].[plan_handle]
+        ) AS [ec]
+        OUTER APPLY
+        (
+            SELECT [lead_blocker] = 1
+            FROM [master].[dbo].[sysprocesses] AS [sp]
+            WHERE [sp].[spid] IN (SELECT [blocked] FROM [master].[dbo].[sysprocesses])
+              AND [sp].[blocked] = 0
+              AND [sp].[spid] = [er].[session_id]
+        ) AS [lb]
+        WHERE DATALENGTH([ses].[context_info]) >= 16
+          AND SUBSTRING([ses].[context_info], 1, 8) = 0x58544D4F4E4A4F42
+          AND (@JobId IS NULL OR CONVERT(BIGINT, SUBSTRING([ses].[context_info], 9, 8)) = @JobId)
+    )
+    SELECT
+        [runtime].[JobId],
+        [jobs].[Category],
+        [jobs].[SubmenuKey],
+        [jobs].[DisplayName],
+        [jobs].[PnlDate],
+        [jobs].[WorkerId],
+        [runtime].[SPID],
+        [runtime].[BlkBy],
+        [runtime].[ElapsedMS],
+        [runtime].[CPU],
+        [runtime].[IOReads],
+        [runtime].[IOWrites],
+        [runtime].[Executions],
+        [runtime].[CommandType],
+        [runtime].[LastWaitType],
+        [runtime].[ObjectName],
+        [runtime].[SQLStatement],
+        [runtime].[Status],
+        [runtime].[Login],
+        [runtime].[Host],
+        [runtime].[DBName],
+        [runtime].[StartTime],
+        [runtime].[Protocol],
+        [runtime].[TransactionIsolation],
+        [runtime].[ConnectionWrites],
+        [runtime].[ConnectionReads],
+        [runtime].[ClientAddress],
+        [runtime].[Authentication],
+        [runtime].[DatetimeSnapshot]
+    FROM [runtime]
+    LEFT JOIN [monitoring].[MonitoringJobs] AS [jobs]
+        ON [jobs].[JobId] = [runtime].[JobId]
+    ORDER BY
+        [runtime].[BlkBy] DESC,
+        [runtime].[IOReads] DESC,
+        [runtime].[SPID];
+END
+GO
+
+CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobRecoverOrphanedRunningByDmv]
+    @MinimumActivityAgeSeconds INT = 0,
+    @ErrorMessage NVARCHAR(MAX)
+WITH EXECUTE AS OWNER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @MinimumActivityAgeSeconds IS NULL OR @MinimumActivityAgeSeconds < 0
+        SET @MinimumActivityAgeSeconds = 0;
+
+    ;WITH [ActiveRequests] AS
+    (
+        SELECT DISTINCT CONVERT(BIGINT, SUBSTRING([ses].[context_info], 9, 8)) AS [JobId]
+        FROM [sys].[dm_exec_requests] AS [er]
+        INNER JOIN [sys].[dm_exec_sessions] AS [ses]
+            ON [ses].[session_id] = [er].[session_id]
+        WHERE DATALENGTH([ses].[context_info]) >= 16
+          AND SUBSTRING([ses].[context_info], 1, 8) = 0x58544D4F4E4A4F42
+    )
+    UPDATE [jobs]
+       SET [Status] = 'Failed',
+           [FailedAt] = SYSUTCDATETIME(),
+           [CompletedAt] = NULL,
+           [ErrorMessage] = @ErrorMessage,
+           [LastHeartbeatAt] = SYSUTCDATETIME()
+    FROM [monitoring].[MonitoringJobs] AS [jobs]
+    LEFT JOIN [ActiveRequests] AS [active]
+        ON [active].[JobId] = [jobs].[JobId]
+    WHERE [jobs].[Status] = 'Running'
+      AND [active].[JobId] IS NULL
+      AND DATEDIFF(SECOND, [jobs].[ActivityAt], SYSUTCDATETIME()) >= @MinimumActivityAgeSeconds;
+
+    SELECT @@ROWCOUNT AS [RecoveredCount];
+END
+GO
+
 CREATE OR ALTER PROCEDURE [monitoring].[UspMonitoringJobGetById]
     @JobId BIGINT
 AS

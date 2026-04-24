@@ -39,7 +39,7 @@ public sealed class SystemDiagnosticsRepository : ISystemDiagnosticsRepository
             };
             command.Parameters.Add(deletedRowsParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
 
             return deletedRowsParameter.Value is int deletedRows
@@ -73,7 +73,7 @@ public sealed class SystemDiagnosticsRepository : ISystemDiagnosticsRepository
             command.Parameters.Add(jvCalculationJobResultsDeletedParameter);
             command.Parameters.Add(jvCalculationJobsDeletedParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
 
             return new SystemDiagnosticsHistoryCleanupResult(

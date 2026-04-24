@@ -28,6 +28,9 @@ public sealed class MonitoringJobsOptions
     public string JobMarkFailedStoredProcedure { get; set; } = "monitoring.UspMonitoringJobMarkFailed";
 
     [Required]
+    public string JobMarkCancelledStoredProcedure { get; set; } = "monitoring.UspMonitoringJobMarkCancelled";
+
+    [Required]
     public string JobGetByIdStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetById";
 
     [Required]
@@ -38,6 +41,15 @@ public sealed class MonitoringJobsOptions
 
     [Required]
     public string JobExpireStaleStoredProcedure { get; set; } = "monitoring.UspMonitoringJobExpireStale";
+
+    [Required]
+    public string JobCancelActiveStoredProcedure { get; set; } = "monitoring.UspMonitoringJobCancelActive";
+
+    [Required]
+    public string JobRecoverOrphanedStoredProcedure { get; set; } = "monitoring.UspMonitoringJobRecoverOrphanedRunningByDmv";
+
+    [Required]
+    public string JobGetRuntimeByDmvStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetRuntimeByDmv";
 
     [Range(1, 3600)]
     public int CommandTimeoutSeconds { get; set; } = 30;

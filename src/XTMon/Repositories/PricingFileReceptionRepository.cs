@@ -80,7 +80,7 @@ public sealed class PricingFileReceptionRepository : IPricingFileReceptionReposi
         };
         command.Parameters.Add(queryParameter);
 
-        await connection.OpenAsync(cancellationToken);
+        await _connectionFactory.OpenAsync(connection, cancellationToken);
 
         MonitoringTableResult table;
         using (var reader = await command.ExecuteReaderAsync(cancellationToken))

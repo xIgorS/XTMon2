@@ -60,7 +60,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             var alreadyActiveParameter = new SqlParameter("@AlreadyActive", SqlDbType.Bit) { Direction = ParameterDirection.Output };
             command.Parameters.Add(alreadyActiveParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
 
             var jobId = Convert.ToInt64(jobIdParameter.Value, CultureInfo.InvariantCulture);
@@ -112,7 +112,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
                 Value = BuildExcludedCategoriesCsv(excludedCategories)
             });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
@@ -168,7 +168,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             command.CommandTimeout = _options.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt) { Value = jobId });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
@@ -208,7 +208,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             command.Parameters.Add(new SqlParameter("@SubmenuKey", SqlDbType.NVarChar, 512) { Value = submenuKey });
             command.Parameters.Add(new SqlParameter("@PnlDate", SqlDbType.Date) { Value = pnlDate.ToDateTime(TimeOnly.MinValue) });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
@@ -253,7 +253,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
 
             var jobs = new List<MonitoringJobRecord>();
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -302,7 +302,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             command.Parameters.Add(new SqlParameter("@GridRowsJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(rowsJson) ? DBNull.Value : rowsJson });
             command.Parameters.Add(new SqlParameter("@MetadataJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(payload.MetadataJson) ? DBNull.Value : payload.MetadataJson });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (SqlException ex)
@@ -332,49 +332,9 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         return ExecuteMonitoringJobStateProcedureAsync(_options.JobMarkFailedStoredProcedure, jobId, errorMessage, cancellationToken);
     }
 
-    public async Task MarkMonitoringJobCancelledAsync(long jobId, string errorMessage, CancellationToken cancellationToken)
+    public Task MarkMonitoringJobCancelledAsync(long jobId, string errorMessage, CancellationToken cancellationToken)
     {
-        var stopwatch = Stopwatch.StartNew();
-        const string commandName = "mark-monitoring-job-cancelled";
-
-        try
-        {
-            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
-            using var command = connection.CreateCommand();
-            command.CommandText = @"
-UPDATE [monitoring].[MonitoringJobs]
-   SET [Status] = 'Cancelled',
-       [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
-       [CompletedAt] = NULL,
-       [ErrorMessage] = @ErrorMessage,
-       [LastHeartbeatAt] = SYSUTCDATETIME()
- WHERE [JobId] = @JobId
-   AND [Status] IN ('Running', 'Queued');";
-            command.CommandType = CommandType.Text;
-            command.CommandTimeout = _options.CommandTimeoutSeconds;
-            command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt) { Value = jobId });
-            command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
-            {
-                Value = string.IsNullOrWhiteSpace(errorMessage) ? "Monitoring background job was cancelled by user." : errorMessage
-            });
-
-            await connection.OpenAsync(cancellationToken);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        catch (SqlException ex)
-        {
-            LogSqlException(ex, nameof(MarkMonitoringJobCancelledAsync), commandName, stopwatch.ElapsedMilliseconds, $"JobId={jobId}");
-            throw;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring job cancellation update failed for JobId {JobId}.", jobId);
-            throw;
-        }
-        finally
-        {
-            LogOperationDuration(nameof(MarkMonitoringJobCancelledAsync), commandName, stopwatch.ElapsedMilliseconds);
-        }
+        return ExecuteMonitoringJobStateProcedureAsync(_options.JobMarkCancelledStoredProcedure, jobId, errorMessage, cancellationToken);
     }
 
     public Task HeartbeatMonitoringJobAsync(long jobId, CancellationToken cancellationToken)
@@ -386,21 +346,14 @@ UPDATE [monitoring].[MonitoringJobs]
     {
         var stopwatch = Stopwatch.StartNew();
         const string operationName = nameof(CancelActiveMonitoringJobsAsync);
-        const string commandName = "bulk-cancel-active-monitoring-jobs";
+        var commandName = _options.JobCancelActiveStoredProcedure;
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-UPDATE [monitoring].[MonitoringJobs]
-   SET [Status] = 'Cancelled',
-       [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
-       [CompletedAt] = NULL,
-       [ErrorMessage] = @ErrorMessage,
-       [LastHeartbeatAt] = SYSUTCDATETIME()
- WHERE [Status] IN ('Queued', 'Running');";
-            command.CommandType = CommandType.Text;
+            command.CommandText = commandName;
+            command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
             {
@@ -409,8 +362,9 @@ UPDATE [monitoring].[MonitoringJobs]
                     : errorMessage
             });
 
-            await connection.OpenAsync(cancellationToken);
-            return await command.ExecuteNonQueryAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
+            var count = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt32(count, CultureInfo.InvariantCulture);
         }
         catch (SqlException ex)
         {
@@ -445,7 +399,7 @@ WHERE [Status] IN ('Queued', 'Running');";
             command.CommandType = CommandType.Text;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             var count = await command.ExecuteScalarAsync(cancellationToken);
             return Convert.ToInt32(count, CultureInfo.InvariantCulture);
         }
@@ -469,22 +423,20 @@ WHERE [Status] IN ('Queued', 'Running');";
     {
         var stopwatch = Stopwatch.StartNew();
         const string operationName = nameof(FailRunningMonitoringJobsAsync);
-        const string commandName = "startup-running-monitoring-job-recovery";
+        var commandName = _options.JobRecoverOrphanedStoredProcedure;
+        var minimumActivityAgeSeconds = 5;
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-UPDATE [monitoring].[MonitoringJobs]
-   SET [Status] = 'Failed',
-       [FailedAt] = SYSUTCDATETIME(),
-       [CompletedAt] = NULL,
-       [ErrorMessage] = @ErrorMessage,
-       [LastHeartbeatAt] = SYSUTCDATETIME()
- WHERE [Status] = 'Running';";
-            command.CommandType = CommandType.Text;
+            command.CommandText = commandName;
+            command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@MinimumActivityAgeSeconds", SqlDbType.Int)
+            {
+                Value = minimumActivityAgeSeconds
+            });
             command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
             {
                 Value = string.IsNullOrWhiteSpace(errorMessage)
@@ -492,12 +444,13 @@ UPDATE [monitoring].[MonitoringJobs]
                     : errorMessage
             });
 
-            await connection.OpenAsync(cancellationToken);
-            return await command.ExecuteNonQueryAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
+            var count = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt32(count, CultureInfo.InvariantCulture);
         }
         catch (SqlException ex)
         {
-            LogSqlException(ex, operationName, commandName, stopwatch.ElapsedMilliseconds);
+            LogSqlException(ex, operationName, commandName, stopwatch.ElapsedMilliseconds, $"MinimumActivityAgeSeconds={minimumActivityAgeSeconds}");
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -541,7 +494,7 @@ SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [W
 
             var jobs = new List<MonitoringJobRecord>();
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -590,7 +543,7 @@ SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [W
                     : errorMessage
             });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             return await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (SqlException ex)
@@ -635,7 +588,7 @@ SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [W
                 });
             }
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (SqlException ex)

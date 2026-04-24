@@ -6,10 +6,12 @@ namespace XTMon.Infrastructure;
 public sealed class SqlConnectionFactory
 {
     private readonly IConfiguration _configuration;
+    private readonly SqlExecutionContextAccessor _sqlExecutionContextAccessor;
 
-    public SqlConnectionFactory(IConfiguration configuration)
+    public SqlConnectionFactory(IConfiguration configuration, SqlExecutionContextAccessor sqlExecutionContextAccessor)
     {
         _configuration = configuration;
+        _sqlExecutionContextAccessor = sqlExecutionContextAccessor;
     }
 
     public SqlConnection CreateConnection()
@@ -26,5 +28,33 @@ public sealed class SqlConnectionFactory
         }
 
         return new SqlConnection(connectionString);
+    }
+
+    public async Task OpenAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        await connection.OpenAsync(cancellationToken);
+        await ApplyExecutionContextAsync(connection, cancellationToken);
+    }
+
+    private async Task ApplyExecutionContextAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandTimeout = 5;
+
+        var context = _sqlExecutionContextAccessor.CurrentContext;
+        if (context is null)
+        {
+            command.CommandText = @"
+DECLARE @Context VARBINARY(128) = 0x;
+SET CONTEXT_INFO @Context;";
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return;
+        }
+
+        command.CommandText = @"
+DECLARE @Context VARBINARY(128) = 0x58544D4F4E4A4F42 + CONVERT(BINARY(8), @JobId);
+SET CONTEXT_INFO @Context;";
+        command.Parameters.Add(new SqlParameter("@JobId", System.Data.SqlDbType.BigInt) { Value = context.JobId });
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

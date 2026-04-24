@@ -183,10 +183,14 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobSaveResultStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobMarkCompletedStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobMarkFailedStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobMarkCancelledStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetByIdStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetLatestStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetLatestByCategoryStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobExpireStaleStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobCancelActiveStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobRecoverOrphanedStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetRuntimeByDmvStoredProcedure),
 
             // Data validation
             (batchStatus.ConnectionStringName, batchStatus.CheckBatchStatusStoredProcedure),

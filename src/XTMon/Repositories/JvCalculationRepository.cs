@@ -45,7 +45,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
             };
             command.Parameters.Add(defaultDateParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
             var availableDates = new List<DateOnly>();
@@ -151,7 +151,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
             };
             command.Parameters.Add(precisionParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             MonitoringTableResult table;
             using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             {
@@ -213,7 +213,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
             };
             command.Parameters.Add(executeCatchupParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
 
             string? rawFixQuery = null;
             using (var reader = await command.ExecuteReaderAsync(cancellationToken))
@@ -303,7 +303,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
             var alreadyActiveParameter = new SqlParameter("@AlreadyActive", SqlDbType.Bit) { Direction = ParameterDirection.Output };
             command.Parameters.Add(alreadyActiveParameter);
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
 
             var jobId = Convert.ToInt64(jobIdParameter.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -342,7 +342,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@WorkerId", SqlDbType.VarChar, 100) { Value = workerId });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
@@ -380,7 +380,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt) { Value = jobId });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
@@ -420,7 +420,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
             command.Parameters.Add(new SqlParameter("@PnlDate", SqlDbType.Date) { Value = pnlDate.ToDateTime(TimeOnly.MinValue) });
             command.Parameters.Add(new SqlParameter("@RequestType", SqlDbType.VarChar, 20) { Value = string.IsNullOrWhiteSpace(requestType) ? DBNull.Value : requestType });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
@@ -466,7 +466,7 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
             command.Parameters.Add(new SqlParameter("@GridColumnsJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(columnsJson) ? DBNull.Value : columnsJson });
             command.Parameters.Add(new SqlParameter("@GridRowsJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(rowsJson) ? DBNull.Value : rowsJson });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (SqlException ex)
@@ -522,7 +522,7 @@ UPDATE [monitoring].[JvCalculationJobs]
                 Value = string.IsNullOrWhiteSpace(errorMessage) ? "JV background job was cancelled by user." : errorMessage
             });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (SqlException ex)
@@ -574,7 +574,7 @@ UPDATE [monitoring].[JvCalculationJobs]
                     : errorMessage
             });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             return await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (SqlException ex)
@@ -610,7 +610,7 @@ WHERE [Status] IN ('Queued', 'Running');";
             command.CommandType = CommandType.Text;
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             var count = await command.ExecuteScalarAsync(cancellationToken);
             return Convert.ToInt32(count, System.Globalization.CultureInfo.InvariantCulture);
         }
@@ -659,7 +659,7 @@ SELECT [JobId], [UserId], [PnlDate], [RequestType], [Status], [WorkerId],
 
             var jobs = new List<JvJobRecord>();
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -706,7 +706,7 @@ SELECT [JobId], [UserId], [PnlDate], [RequestType], [Status], [WorkerId],
                     : errorMessage
             });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             return await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -743,7 +743,7 @@ UPDATE [monitoring].[JvCalculationJobs]
                     : errorMessage
             });
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             return await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (SqlException ex)
@@ -782,7 +782,7 @@ UPDATE [monitoring].[JvCalculationJobs]
                 });
             }
 
-            await connection.OpenAsync(cancellationToken);
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch (SqlException ex)
