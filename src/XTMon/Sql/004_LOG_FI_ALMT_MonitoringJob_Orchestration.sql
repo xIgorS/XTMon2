@@ -591,6 +591,7 @@ BEGIN
             [jobs].[CompletedAt],
             [jobs].[FailedAt],
             [jobs].[ErrorMessage],
+                        [jobs].[KeyHash],
                         ROW_NUMBER() OVER (PARTITION BY [jobs].[KeyHash] ORDER BY [jobs].[JobId] DESC) AS [RowNumber]
                 FROM [monitoring].[MonitoringJobs] AS [jobs] WITH (NOLOCK)
         WHERE [jobs].[Category] = @Category
