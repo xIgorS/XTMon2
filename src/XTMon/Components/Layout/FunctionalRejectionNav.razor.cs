@@ -235,6 +235,12 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
     {
         var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         var route = relativePath.Split('?', 2)[0].TrimEnd('/');
+
+        if (string.Equals(route, "functional-rejection-runner", StringComparison.OrdinalIgnoreCase))
+        {
+            return GetItemRunState(item) == DataValidationNavRunState.Running;
+        }
+
         if (!string.Equals(route, "functional-rejection", StringComparison.OrdinalIgnoreCase))
         {
             return false;

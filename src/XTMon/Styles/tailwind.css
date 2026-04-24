@@ -254,6 +254,11 @@
     background-color: color-mix(in srgb, var(--info-text) 12%, transparent);
   }
 
+  .submenu-status-badge--warning {
+    color: var(--warning-text);
+    background-color: color-mix(in srgb, var(--warning-text) 12%, transparent);
+  }
+
   .submenu-status-badge--running {
     color: var(--warning-text);
     background-color: color-mix(in srgb, var(--warning-text) 12%, transparent);

@@ -28,6 +28,9 @@ public partial class NavMenu : ComponentBase, IDisposable
 	private ReplayFlowsNavAlertState ReplayFlowsNavAlertState { get; set; } = default!;
 
 	[Inject]
+	private DatabaseSpaceNavAlertState DatabaseSpaceNavAlertState { get; set; } = default!;
+
+	[Inject]
 	private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
 
 	protected override void OnInitialized()
@@ -37,6 +40,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 		DataValidationNavAlertState.StatusesChanged += OnDataValidationStatusesChanged;
 		JvCalculationNavAlertState.StatusChanged += OnJvCalculationStatusChanged;
 		ReplayFlowsNavAlertState.StatusChanged += OnReplayFlowsStatusChanged;
+		DatabaseSpaceNavAlertState.StatusChanged += OnDatabaseSpaceStatusChanged;
 	}
 
 	protected override async Task OnInitializedAsync()
@@ -60,6 +64,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 		DataValidationNavAlertState.StatusesChanged -= OnDataValidationStatusesChanged;
 		JvCalculationNavAlertState.StatusChanged -= OnJvCalculationStatusChanged;
 		ReplayFlowsNavAlertState.StatusChanged -= OnReplayFlowsStatusChanged;
+		DatabaseSpaceNavAlertState.StatusChanged -= OnDatabaseSpaceStatusChanged;
 		StopAlertsPolling();
 		_disposeCts.Cancel();
 		_disposeCts.Dispose();
@@ -96,6 +101,11 @@ public partial class NavMenu : ComponentBase, IDisposable
 	}
 
 	private void OnReplayFlowsStatusChanged()
+	{
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	private void OnDatabaseSpaceStatusChanged()
 	{
 		_ = InvokeAsync(StateHasChanged);
 	}
@@ -167,6 +177,17 @@ public partial class NavMenu : ComponentBase, IDisposable
 	private DataValidationNavRunState GetReplayFlowsRunState()
 	{
 		return ReplayFlowsNavAlertState.GetStatus();
+	}
+
+	private string GetDatabaseSpaceIndicatorClass()
+	{
+		return DatabaseSpaceNavAlertState.GetStatus() switch
+		{
+			DataValidationNavRunState.Failed => "submenu-status-indicator submenu-status-badge--failed",
+			DataValidationNavRunState.Alert => "submenu-status-indicator submenu-status-badge--warning",
+			DataValidationNavRunState.Succeeded => "submenu-status-indicator submenu-status-badge--succeeded",
+			_ => "submenu-status-indicator submenu-status-badge--not-run"
+		};
 	}
 
 	private string GetDataValidationRunnerLinkClass()

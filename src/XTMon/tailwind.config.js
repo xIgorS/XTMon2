@@ -1,6 +1,7 @@
 module.exports = {
   darkMode: "class",
   content: ["./Components/**/*.{razor,html}", "./**/*.razor"],
+  safelist: ["submenu-status-badge--warning"],
   theme: {
     extend: {
       colors: {

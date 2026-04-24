@@ -8,6 +8,7 @@ using XTMon.Infrastructure;
 using XTMon.Repositories;
 using XTMon.Models;
 using XTMon.Options;
+using XTMon.Services;
 
 namespace XTMon.Components.Pages;
 
@@ -58,6 +59,9 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
     private IOptions<MonitoringOptions> MonitoringOptions { get; set; } = default!;
 
     [Inject]
+    private DatabaseSpaceNavAlertState DatabaseSpaceNavAlertState { get; set; } = default!;
+
+    [Inject]
     private ILogger<Monitoring> Logger { get; set; } = default!;
 
     private readonly CancellationTokenSource disposeCts = new();
@@ -98,6 +102,7 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
             result = await Repository.GetDbSizePlusDiskAsync(disposeCts.Token);
             lastUpdated = MonitoringDisplayHelper.GetLastUpdatedDisplayValue(result);
             BuildDbCards();
+            DatabaseSpaceNavAlertState.ApplyResult(result);
             lastRefresh = DateTimeOffset.Now;
         }
         catch (Exception ex)
@@ -105,6 +110,7 @@ public partial class Monitoring : ComponentBase, IAsyncDisposable
             Logger.LogError(AppLogEvents.MonitoringLoadFailed, ex, "Monitoring data load failed for procedure {ProcedureName}.", ProcedureName);
             loadError = MonitoringLoadErrorMessage;
             lastUpdated = null;
+            DatabaseSpaceNavAlertState.ApplyResult(null);
         }
     }
 
