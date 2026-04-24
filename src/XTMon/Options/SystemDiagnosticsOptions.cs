@@ -19,4 +19,10 @@ public sealed class SystemDiagnosticsOptions
 
     [Range(1, 3600)]
     public int CommandTimeoutSeconds { get; set; } = 120;
+
+    [Range(1, 300)]
+    public int CheckConnectionTimeoutSeconds { get; set; } = 10;
+
+    [Range(1, 300)]
+    public int CheckCommandTimeoutSeconds { get; set; } = 10;
 }

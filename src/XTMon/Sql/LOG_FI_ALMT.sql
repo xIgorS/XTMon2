@@ -39,6 +39,15 @@ GO
 /****** Object:  StoredProcedure [monitoring].[UspGetDBbackups]    Script Date: 2/27/2026 6:18:45 PM ******/
 DROP PROCEDURE IF EXISTS [monitoring].[UspGetDBbackups]
 GO
+/****** Object:  StoredProcedure [administration].[UspGetStuckReplayBatches]    Script Date: 4/24/2026 7:10:00 PM ******/
+DROP PROCEDURE IF EXISTS [administration].[UspGetStuckReplayBatches]
+GO
+/****** Object:  StoredProcedure [administration].[UspFailRunningReplayBatches]    Script Date: 4/24/2026 7:10:00 PM ******/
+DROP PROCEDURE IF EXISTS [administration].[UspFailRunningReplayBatches]
+GO
+/****** Object:  StoredProcedure [administration].[UspFailStaleReplayBatches]    Script Date: 4/24/2026 7:10:00 PM ******/
+DROP PROCEDURE IF EXISTS [administration].[UspFailStaleReplayBatches]
+GO
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[monitoring].[JvCalculationJobs]') AND type in (N'U'))
 ALTER TABLE [monitoring].[JvCalculationJobs] DROP CONSTRAINT IF EXISTS [CK_JvCalculationJobs_Status]
 GO
@@ -109,6 +118,87 @@ CREATE TABLE [administration].[ReplayFlows](
 	[ReplayStatus] [varchar](50) NULL,
 	[ProcessStatus] [varchar](50) NULL
 ) ON [PRIMARY]
+GO
+/****** Object:  StoredProcedure [administration].[UspFailStaleReplayBatches]    Script Date: 4/24/2026 7:10:00 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [administration].[UspFailStaleReplayBatches]
+    @StaleTimeoutSeconds [int],
+    @ErrorMessage [nvarchar](400) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @StaleTimeoutSeconds IS NULL OR @StaleTimeoutSeconds < 1
+        SET @StaleTimeoutSeconds = 900;
+
+    IF @ErrorMessage IS NULL OR LTRIM(RTRIM(@ErrorMessage)) = N''
+        SET @ErrorMessage = N'Replay batch timed out while InProgress and was auto-failed.';
+
+    UPDATE [administration].[ReplayFlows]
+       SET [DateCompleted] = GETDATE(),
+           [ReplayStatus]  = N'Timed Out',
+           [ProcessStatus] = COALESCE([ProcessStatus], N'error')
+     WHERE [DateStarted] IS NOT NULL
+       AND [DateCompleted] IS NULL
+       AND DATEDIFF(SECOND, [DateStarted], GETDATE()) > @StaleTimeoutSeconds;
+
+    SELECT @@ROWCOUNT AS [ExpiredCount];
+END
+GO
+/****** Object:  StoredProcedure [administration].[UspFailRunningReplayBatches]    Script Date: 4/24/2026 7:10:00 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [administration].[UspFailRunningReplayBatches]
+    @ErrorMessage [nvarchar](400) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @ErrorMessage IS NULL OR LTRIM(RTRIM(@ErrorMessage)) = N''
+        SET @ErrorMessage = N'Replay batch was InProgress when the application started and was failed during startup recovery.';
+
+    UPDATE [administration].[ReplayFlows]
+       SET [DateCompleted] = GETDATE(),
+           [ReplayStatus]  = N'Failed - Startup Recovery',
+           [ProcessStatus] = COALESCE([ProcessStatus], N'error')
+     WHERE [DateStarted] IS NOT NULL
+       AND [DateCompleted] IS NULL;
+
+    SELECT @@ROWCOUNT AS [RecoveredCount];
+END
+GO
+/****** Object:  StoredProcedure [administration].[UspGetStuckReplayBatches]    Script Date: 4/24/2026 7:10:00 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [administration].[UspGetStuckReplayBatches]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        [FlowId],
+        [FlowIdDerivedFrom],
+        [PnlDate],
+        [PackageGuid],
+        [CreatedBy],
+        [DateCreated],
+        [DateStarted],
+        [DateCompleted],
+        [ReplayStatus],
+        [ProcessStatus],
+        DATEDIFF(SECOND, [DateStarted], GETDATE()) AS [AgeSeconds]
+    FROM [administration].[ReplayFlows]
+    WHERE [DateStarted] IS NOT NULL
+      AND [DateCompleted] IS NULL
+    ORDER BY [DateStarted];
+END
 GO
 /****** Object:  Table [monitoring].[APSActionsLogs]    Script Date: 2/27/2026 6:18:45 PM ******/
 SET ANSI_NULLS ON

@@ -114,7 +114,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to clean logging from System Diagnostics.");
-            cleanupMessage = "Unable to clean logging right now.";
+            cleanupMessage = SystemDiagnosticsErrorHelper.BuildFailureMessage(ex, "Unable to clean logging right now.");
             cleanupIsError = true;
         }
         finally
@@ -142,7 +142,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to run startup-style job recovery from System Diagnostics.");
-            recoveryMessage = "Unable to reset running job statuses right now.";
+            recoveryMessage = SystemDiagnosticsErrorHelper.BuildFailureMessage(ex, "Unable to reset running job statuses right now.");
             recoveryIsError = true;
         }
         finally
@@ -171,7 +171,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to load stuck jobs report.");
-            stuckJobsMessage = "Unable to load stuck jobs right now.";
+            stuckJobsMessage = SystemDiagnosticsErrorHelper.BuildFailureMessage(ex, "Unable to load stuck jobs right now.");
             stuckJobsIsError = true;
         }
         finally
@@ -202,7 +202,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to force-expire stuck jobs.");
-            stuckJobsMessage = "Unable to force-expire stuck jobs right now.";
+            stuckJobsMessage = SystemDiagnosticsErrorHelper.BuildFailureMessage(ex, "Unable to force-expire stuck jobs right now.");
             stuckJobsIsError = true;
         }
         finally
@@ -230,9 +230,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to clean monitoring and JV history from System Diagnostics.");
-            cleanupMessage = ex.Message.Contains("queued or running", StringComparison.OrdinalIgnoreCase)
-                ? ex.Message
-                : "Unable to clean history right now.";
+            cleanupMessage = SystemDiagnosticsErrorHelper.BuildFailureMessage(ex, "Unable to clean history right now.");
             cleanupIsError = true;
         }
         finally

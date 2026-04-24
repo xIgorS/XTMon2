@@ -14,6 +14,7 @@ Changed source files:
 
 - `src/XTMon/Sql/004_LOG_FI_ALMT_MonitoringJob_Orchestration.sql`
 - `src/XTMon/Sql/005_LOG_FI_ALMT_JvAndMonitoringJob_Release.sql`
+- `src/XTMon/Sql/011_LOG_FI_ALMT_ReplayFlow_Recovery.sql`
 
 ## Choose The Correct Deployment Path
 
@@ -73,15 +74,17 @@ ORDER BY [Status];
 
 1. Connect to the `LogFiAlmt` database.
 2. Run the procedure changes from `src/XTMon/Sql/004_LOG_FI_ALMT_MonitoringJob_Orchestration.sql`.
-3. Do not rerun unrelated object creation unless the environment requires it.
-4. Restart the XTMon application after the SQL deployment so the worker picks up the new behavior immediately.
+3. Run `src/XTMon/Sql/011_LOG_FI_ALMT_ReplayFlow_Recovery.sql` to create the replay startup-recovery and diagnostics procedures required by current XTMon config.
+4. Do not rerun unrelated object creation unless the environment requires it.
+5. Restart the XTMon application after the SQL deployment so the worker picks up the new behavior immediately.
 
 ### Destructive rebuild rollout
 
 1. Confirm orchestration history can be discarded.
 2. Connect to the `LogFiAlmt` database.
 3. Run `src/XTMon/Sql/005_LOG_FI_ALMT_JvAndMonitoringJob_Release.sql`.
-4. Restart the XTMon application.
+4. The destructive release script now also recreates the replay recovery procedures used by startup recovery and System Diagnostics.
+5. Restart the XTMon application.
 
 ## What To Verify After Deployment
 
@@ -96,6 +99,8 @@ SET LOCK_TIMEOUT 5000;
 `UspMonitoringJobGetLatestByCategory` should contain:
 
 ```sql
+FROM [monitoring].[MonitoringJobs] AS [jobs] WITH (NOLOCK)
+
 NULL AS [ParsedQuery],
 NULL AS [GridColumnsJson],
 NULL AS [GridRowsJson],

@@ -11,6 +11,7 @@ namespace XTMon.Services;
 public sealed class DeploymentCheckService : IDeploymentCheckService
 {
     private readonly SqlConnectionFactory _connectionFactory;
+    private readonly SystemDiagnosticsOptions _systemDiagnosticsOptions;
     private readonly IReadOnlyList<(string ConnectionStringName, string StoredProcedure)> _checks;
 
     public DeploymentCheckService(
@@ -53,6 +54,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IOptions<UamAuthorizationOptions> uamOptions)
     {
         _connectionFactory = connectionFactory;
+        _systemDiagnosticsOptions = systemDiagnosticsOptions.Value;
         _checks = BuildChecks(
             configuration,
             monitoringOptions.Value,
@@ -281,7 +283,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             try
             {
                 using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                connectCts.CancelAfter(TimeSpan.FromSeconds(10));
+                connectCts.CancelAfter(TimeSpan.FromSeconds(_systemDiagnosticsOptions.CheckConnectionTimeoutSeconds));
                 await connection.OpenAsync(connectCts.Token);
             }
             catch (Exception ex)
@@ -305,7 +307,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         }
     }
 
-    private static async Task<StoredProcedureCheckResult> CheckStoredProcedureAsync(
+    private async Task<StoredProcedureCheckResult> CheckStoredProcedureAsync(
         SqlConnection connection,
         string fullName,
         CancellationToken cancellationToken)
@@ -325,7 +327,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
                 "WHERE o.type IN ('P','PC') AND s.name = @schema AND o.name = @proc";
             existsCmd.Parameters.AddWithValue("@schema", schema);
             existsCmd.Parameters.AddWithValue("@proc", procName);
-            existsCmd.CommandTimeout = 10;
+            existsCmd.CommandTimeout = _systemDiagnosticsOptions.CheckCommandTimeoutSeconds;
 
             var exists = (int)(await existsCmd.ExecuteScalarAsync(cancellationToken))! > 0;
             if (!exists)
@@ -344,7 +346,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
                 "ORDER BY p.parameter_id";
             paramsCmd.Parameters.AddWithValue("@schema", schema);
             paramsCmd.Parameters.AddWithValue("@proc", procName);
-            paramsCmd.CommandTimeout = 10;
+            paramsCmd.CommandTimeout = _systemDiagnosticsOptions.CheckCommandTimeoutSeconds;
 
             using var reader = await paramsCmd.ExecuteReaderAsync(cancellationToken);
             var parameters = new List<StoredProcedureParameterInfo>();

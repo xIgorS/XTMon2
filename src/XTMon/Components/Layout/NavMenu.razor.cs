@@ -142,7 +142,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 	{
 		StopAlertsPolling();
 
-		var pollIntervalSeconds = Math.Max(1, MonitoringJobsOptions.Value.JobPollIntervalSeconds);
+		var pollIntervalSeconds = Math.Max(1, MonitoringJobsOptions.Value.NavAlertPollIntervalSeconds);
 		_alertsPollCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
 		_alertsPollTimer = new PeriodicTimer(TimeSpan.FromSeconds(pollIntervalSeconds));
 		_ = PollAlertsAsync(_alertsPollTimer, _alertsPollCts.Token);

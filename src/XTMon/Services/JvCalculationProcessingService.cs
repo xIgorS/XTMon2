@@ -10,9 +10,6 @@ namespace XTMon.Services;
 
 public sealed class JvCalculationProcessingService : BackgroundService
 {
-    private static readonly TimeSpan DefaultIdleDelay = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan MarkStateShutdownGrace = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan MarkStateRetryDelay = TimeSpan.FromSeconds(2);
     private const int HeartbeatMaxConsecutiveFailures = 3;
     private const int MarkStateMaxAttempts = 3;
     private const string StaleRunningJobErrorMessage = "JV background job timed out while in Running status and was auto-failed.";
@@ -22,6 +19,8 @@ public sealed class JvCalculationProcessingService : BackgroundService
     private readonly JvCalculationOptions _jvCalculationOptions;
     private readonly TimeSpan _idleDelay;
     private readonly TimeSpan _heartbeatInterval;
+    private readonly TimeSpan _markStateShutdownGrace;
+    private readonly TimeSpan _markStateRetryDelay;
     private readonly JobCancellationRegistry _jobCancellationRegistry;
 
     public JvCalculationProcessingService(
@@ -29,7 +28,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
         IOptions<JvCalculationOptions> jvCalculationOptions,
         ILogger<JvCalculationProcessingService> logger,
         JobCancellationRegistry jobCancellationRegistry)
-        : this(scopeFactory, jvCalculationOptions, logger, DefaultIdleDelay, null, jobCancellationRegistry)
+        : this(scopeFactory, jvCalculationOptions, logger, TimeSpan.FromSeconds(jvCalculationOptions.Value.ProcessorIdleDelaySeconds), null, jobCancellationRegistry)
     {
     }
 
@@ -46,6 +45,8 @@ public sealed class JvCalculationProcessingService : BackgroundService
         _logger = logger;
         _idleDelay = idleDelay;
         _heartbeatInterval = heartbeatInterval ?? BuildHeartbeatInterval(_jvCalculationOptions);
+        _markStateShutdownGrace = TimeSpan.FromSeconds(_jvCalculationOptions.ProcessorMarkStateShutdownGraceSeconds);
+        _markStateRetryDelay = TimeSpan.FromSeconds(_jvCalculationOptions.ProcessorMarkStateRetryDelaySeconds);
         _jobCancellationRegistry = jobCancellationRegistry ?? new JobCancellationRegistry();
     }
 
@@ -278,7 +279,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
         CancellationToken outerToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
-        cts.CancelAfter(MarkStateShutdownGrace);
+        cts.CancelAfter(_markStateShutdownGrace);
 
         for (var attempt = 1; attempt <= MarkStateMaxAttempts; attempt++)
         {
@@ -314,7 +315,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
                 {
                     try
                     {
-                        await Task.Delay(MarkStateRetryDelay, cts.Token);
+                        await Task.Delay(_markStateRetryDelay, cts.Token);
                     }
                     catch (OperationCanceledException)
                     {

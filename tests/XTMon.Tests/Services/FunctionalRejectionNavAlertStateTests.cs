@@ -67,6 +67,38 @@ public class FunctionalRejectionNavAlertStateTests
         Assert.Equal(DataValidationNavRunState.NotRun, state.GetStatus(otherKey));
     }
 
+    [Fact]
+    public async Task RefreshAsync_WhenRepositoryThrows_PreservesExistingStatuses()
+    {
+        var pnlDateState = new PnlDateState();
+
+        var pnlDateRepository = new Mock<IJvCalculationRepository>();
+        pnlDateRepository
+            .Setup(repository => repository.GetJvPnlDatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JvPnlDatesResult(TestDate, [TestDate, OtherDate]));
+
+        var monitoringJobRepository = new Mock<IMonitoringJobRepository>();
+        monitoringJobRepository
+            .Setup(repository => repository.GetLatestMonitoringJobsByCategoryAsync(MonitoringJobHelper.FunctionalRejectionCategory, TestDate, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Transient SQL failure"));
+
+        var state = new FunctionalRejectionNavAlertState(
+            pnlDateState,
+            pnlDateRepository.Object,
+            monitoringJobRepository.Object,
+            NullLogger<FunctionalRejectionNavAlertState>.Instance);
+
+        var currentKey = BuildKey(1, "FOCUS", "STAGING", "FOCUS");
+        state.ApplyStatuses(TestDate, [
+            CreateJob(currentKey, "Completed", TestDate)
+        ]);
+
+        await state.RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(DataValidationNavRunState.Succeeded, state.GetStatus(currentKey));
+        Assert.Equal(DataValidationNavRunState.NotRun, state.GetStatus(BuildKey(3, "CAL2", "STAGING", "CAL2")));
+    }
+
     private static MonitoringJobRecord CreateJob(string submenuKey, string status, DateOnly pnlDate)
     {
         return new MonitoringJobRecord(

@@ -592,7 +592,7 @@ BEGIN
             [jobs].[FailedAt],
             [jobs].[ErrorMessage],
                         ROW_NUMBER() OVER (PARTITION BY [jobs].[KeyHash] ORDER BY [jobs].[JobId] DESC) AS [RowNumber]
-        FROM [monitoring].[MonitoringJobs] AS [jobs]
+                FROM [monitoring].[MonitoringJobs] AS [jobs] WITH (NOLOCK)
         WHERE [jobs].[Category] = @Category
           AND [jobs].[PnlDate] = @PnlDate
     )
@@ -618,7 +618,7 @@ BEGIN
         [results].[MetadataJson],
         [results].[SavedAt]
     FROM [LatestJobs] AS [jobs]
-    LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results]
+    LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results] WITH (NOLOCK)
         ON [results].[KeyHash] = [jobs].[KeyHash]
     WHERE [jobs].[RowNumber] = 1
     ORDER BY [jobs].[SubmenuKey];

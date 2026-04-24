@@ -33,6 +33,9 @@ DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobSaveResult];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobHeartbeat];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobTakeNext];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobEnqueue];
+DROP PROCEDURE IF EXISTS [administration].[UspGetStuckReplayBatches];
+DROP PROCEDURE IF EXISTS [administration].[UspFailRunningReplayBatches];
+DROP PROCEDURE IF EXISTS [administration].[UspFailStaleReplayBatches];
 GO
 
 DROP TABLE IF EXISTS [monitoring].[MonitoringLatestResults];
@@ -216,6 +219,75 @@ BEGIN
     SET @JvCalculationJobsDeleted = @@ROWCOUNT;
 
     COMMIT TRANSACTION;
+END
+GO
+
+CREATE PROCEDURE [administration].[UspFailStaleReplayBatches]
+    @StaleTimeoutSeconds INT,
+    @ErrorMessage NVARCHAR(400) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @StaleTimeoutSeconds IS NULL OR @StaleTimeoutSeconds < 1
+        SET @StaleTimeoutSeconds = 900;
+
+    IF @ErrorMessage IS NULL OR LTRIM(RTRIM(@ErrorMessage)) = N''
+        SET @ErrorMessage = N'Replay batch timed out while InProgress and was auto-failed.';
+
+    UPDATE [administration].[ReplayFlows]
+       SET [DateCompleted] = GETDATE(),
+           [ReplayStatus]  = N'Timed Out',
+           [ProcessStatus] = COALESCE([ProcessStatus], N'error')
+     WHERE [DateStarted] IS NOT NULL
+       AND [DateCompleted] IS NULL
+       AND DATEDIFF(SECOND, [DateStarted], GETDATE()) > @StaleTimeoutSeconds;
+
+    SELECT @@ROWCOUNT AS [ExpiredCount];
+END
+GO
+
+CREATE PROCEDURE [administration].[UspFailRunningReplayBatches]
+    @ErrorMessage NVARCHAR(400) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @ErrorMessage IS NULL OR LTRIM(RTRIM(@ErrorMessage)) = N''
+        SET @ErrorMessage = N'Replay batch was InProgress when the application started and was failed during startup recovery.';
+
+    UPDATE [administration].[ReplayFlows]
+       SET [DateCompleted] = GETDATE(),
+           [ReplayStatus]  = N'Failed - Startup Recovery',
+           [ProcessStatus] = COALESCE([ProcessStatus], N'error')
+     WHERE [DateStarted] IS NOT NULL
+       AND [DateCompleted] IS NULL;
+
+    SELECT @@ROWCOUNT AS [RecoveredCount];
+END
+GO
+
+CREATE PROCEDURE [administration].[UspGetStuckReplayBatches]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        [FlowId],
+        [FlowIdDerivedFrom],
+        [PnlDate],
+        [PackageGuid],
+        [CreatedBy],
+        [DateCreated],
+        [DateStarted],
+        [DateCompleted],
+        [ReplayStatus],
+        [ProcessStatus],
+        DATEDIFF(SECOND, [DateStarted], GETDATE()) AS [AgeSeconds]
+    FROM [administration].[ReplayFlows]
+    WHERE [DateStarted] IS NOT NULL
+      AND [DateCompleted] IS NULL
+    ORDER BY [DateStarted];
 END
 GO
 
@@ -928,7 +1000,7 @@ BEGIN
             [jobs].[KeyHash],
             [jobs].[JobId],
             ROW_NUMBER() OVER (PARTITION BY [jobs].[KeyHash] ORDER BY [jobs].[JobId] DESC) AS [RowNumber]
-        FROM [monitoring].[MonitoringJobs] AS [jobs]
+                FROM [monitoring].[MonitoringJobs] AS [jobs] WITH (NOLOCK)
         WHERE [jobs].[Category] = @Category
           AND [jobs].[PnlDate] = @PnlDate
     )
@@ -954,9 +1026,9 @@ BEGIN
         [results].[MetadataJson],
         [results].[SavedAt]
     FROM [LatestJobIds] AS [latest]
-    INNER JOIN [monitoring].[MonitoringJobs] AS [jobs]
+    INNER JOIN [monitoring].[MonitoringJobs] AS [jobs] WITH (NOLOCK)
         ON [jobs].[JobId] = [latest].[JobId]
-    LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results]
+    LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results] WITH (NOLOCK)
         ON [results].[KeyHash] = [latest].[KeyHash]
     WHERE [latest].[RowNumber] = 1
     ORDER BY [jobs].[SubmenuKey];

@@ -116,6 +116,11 @@ internal static class SqlDataHelper
         return ex.Number is -1 or 2 or 20 or 53 or 64 or 233 or 4060 or 10054 or 10060;
     }
 
+    public static bool IsSqlDeadlock(SqlException ex)
+    {
+        return ex.Number == 1205;
+    }
+
     public static bool IsMissingStoredProcedure(SqlException ex)
     {
         return ex.Number == 2812;

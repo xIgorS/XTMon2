@@ -266,6 +266,20 @@ public class SqlDataHelperTests
         Assert.False(SqlDataHelper.IsSqlConnectionFailure(ex));
     }
 
+    [Fact]
+    public void IsSqlDeadlock_WhenNumberIs1205_ReturnsTrue()
+    {
+        var ex = MakeSqlException(1205);
+        Assert.True(SqlDataHelper.IsSqlDeadlock(ex));
+    }
+
+    [Fact]
+    public void IsSqlDeadlock_WhenOtherNumber_ReturnsFalse()
+    {
+        var ex = MakeSqlException(53);
+        Assert.False(SqlDataHelper.IsSqlDeadlock(ex));
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────────
 
     private static IDataRecord MakeReader(object value)

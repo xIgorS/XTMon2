@@ -138,7 +138,7 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
             return;
         }
 
-        var pollIntervalSeconds = Math.Max(1, MonitoringJobsOptions.Value.JobPollIntervalSeconds);
+        var pollIntervalSeconds = Math.Max(1, MonitoringJobsOptions.Value.NavAlertPollIntervalSeconds);
         alertsPollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
         alertsPollTimer = new PeriodicTimer(TimeSpan.FromSeconds(pollIntervalSeconds));
         _ = PollAlertsAsync(alertsPollTimer, alertsPollCts.Token);

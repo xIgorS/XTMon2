@@ -10,19 +10,18 @@ namespace XTMon.Services;
 
 public sealed class MonitoringJobProcessingService : BackgroundService
 {
-    private static readonly TimeSpan DefaultIdleDelay = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan MarkStateShutdownGrace = TimeSpan.FromSeconds(10);
     private const long SlowPollStageThresholdMilliseconds = 1000;
     private const string StaleRunningJobErrorMessage = "Monitoring background job timed out while in Running status and was auto-failed.";
     private const int HeartbeatMaxConsecutiveFailures = 3;
     private const int MarkStateMaxAttempts = 3;
-    private static readonly TimeSpan MarkStateRetryDelay = TimeSpan.FromSeconds(2);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<MonitoringJobProcessingService> _logger;
     private readonly MonitoringJobsOptions _options;
     private readonly TimeSpan _idleDelay;
     private readonly TimeSpan _heartbeatInterval;
+    private readonly TimeSpan _markStateShutdownGrace;
+    private readonly TimeSpan _markStateRetryDelay;
     private readonly JobCancellationRegistry _jobCancellationRegistry;
 
     public MonitoringJobProcessingService(
@@ -30,7 +29,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         IOptions<MonitoringJobsOptions> options,
         ILogger<MonitoringJobProcessingService> logger,
         JobCancellationRegistry jobCancellationRegistry)
-        : this(scopeFactory, options, logger, DefaultIdleDelay, null, jobCancellationRegistry)
+        : this(scopeFactory, options, logger, TimeSpan.FromSeconds(options.Value.ProcessorIdleDelaySeconds), null, jobCancellationRegistry)
     {
     }
 
@@ -47,6 +46,8 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         _options = options.Value;
         _idleDelay = idleDelay;
         _heartbeatInterval = heartbeatInterval ?? BuildHeartbeatInterval(_options);
+        _markStateShutdownGrace = TimeSpan.FromSeconds(_options.ProcessorMarkStateShutdownGraceSeconds);
+        _markStateRetryDelay = TimeSpan.FromSeconds(_options.ProcessorMarkStateRetryDelaySeconds);
         _jobCancellationRegistry = jobCancellationRegistry ?? new JobCancellationRegistry();
     }
 
@@ -392,7 +393,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         CancellationToken outerToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
-        cts.CancelAfter(MarkStateShutdownGrace);
+        cts.CancelAfter(_markStateShutdownGrace);
 
         for (var attempt = 1; attempt <= MarkStateMaxAttempts; attempt++)
         {
@@ -428,7 +429,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                 {
                     try
                     {
-                        await Task.Delay(MarkStateRetryDelay, cts.Token);
+                        await Task.Delay(_markStateRetryDelay, cts.Token);
                     }
                     catch (OperationCanceledException)
                     {

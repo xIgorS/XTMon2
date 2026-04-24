@@ -62,4 +62,13 @@ public sealed class JvCalculationOptions
 
     [Range(30, 86400)]
     public int JobRunningStaleTimeoutSeconds { get; set; } = 900;
+
+    [Range(1, 300)]
+    public int ProcessorIdleDelaySeconds { get; set; } = 5;
+
+    [Range(1, 300)]
+    public int ProcessorMarkStateShutdownGraceSeconds { get; set; } = 10;
+
+    [Range(1, 60)]
+    public int ProcessorMarkStateRetryDelaySeconds { get; set; } = 2;
 }
