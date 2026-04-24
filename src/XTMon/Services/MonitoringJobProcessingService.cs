@@ -666,9 +666,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             return [];
         }
 
-        return activeJobs
-            .Where(activeJob => !_jobCancellationRegistry.IsMonitoringJobCancellationRequested(activeJob.Job.JobId))
-            .ToList();
+        return activeJobs.ToList();
     }
 
     private sealed record ActiveMonitoringJob(MonitoringJobRecord Job, Task Task);

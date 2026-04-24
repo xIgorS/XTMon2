@@ -757,7 +757,7 @@ public class MonitoringJobProcessingServiceTests
     }
 
     [Fact]
-    public async Task WhenMonitoringJobIsCancelled_NextQueuedJobCanStartBeforeCancelledTaskFullyUnwinds()
+    public async Task WhenMonitoringJobIsCancelled_NextQueuedJobWaitsUntilCancelledTaskUnwinds()
     {
         var firstJobHeartbeatTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var firstJobCancelledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -841,7 +841,12 @@ public class MonitoringJobProcessingServiceTests
         try
         {
             await firstJobCancelledTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await secondJobStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+            await Task.Delay(250);
+            Assert.False(secondJobStartedTcs.Task.IsCompleted, "The next queued job must not start while the cancelled task is still unwinding.");
+
+            allowCancelledJobToFinishTcs.TrySetResult(true);
+            await secondJobStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
             releaseSecondJobTcs.TrySetResult(true);
 
@@ -849,8 +854,8 @@ public class MonitoringJobProcessingServiceTests
         }
         finally
         {
-            allowCancelledJobToFinishTcs.TrySetResult(true);
             releaseSecondJobTcs.TrySetResult(true);
+            allowCancelledJobToFinishTcs.TrySetResult(true);
             await service.StopAsync(CancellationToken.None);
         }
     }
