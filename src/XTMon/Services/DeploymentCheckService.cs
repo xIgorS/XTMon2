@@ -149,6 +149,11 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (replay.ConnectionStringName, replay.GetReplayFlowStatusStoredProcedure),
             (replay.ConnectionStringName, replay.GetReplayFlowProcessStatusStoredProcedure),
 
+            // Replay flows — recovery / watchdog SPs (live in LOG_FI_ALMT alongside the table)
+            (replay.RecoveryConnectionStringName, replay.FailStaleReplayBatchesStoredProcedure),
+            (replay.RecoveryConnectionStringName, replay.FailRunningReplayBatchesStoredProcedure),
+            (replay.RecoveryConnectionStringName, replay.GetStuckReplayBatchesStoredProcedure),
+
             // JV Calculation — PnlDates
             (jv.PnlDatesConnectionStringName, jv.GetPnlDatesStoredProcedure),
 
