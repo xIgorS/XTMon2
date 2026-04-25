@@ -27,7 +27,9 @@ public class MonitoringJobProcessingService : BackgroundService
     private readonly int _maxConcurrentJobs;
     private readonly string _processorName;
     private readonly string[] _claimExcludedCategories;
-    private readonly bool _isCategoryScopedProcessor;
+    private readonly string[] _claimIncludedSubmenuKeys;
+    private readonly string[] _claimExcludedSubmenuKeys;
+    private readonly bool _isClaimScopedProcessor;
 
     public MonitoringJobProcessingService(
         IServiceScopeFactory scopeFactory,
@@ -47,6 +49,8 @@ public class MonitoringJobProcessingService : BackgroundService
         JobCancellationRegistry? jobCancellationRegistry = null,
         string? processorName = null,
         IReadOnlyCollection<string>? ownedCategories = null,
+        IReadOnlyCollection<string>? includedSubmenuKeys = null,
+        IReadOnlyCollection<string>? excludedSubmenuKeys = null,
         int? maxConcurrentJobs = null)
     {
         _scopeFactory = scopeFactory;
@@ -60,7 +64,9 @@ public class MonitoringJobProcessingService : BackgroundService
         _maxConcurrentJobs = Math.Max(1, maxConcurrentJobs ?? _options.MaxConcurrentJobs);
         _processorName = string.IsNullOrWhiteSpace(processorName) ? nameof(MonitoringJobProcessingService) : processorName;
         _claimExcludedCategories = BuildClaimExcludedCategories(ownedCategories);
-        _isCategoryScopedProcessor = _claimExcludedCategories.Length > 0;
+        _claimIncludedSubmenuKeys = BuildClaimSubmenuKeys(includedSubmenuKeys);
+        _claimExcludedSubmenuKeys = BuildClaimSubmenuKeys(excludedSubmenuKeys);
+        _isClaimScopedProcessor = _claimExcludedCategories.Length > 0 || _claimIncludedSubmenuKeys.Length > 0 || _claimExcludedSubmenuKeys.Length > 0;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -215,11 +221,14 @@ public class MonitoringJobProcessingService : BackgroundService
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            if (_isCategoryScopedProcessor)
+            if (_isClaimScopedProcessor)
             {
-                return _claimExcludedCategories.Length == 0
-                    ? await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, cancellationToken)
-                    : await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, _claimExcludedCategories, cancellationToken);
+                return await repository.TryTakeNextMonitoringJobAsync(
+                    Environment.MachineName,
+                    _claimExcludedCategories,
+                    _claimIncludedSubmenuKeys,
+                    _claimExcludedSubmenuKeys,
+                    cancellationToken);
             }
 
             var prioritizedExcludedCategories = preferredExcludedCategories
@@ -274,6 +283,9 @@ public class MonitoringJobProcessingService : BackgroundService
 
             var executor = matchingExecutors.FirstOrDefault()
                 ?? throw new InvalidOperationException($"No monitoring executor is registered for category '{job.Category}' and submenu '{job.SubmenuKey}'.");
+
+            var sqlExecutionContextAccessor = scope.ServiceProvider.GetRequiredService<SqlExecutionContextAccessor>();
+            using var _ = sqlExecutionContextAccessor.BeginMonitoringJobScope(job);
 
             if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
             {
@@ -666,7 +678,7 @@ public class MonitoringJobProcessingService : BackgroundService
 
     private IReadOnlyCollection<string> BuildPreferredExcludedCategories(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
     {
-        if (_isCategoryScopedProcessor)
+        if (_isClaimScopedProcessor)
         {
             return Array.Empty<string>();
         }
@@ -685,7 +697,7 @@ public class MonitoringJobProcessingService : BackgroundService
 
     private IReadOnlyCollection<string> BuildHardExcludedCategories(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
     {
-        if (_isCategoryScopedProcessor)
+        if (_isClaimScopedProcessor)
         {
             return Array.Empty<string>();
         }
@@ -739,6 +751,20 @@ public class MonitoringJobProcessingService : BackgroundService
 
         return MonitoringJobHelper.AllCategories
             .Where(category => !ownedCategorySet.Contains(category))
+            .ToArray();
+    }
+
+    private static string[] BuildClaimSubmenuKeys(IReadOnlyCollection<string>? submenuKeys)
+    {
+        if (submenuKeys is null || submenuKeys.Count == 0)
+        {
+            return [];
+        }
+
+        return submenuKeys
+            .Where(submenuKey => !string.IsNullOrWhiteSpace(submenuKey))
+            .Select(submenuKey => submenuKey.Trim())
+            .Distinct(StringComparer.Ordinal)
             .ToArray();
     }
 

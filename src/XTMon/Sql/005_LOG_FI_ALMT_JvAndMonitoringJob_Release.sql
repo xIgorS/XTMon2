@@ -353,7 +353,6 @@ CREATE PROCEDURE [monitoring].[UspJvJobHeartbeat]
 AS
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET [LastHeartbeatAt] = SYSUTCDATETIME()
@@ -371,7 +370,6 @@ CREATE PROCEDURE [monitoring].[UspJvJobSaveResult]
 AS
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     IF EXISTS (SELECT 1 FROM [monitoring].[JvCalculationJobResults] WHERE [JobId] = @JobId)
     BEGIN
@@ -413,7 +411,6 @@ CREATE PROCEDURE [monitoring].[UspJvJobMarkCompleted]
 AS
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET
@@ -433,7 +430,6 @@ CREATE PROCEDURE [monitoring].[UspJvJobMarkFailed]
 AS
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET
@@ -548,7 +544,7 @@ CREATE PROCEDURE [monitoring].[UspJvJobExpireStale]
     @ErrorMessage NVARCHAR(MAX)
 AS
 BEGIN
-    SET NOCOUNT OFF;
+    SET NOCOUNT ON;
     SET LOCK_TIMEOUT 5000;
 
     DECLARE @Cutoff DATETIME2(3) = DATEADD(SECOND, -@StaleTimeoutSeconds, SYSUTCDATETIME());
@@ -714,7 +710,9 @@ GO
 
 CREATE PROCEDURE [monitoring].[UspMonitoringJobTakeNext]
     @WorkerId VARCHAR(100),
-    @ExcludedCategoriesCsv NVARCHAR(4000) = NULL
+    @ExcludedCategoriesCsv NVARCHAR(4000) = NULL,
+    @IncludedSubmenuKeysCsv NVARCHAR(4000) = NULL,
+    @ExcludedSubmenuKeysCsv NVARCHAR(4000) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -723,6 +721,8 @@ BEGIN
 
     DECLARE @Selected TABLE ([JobId] BIGINT NOT NULL);
     DECLARE @ExcludedCategories TABLE ([Category] VARCHAR(64) NOT NULL PRIMARY KEY);
+    DECLARE @IncludedSubmenuKeys TABLE ([SubmenuKey] NVARCHAR(512) NOT NULL PRIMARY KEY);
+    DECLARE @ExcludedSubmenuKeys TABLE ([SubmenuKey] NVARCHAR(512) NOT NULL PRIMARY KEY);
 
     IF @ExcludedCategoriesCsv IS NOT NULL
     BEGIN
@@ -732,56 +732,69 @@ BEGIN
         WHERE LTRIM(RTRIM([value])) <> '';
     END
 
+    IF @IncludedSubmenuKeysCsv IS NOT NULL
+    BEGIN
+        INSERT INTO @IncludedSubmenuKeys ([SubmenuKey])
+        SELECT DISTINCT CONVERT(NVARCHAR(512), LTRIM(RTRIM([value])))
+        FROM STRING_SPLIT(@IncludedSubmenuKeysCsv, ',')
+        WHERE LTRIM(RTRIM([value])) <> '';
+    END
+
+    IF @ExcludedSubmenuKeysCsv IS NOT NULL
+    BEGIN
+        INSERT INTO @ExcludedSubmenuKeys ([SubmenuKey])
+        SELECT DISTINCT CONVERT(NVARCHAR(512), LTRIM(RTRIM([value])))
+        FROM STRING_SPLIT(@ExcludedSubmenuKeysCsv, ',')
+        WHERE LTRIM(RTRIM([value])) <> '';
+    END
+
     BEGIN TRANSACTION;
 
-    IF EXISTS (SELECT 1 FROM @ExcludedCategories)
-    BEGIN
-        ;WITH [next_job] AS
-        (
-            SELECT TOP (1) [JobId]
-            FROM [monitoring].[MonitoringJobs] WITH (UPDLOCK, READPAST, ROWLOCK)
-            WHERE [Status] = 'Queued'
-              AND NOT EXISTS
-              (
-                  SELECT 1
-                  FROM @ExcludedCategories AS [excluded]
-                  WHERE [excluded].[Category] = [MonitoringJobs].[Category]
+    ;WITH [next_job] AS
+    (
+        SELECT TOP (1) [JobId]
+        FROM [monitoring].[MonitoringJobs] WITH (UPDLOCK, READPAST, ROWLOCK)
+        WHERE [Status] = 'Queued'
+          AND (
+                NOT EXISTS (SELECT 1 FROM @ExcludedCategories)
+                OR NOT EXISTS
+                (
+                    SELECT 1
+                    FROM @ExcludedCategories AS [excluded]
+                    WHERE [excluded].[Category] = [MonitoringJobs].[Category]
+                )
               )
-            ORDER BY [EnqueuedAt], [JobId]
-        )
-        UPDATE [jobs]
-            SET [Status] = 'Running',
-                [WorkerId] = @WorkerId,
-                [StartedAt] = COALESCE([StartedAt], SYSUTCDATETIME()),
-                [LastHeartbeatAt] = SYSUTCDATETIME(),
-                [CompletedAt] = NULL,
-                [FailedAt] = NULL,
-                [ErrorMessage] = NULL
-        OUTPUT INSERTED.[JobId] INTO @Selected([JobId])
-        FROM [monitoring].[MonitoringJobs] AS [jobs]
-        INNER JOIN [next_job] ON [next_job].[JobId] = [jobs].[JobId];
-    END
-    ELSE
-    BEGIN
-        ;WITH [next_job] AS
-        (
-            SELECT TOP (1) [JobId]
-            FROM [monitoring].[MonitoringJobs] WITH (UPDLOCK, READPAST, ROWLOCK)
-            WHERE [Status] = 'Queued'
-            ORDER BY [EnqueuedAt], [JobId]
-        )
-        UPDATE [jobs]
-            SET [Status] = 'Running',
-                [WorkerId] = @WorkerId,
-                [StartedAt] = COALESCE([StartedAt], SYSUTCDATETIME()),
-                [LastHeartbeatAt] = SYSUTCDATETIME(),
-                [CompletedAt] = NULL,
-                [FailedAt] = NULL,
-                [ErrorMessage] = NULL
-        OUTPUT INSERTED.[JobId] INTO @Selected([JobId])
-        FROM [monitoring].[MonitoringJobs] AS [jobs]
-        INNER JOIN [next_job] ON [next_job].[JobId] = [jobs].[JobId];
-    END
+          AND (
+                NOT EXISTS (SELECT 1 FROM @IncludedSubmenuKeys)
+                OR EXISTS
+                (
+                    SELECT 1
+                    FROM @IncludedSubmenuKeys AS [included]
+                    WHERE [included].[SubmenuKey] = [MonitoringJobs].[SubmenuKey]
+                )
+              )
+          AND (
+                NOT EXISTS (SELECT 1 FROM @ExcludedSubmenuKeys)
+                OR NOT EXISTS
+                (
+                    SELECT 1
+                    FROM @ExcludedSubmenuKeys AS [excludedSubmenu]
+                    WHERE [excludedSubmenu].[SubmenuKey] = [MonitoringJobs].[SubmenuKey]
+                )
+              )
+        ORDER BY [EnqueuedAt], [JobId]
+    )
+    UPDATE [jobs]
+        SET [Status] = 'Running',
+            [WorkerId] = @WorkerId,
+            [StartedAt] = COALESCE([StartedAt], SYSUTCDATETIME()),
+            [LastHeartbeatAt] = SYSUTCDATETIME(),
+            [CompletedAt] = NULL,
+            [FailedAt] = NULL,
+            [ErrorMessage] = NULL
+    OUTPUT INSERTED.[JobId] INTO @Selected([JobId])
+    FROM [monitoring].[MonitoringJobs] AS [jobs]
+    INNER JOIN [next_job] ON [next_job].[JobId] = [jobs].[JobId];
 
     COMMIT TRANSACTION;
 

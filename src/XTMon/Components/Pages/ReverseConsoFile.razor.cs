@@ -11,15 +11,16 @@ using XTMon.Services;
 
 namespace XTMon.Components.Pages;
 
-public partial class ReverseConsoFile : ComponentBase, IDisposable
+public partial class ReverseConsoFile : SourceSystemMonitoringTableJobPageBase<ReverseConsoFile>
 {
-    private const string DisplayDateFormat = "dd-MM-yyyy";
-    private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string GridDateFormat = "dd-MM-yyyy";
     private const string GridDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
-    private const string SourceSystemsLoadErrorMessage = "Unable to load Reverse Conso File source systems right now. Please try again.";
+    private const string SourceSystemsLoadErrorText = "Unable to load Reverse Conso File source systems right now. Please try again.";
     private const string ReverseConsoFileLoadErrorMessage = "Unable to load Reverse Conso File right now. Please try again.";
-    private const string MonitoringSubmenuKey = "reverse-conso-file";
+    protected override string MonitoringSubmenuKey => "reverse-conso-file";
+    protected override string MonitoringJobName => "Reverse Conso File";
+    protected override string DefaultLoadErrorMessage => ReverseConsoFileLoadErrorMessage;
+    protected override string SourceSystemsLoadErrorMessage => SourceSystemsLoadErrorText;
     private static readonly IReadOnlyList<GridColumnDefinition> PreferredColumns =
     [
         new("Status", ["Status"]),
@@ -33,383 +34,21 @@ public partial class ReverseConsoFile : ComponentBase, IDisposable
         new("Is Failed", ["IsFailed", "Is Failed"])
     ];
 
-    private readonly HashSet<DateOnly> availableDates = [];
-
     [Inject]
     private IReverseConsoFileRepository Repository { get; set; } = default!;
 
     [Inject]
-    private IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
-
-    [Inject]
-    private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
-
-    [Inject]
-    private PnlDateState PnlDateState { get; set; } = default!;
-
-    [Inject]
     private IOptions<ReverseConsoFileOptions> ReverseConsoFileOptions { get; set; } = default!;
 
-    [Inject]
-    private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
-
-    [Inject]
-    private ILogger<ReverseConsoFile> Logger { get; set; } = default!;
-
-    [Inject]
-    private IJSRuntime JsRuntime { get; set; } = default!;
-
-    private readonly List<SourceSystemSelection> sourceSystems = [];
-    private DateOnly? selectedPnlDate;
-    private bool isLoading;
-    private bool isLoadingSourceSystems;
-    private bool hasRun;
-    private string? validationError;
-    private string? sourceSystemsError;
-    private string? runError;
-    private string parsedQuery = string.Empty;
-    private string? copyMessage;
-    private bool copySucceeded;
-    private DateTime? lastRunAt;
-    private MonitoringTableResult? result;
-    private bool showQuery;
-    private string? savedParameterSummary;
-    private long? activeJobId;
-    private string? activeJobStatus;
-    private PeriodicTimer? pollTimer;
-    private CancellationTokenSource? pollCts;
-    private readonly CancellationTokenSource disposeCts = new();
-
     private string ProcedureName => ReverseConsoFileOptions.Value.ReverseConsoFileStoredProcedure;
-    private string SourceSystemsProcedureName => ReverseConsoFileOptions.Value.GetAllSourceSystemsStoredProcedure;
+    protected override string SourceSystemsProcedureName => ReverseConsoFileOptions.Value.GetAllSourceSystemsStoredProcedure;
     private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(ReverseConsoFileOptions.Value.ConnectionStringName, ProcedureName);
     private string FullyQualifiedSourceSystemsProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(ReverseConsoFileOptions.Value.ConnectionStringName, SourceSystemsProcedureName);
-    private string QueryDisplayText => string.IsNullOrWhiteSpace(parsedQuery) ? string.Empty : parsedQuery;
-    private string SelectedPnlDateText => selectedPnlDate.HasValue
-        ? selectedPnlDate.Value.ToString(DisplayDateFormat, CultureInfo.InvariantCulture)
-        : "-";
-    private string LastRunText => lastRunAt.HasValue
-        ? lastRunAt.Value.ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture)
-        : "-";
-    private string SavedParameterSummaryText => string.IsNullOrWhiteSpace(savedParameterSummary) ? "Current source system selection" : savedParameterSummary;
-    private bool IsJobActive => MonitoringJobHelper.IsActiveStatus(activeJobStatus);
-    private bool AreAllSourceSystemsSelected => sourceSystems.Count > 0 && sourceSystems.All(static sourceSystem => sourceSystem.IsSelected);
-    private int SelectedSourceSystemsCount => sourceSystems.Count(static sourceSystem => sourceSystem.IsSelected);
-    private string SelectedSourceSystemsCountText => sourceSystems.Count == 0
-        ? "0 / 0"
-        : $"{SelectedSourceSystemsCount} / {sourceSystems.Count}";
-    private string SelectedSourceSystemsSummary => BuildSelectedSourceSystemsSummary();
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task<IReadOnlyList<string>> LoadAvailableSourceSystemCodesAsync(CancellationToken cancellationToken)
     {
-        await LoadPnlDatesAsync();
-        PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
-        await LoadSourceSystemsAsync();
-        await RestoreLatestJobAsync();
-        StartPollingIfNeeded();
-    }
-
-    private async Task LoadPnlDatesAsync()
-    {
-        try
-        {
-            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
-            selectedPnlDate = PnlDateState.SelectedDate;
-
-            availableDates.Clear();
-            foreach (var date in PnlDateState.AvailableDates)
-            {
-                availableDates.Add(date);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Unable to load default PNL dates.");
-        }
-    }
-
-    private void OnGlobalPnlDateChanged()
-    {
-        _ = InvokeAsync(async () =>
-        {
-            selectedPnlDate = PnlDateState.SelectedDate;
-            await RestoreLatestJobAsync();
-            StateHasChanged();
-        });
-    }
-
-    public void Dispose()
-    {
-        PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
-        StopPolling();
-        disposeCts.Cancel();
-        disposeCts.Dispose();
-    }
-
-    private async Task LoadSourceSystemsAsync()
-    {
-        isLoadingSourceSystems = true;
-        sourceSystemsError = null;
-
-        try
-        {
-            var availableSourceSystems = await Repository.GetSourceSystemsAsync(disposeCts.Token);
-            sourceSystems.Clear();
-            sourceSystems.AddRange(availableSourceSystems.Select(static sourceSystem => new SourceSystemSelection(sourceSystem.Code, true)));
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(
-                AppLogEvents.MonitoringLoadFailed,
-                ex,
-                "Failed to load Reverse Conso File source systems from procedure {ProcedureName}.",
-                SourceSystemsProcedureName);
-            sourceSystemsError = SourceSystemsLoadErrorMessage;
-            sourceSystems.Clear();
-        }
-        finally
-        {
-            isLoadingSourceSystems = false;
-        }
-    }
-
-    private async Task OnPnlDateSelected(DateOnly date)
-    {
-        selectedPnlDate = date;
-        validationError = null;
-        runError = null;
-        await RestoreLatestJobAsync();
-    }
-
-    private void OnAllSourceSystemsChanged(ChangeEventArgs args)
-    {
-        var isSelected = (bool)(args.Value ?? false);
-        foreach (var sourceSystem in sourceSystems)
-        {
-            sourceSystem.IsSelected = isSelected;
-        }
-    }
-
-    private void OnSourceSystemChanged(string code, bool isSelected)
-    {
-        var sourceSystem = sourceSystems.FirstOrDefault(item => string.Equals(item.Code, code, StringComparison.OrdinalIgnoreCase));
-        if (sourceSystem is null)
-        {
-            return;
-        }
-
-        sourceSystem.IsSelected = isSelected;
-    }
-
-    private async Task RunAsync()
-    {
-        if (!selectedPnlDate.HasValue)
-        {
-            validationError = "PNL DATE is required.";
-            return;
-        }
-
-        isLoading = true;
-        hasRun = true;
-        validationError = null;
-        runError = null;
-        copyMessage = null;
-        showQuery = false;
-
-        try
-        {
-            var enqueueResult = await MonitoringJobRepository.EnqueueMonitoringJobAsync(
-                MonitoringJobHelper.DataValidationCategory,
-                MonitoringSubmenuKey,
-                "Reverse Conso File",
-                selectedPnlDate.Value,
-                MonitoringJobHelper.SerializeParameters(BuildCurrentParameters()),
-                SelectedSourceSystemsSummary,
-                disposeCts.Token);
-
-            activeJobId = enqueueResult.JobId;
-            await RefreshActiveJobAsync(disposeCts.Token);
-            StartPollingIfNeeded();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(
-                AppLogEvents.MonitoringLoadFailed,
-                ex,
-                "Failed to load Reverse Conso File for PnlDate {PnlDate}.",
-                selectedPnlDate.Value);
-            runError = ReverseConsoFileLoadErrorMessage;
-            parsedQuery = string.Empty;
-            result = null;
-        }
-        finally
-        {
-            isLoading = false;
-        }
-    }
-
-    private DataValidationJobParameters BuildCurrentParameters() => new(GetSelectedSourceSystemCodes());
-
-    private async Task RestoreLatestJobAsync()
-    {
-        StopPolling();
-
-        if (!selectedPnlDate.HasValue)
-        {
-            ClearLoadedState();
-            return;
-        }
-
-        try
-        {
-            var latestJob = await MonitoringJobRepository.GetLatestMonitoringJobAsync(
-                MonitoringJobHelper.DataValidationCategory,
-                MonitoringSubmenuKey,
-                selectedPnlDate.Value,
-                disposeCts.Token);
-
-            if (latestJob is null)
-            {
-                ClearLoadedState();
-                return;
-            }
-
-            ApplyJob(latestJob);
-            StartPollingIfNeeded();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Unable to restore latest Reverse Conso File job for PnlDate {PnlDate}.", selectedPnlDate.Value);
-        }
-    }
-
-    private void StartPollingIfNeeded()
-    {
-        StopPolling();
-
-        if (!activeJobId.HasValue || !IsJobActive)
-        {
-            return;
-        }
-
-        pollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
-        pollTimer = new PeriodicTimer(TimeSpan.FromSeconds(MonitoringJobsOptions.Value.JobPollIntervalSeconds));
-        _ = PollJobAsync(pollTimer, pollCts.Token);
-    }
-
-    private async Task PollJobAsync(PeriodicTimer timer, CancellationToken cancellationToken)
-    {
-        try
-        {
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-            {
-                await RefreshActiveJobAsync(cancellationToken);
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-    }
-
-    private async Task RefreshActiveJobAsync(CancellationToken cancellationToken)
-    {
-        if (!activeJobId.HasValue)
-        {
-            return;
-        }
-
-        var job = await MonitoringJobRepository.GetMonitoringJobByIdAsync(activeJobId.Value, cancellationToken);
-        if (job is null)
-        {
-            return;
-        }
-
-        ApplyJob(job);
-        if (!IsJobActive)
-        {
-            StopPolling();
-        }
-    }
-
-    private void ApplyJob(MonitoringJobRecord job)
-    {
-        activeJobId = job.JobId;
-        activeJobStatus = job.Status;
-        savedParameterSummary = job.ParameterSummary;
-        parsedQuery = job.ParsedQuery ?? string.Empty;
-        result = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
-        hasRun = true;
-
-        var latestExecution = job.CompletedAt ?? job.StartedAt ?? job.EnqueuedAt;
-        lastRunAt = JvCalculationHelper.ToUtc(latestExecution).ToLocalTime();
-
-        if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
-        {
-            runError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, ReverseConsoFileLoadErrorMessage);
-        }
-        else
-        {
-            runError = null;
-        }
-    }
-
-    private void ClearLoadedState()
-    {
-        activeJobId = null;
-        activeJobStatus = null;
-        savedParameterSummary = null;
-        hasRun = false;
-        parsedQuery = string.Empty;
-        result = null;
-        lastRunAt = null;
-        runError = null;
-    }
-
-    private void StopPolling()
-    {
-        pollCts?.Cancel();
-        pollCts?.Dispose();
-        pollCts = null;
-
-        pollTimer?.Dispose();
-        pollTimer = null;
-    }
-
-    private void ToggleQueryVisibility()
-    {
-        if (string.IsNullOrWhiteSpace(parsedQuery))
-        {
-            return;
-        }
-
-        showQuery = !showQuery;
-    }
-
-    private async Task CopySqlToClipboardAsync()
-    {
-        if (string.IsNullOrWhiteSpace(parsedQuery))
-        {
-            copyMessage = "No SQL statement available to copy.";
-            copySucceeded = false;
-            return;
-        }
-
-        try
-        {
-            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", parsedQuery);
-            copyMessage = "SQL copied to clipboard.";
-            copySucceeded = true;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Unable to copy Reverse Conso File SQL statement to clipboard.");
-            copyMessage = "Failed to copy SQL to clipboard.";
-            copySucceeded = false;
-        }
+        var availableSourceSystems = await Repository.GetSourceSystemsAsync(cancellationToken);
+        return availableSourceSystems.Select(static sourceSystem => sourceSystem.Code).ToArray();
     }
 
     private IReadOnlyList<GridColumn> GetGridColumns()
@@ -448,44 +87,6 @@ public partial class ReverseConsoFile : ComponentBase, IDisposable
         return column.Index >= 0 && column.Index < row.Count ? row[column.Index] : null;
     }
 
-    private string BuildSelectedSourceSystemsSummary()
-    {
-        if (sourceSystems.Count == 0)
-        {
-            return isLoadingSourceSystems
-                ? "Loading source systems..."
-                : "No source systems loaded";
-        }
-
-        var selectedCodes = sourceSystems
-            .Where(static sourceSystem => sourceSystem.IsSelected)
-            .Select(static sourceSystem => sourceSystem.Code)
-            .ToList();
-
-        if (selectedCodes.Count == 0)
-        {
-            return "No source systems selected";
-        }
-
-        if (selectedCodes.Count == sourceSystems.Count)
-        {
-            return "All source systems";
-        }
-
-        return selectedCodes.Count <= 3
-            ? string.Join(", ", selectedCodes)
-            : $"{selectedCodes.Count} source systems selected";
-    }
-
-    private string? GetSelectedSourceSystemCodes()
-    {
-        return PricingHelper.BuildSourceSystemCodes(
-            sourceSystems
-                .Where(static sourceSystem => sourceSystem.IsSelected)
-                .Select(static sourceSystem => sourceSystem.Code),
-            quoteEachValue: true);
-    }
-
     private static string GetColumnAlignmentClass(string columnName) => JvCalculationHelper.GetColumnAlignmentClass(columnName);
 
     private static string FormatCellValue(string columnName, string? value)
@@ -522,17 +123,4 @@ public partial class ReverseConsoFile : ComponentBase, IDisposable
     private sealed record GridColumnDefinition(string Header, IReadOnlyList<string> Aliases);
 
     private sealed record GridColumn(string Name, string Header, int Index);
-
-    private sealed class SourceSystemSelection
-    {
-        public SourceSystemSelection(string code, bool isSelected)
-        {
-            Code = code;
-            IsSelected = isSelected;
-        }
-
-        public string Code { get; }
-
-        public bool IsSelected { get; set; }
-    }
 }

@@ -507,7 +507,6 @@ AS
 -- SELECT @JobId AS JobId, @AlreadyActive AS AlreadyActive;
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     IF @RequestType IS NULL
         SET @RequestType = 'FixAndCheck';
@@ -652,7 +651,6 @@ AS
 -- EXEC [monitoring].[UspJvJobHeartbeat] @JobId = 1;
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET [LastHeartbeatAt] = SYSUTCDATETIME()
@@ -672,7 +670,6 @@ AS
 -- EXEC [monitoring].[UspJvJobMarkCompleted] @JobId = 1;
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET
@@ -700,7 +697,6 @@ AS
 --     @ErrorMessage = N'JV calculation failed due to timeout.';
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET
@@ -733,7 +729,6 @@ AS
 --     @GridRowsJson = N'[["OK","Done"]]';
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     IF EXISTS (SELECT 1 FROM [monitoring].[JvCalculationJobResults] WHERE [JobId] = @JobId)
     BEGIN
@@ -781,7 +776,6 @@ AS
 -- EXEC [monitoring].[UspJvJobTakeNext] @WorkerId = 'XTMonWorker01';
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     DECLARE @Now DATETIME2(3) = SYSUTCDATETIME();
     DECLARE @Claimed TABLE ([JobId] BIGINT PRIMARY KEY);
@@ -836,7 +830,7 @@ CREATE OR ALTER PROCEDURE [monitoring].[UspJvJobExpireStale]
     @ErrorMessage        NVARCHAR(MAX)
 AS
 BEGIN
-    SET NOCOUNT OFF; -- OFF so that @@ROWCOUNT / rows-affected is returned to the caller
+    SET NOCOUNT ON;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET

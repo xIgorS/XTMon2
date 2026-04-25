@@ -11,19 +11,13 @@ using XTMon.Services;
 
 namespace XTMon.Components.Pages;
 
-public partial class DataValidationRunner : ComponentBase, IDisposable
+public partial class DataValidationRunner : PnlDateAwarePageBase<DataValidationRunner>
 {
-    private const string DisplayDateFormat = "dd-MM-yyyy";
-    private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
-
     [Inject]
     private IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
 
     [Inject]
     private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
-
-    [Inject]
-    private PnlDateState PnlDateState { get; set; } = default!;
 
     [Inject]
     private IAuthorizationService AuthorizationService { get; set; } = default!;
@@ -33,9 +27,6 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
 
     [Inject]
     private IOptions<JvBalanceConsistencyOptions> JvBalanceConsistencyOptions { get; set; } = default!;
-
-    [Inject]
-    private ILogger<DataValidationRunner> Logger { get; set; } = default!;
 
     [Inject]
     private DataValidationNavAlertState DataValidationNavAlertState { get; set; } = default!;
@@ -48,12 +39,9 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
 
     private readonly List<BatchRunRow> rows = [];
     private readonly List<BatchRunRow> selectableRows = [];
-    private readonly HashSet<DateOnly> availableDates = [];
     private readonly HashSet<long> cancellingJobIds = [];
-    private readonly CancellationTokenSource disposeCts = new();
     private PeriodicTimer? pollTimer;
     private CancellationTokenSource? pollCts;
-    private DateOnly? selectedPnlDate;
     private bool canRunRestrictedChecks;
     private bool hasHiddenRestrictedChecks;
     private bool isSubmitting;
@@ -64,32 +52,28 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
     private bool statusIsError;
     private DateTime? lastRefreshAt;
 
-    private string SelectedPnlDateText => selectedPnlDate.HasValue
-        ? selectedPnlDate.Value.ToString(DisplayDateFormat, CultureInfo.InvariantCulture)
-        : "-";
-
     private string LastRefreshText => lastRefreshAt.HasValue
         ? lastRefreshAt.Value.ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture)
         : "Not loaded";
 
     private bool canRunSelected => !isSubmitting && !isRefreshing && selectedPnlDate.HasValue && selectedRowsCount > 0;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task EnsurePnlDatesLoadedAsync(CancellationToken cancellationToken)
+    {
+        await PnlDateState.EnsureLoadedAsync(PnlDateRepository, cancellationToken);
+    }
+
+    protected override async Task OnInitializedCoreAsync()
     {
         await DeterminePermissionsAsync();
         BuildRows();
-        await LoadPnlDatesAsync();
-        PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
         await RefreshStatusesCoreAsync();
         StartPollingIfNeeded();
     }
 
-    public void Dispose()
+    protected override void DisposeCore()
     {
-        PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
         StopPolling();
-        disposeCts.Cancel();
-        disposeCts.Dispose();
     }
 
     private async Task DeterminePermissionsAsync()
@@ -119,33 +103,15 @@ public partial class DataValidationRunner : ComponentBase, IDisposable
         UpdateSelectedRowsCount();
     }
 
-    private async Task LoadPnlDatesAsync()
-    {
-        await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
-        selectedPnlDate = PnlDateState.SelectedDate;
-
-        availableDates.Clear();
-        foreach (var date in PnlDateState.AvailableDates)
-        {
-            availableDates.Add(date);
-        }
-    }
-
     private Task OnPnlDateSelected(DateOnly date)
     {
-        PnlDateState.SetDate(date);
-        return Task.CompletedTask;
+        return SetGlobalPnlDateAsync(date);
     }
 
-    private void OnGlobalPnlDateChanged()
+    protected override async Task OnGlobalPnlDateChangedCoreAsync()
     {
-        _ = InvokeAsync(async () =>
-        {
-            selectedPnlDate = PnlDateState.SelectedDate;
-            ClearSubmissionStates();
-            await RefreshStatusesCoreAsync();
-            StateHasChanged();
-        });
+        ClearSubmissionStates();
+        await RefreshStatusesCoreAsync();
     }
 
     private async Task RefreshStatusesAsync()

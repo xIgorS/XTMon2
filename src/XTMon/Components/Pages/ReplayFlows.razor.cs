@@ -12,10 +12,8 @@ using XTMon.Options;
 
 namespace XTMon.Components.Pages;
 
-public partial class ReplayFlows : ComponentBase, IAsyncDisposable
+public partial class ReplayFlows : PnlDateAwarePageBase<ReplayFlows>
 {
-    private const string DisplayDateFormat = "dd-MM-yyyy";
-    private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string UnknownUserId = "Unknown";
     private const int ReplayGridColumnCount = 17;
     private const string DataLoadErrorMessage = "Unable to load replay flows right now. Please try again.";
@@ -31,13 +29,7 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
 
     [Inject]
-    private PnlDateState PnlDateState { get; set; } = default!;
-
-    [Inject]
     private IOptions<ReplayFlowsOptions> ReplayFlowsOptions { get; set; } = default!;
-
-    [Inject]
-    private ILogger<ReplayFlows> Logger { get; set; } = default!;
 
     [Inject]
     private ReplayFlowsNavAlertState ReplayFlowsNavAlertState { get; set; } = default!;
@@ -48,9 +40,6 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     private readonly List<ReplayFlowGridRow> rows = new();
     private readonly List<ReplayFlowResultRow> replayResults = new();
     private readonly List<ReplayFlowStatusRow> statusRows = new();
-    private readonly CancellationTokenSource disposeCts = new();
-    private readonly HashSet<DateOnly> availableDates = new();
-    private DateOnly? selectedPnlDate;
     private string replayFlowSetInput = string.Empty;
     private string? feedSourceFilter;
     private string? typeOfCalculationFilter;
@@ -121,55 +110,30 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task EnsurePnlDatesLoadedAsync(CancellationToken cancellationToken)
     {
-        await LoadPnlDatesAsync();
-        PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await PnlDateState.EnsureLoadedAsync(PnlDateRepository, cancellationToken);
+    }
+
+    protected override async Task OnInitializedCoreAsync()
+    {
         await LoadDataAsync(selectedPnlDate, replayFlowSet: null);
         await LoadStatusAsync();
         StartPollingIfNeeded();
     }
 
-    private async Task LoadPnlDatesAsync()
+    protected override async Task OnGlobalPnlDateChangedCoreAsync()
     {
-        try
+        if (!selectedPnlDate.HasValue)
         {
-            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
-            selectedPnlDate = PnlDateState.SelectedDate;
-
-            availableDates.Clear();
-            foreach (var date in PnlDateState.AvailableDates)
-            {
-                availableDates.Add(date);
-            }
+            ClearLoadedState();
+            return;
         }
-        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
-        {
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Unable to load default PNL dates for Replay Flows.");
-        }
-    }
 
-    private void OnGlobalPnlDateChanged()
-    {
-        _ = InvokeAsync(async () =>
-        {
-            selectedPnlDate = PnlDateState.SelectedDate;
-            if (!selectedPnlDate.HasValue)
-            {
-                ClearLoadedState();
-                StateHasChanged();
-                return;
-            }
-
-            TryNormalizeReplayFlowSet(replayFlowSetInput, out var normalizedReplayFlowSet);
-            await LoadDataAsync(selectedPnlDate, normalizedReplayFlowSet);
-            await LoadStatusAsync();
-            StartPollingIfNeeded();
-            StateHasChanged();
-        });
+        TryNormalizeReplayFlowSet(replayFlowSetInput, out var normalizedReplayFlowSet);
+        await LoadDataAsync(selectedPnlDate, normalizedReplayFlowSet);
+        await LoadStatusAsync();
+        StartPollingIfNeeded();
     }
 
     private async Task ReloadAsync()
@@ -326,11 +290,10 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
 
     private Task OnPnlDateSelected(DateOnly date)
     {
-        PnlDateState.SetDate(date);
         pnlDateError = null;
         statusMessage = null;
         statusIsError = false;
-        return Task.CompletedTask;
+        return SetGlobalPnlDateAsync(date);
     }
 
     private void ClearLoadedState()
@@ -646,13 +609,8 @@ public partial class ReplayFlows : ComponentBase, IAsyncDisposable
     private static bool IsSubmissionCompleted(ReplayFlowStatusRow row) =>
         ReplayFlowsHelper.GetStatusKind(row) == ReplayStatusKind.Completed;
 
-    public ValueTask DisposeAsync()
+    protected override void DisposeCore()
     {
-        PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
         StopPolling();
-        disposeCts.Cancel();
-        disposeCts.Dispose();
-        GC.SuppressFinalize(this);
-        return ValueTask.CompletedTask;
     }
 }

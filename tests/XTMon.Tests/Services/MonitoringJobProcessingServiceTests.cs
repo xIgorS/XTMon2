@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using System.Reflection;
 using XTMon.Helpers;
+using XTMon.Infrastructure;
 using XTMon.Models;
 using XTMon.Options;
 using XTMon.Repositories;
@@ -55,11 +56,14 @@ public class MonitoringJobProcessingServiceTests
             IOptions<MonitoringJobsOptions>? options = null,
             TimeSpan? idleDelay = null,
             TimeSpan? heartbeatInterval = null,
-            JobCancellationRegistry? jobCancellationRegistry = null)
+            JobCancellationRegistry? jobCancellationRegistry = null,
+            SqlExecutionContextAccessor? sqlExecutionContextAccessor = null)
     {
+        var executionContextAccessor = sqlExecutionContextAccessor ?? new SqlExecutionContextAccessor();
         var sp = new Mock<IServiceProvider>();
         sp.Setup(p => p.GetService(typeof(IMonitoringJobRepository))).Returns(repo.Object);
         sp.Setup(p => p.GetService(typeof(IEnumerable<IMonitoringJobExecutor>))).Returns(executors);
+        sp.Setup(p => p.GetService(typeof(SqlExecutionContextAccessor))).Returns(executionContextAccessor);
 
         var scope = new Mock<IServiceScope>();
         scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
@@ -99,6 +103,64 @@ public class MonitoringJobProcessingServiceTests
                 StartedAt = DateTime.UtcNow
             });
         return repo;
+    }
+
+    [Fact]
+    public async Task ProcessJobAsync_AppliesMonitoringJobScopeAroundExecutorExecution()
+    {
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 1L);
+        var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var accessor = new SqlExecutionContextAccessor();
+        var capturedContexts = new List<SqlExecutionContext?>();
+
+        var repo = BaseRepo();
+        repo.SetupSequence(r => r.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job)
+            .ReturnsAsync((MonitoringJobRecord?)null);
+        repo.Setup(r => r.GetMonitoringJobByIdAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                capturedContexts.Add(accessor.CurrentContext);
+                return MakeJob(job.Category, job.SubmenuKey, job.JobId) with
+                {
+                    Status = MonitoringJobHelper.RunningStatus,
+                    StartedAt = DateTime.UtcNow
+                };
+            });
+        repo.Setup(r => r.HeartbeatMonitoringJobAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Callback(() => capturedContexts.Add(accessor.CurrentContext))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Callback(() => completedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            _ => true,
+            (_, _) =>
+            {
+                capturedContexts.Add(accessor.CurrentContext);
+                return Task.FromResult(new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null));
+            });
+
+        var (service, _) = CreateService(
+            repo,
+            [executor],
+            idleDelay: TimeSpan.FromMilliseconds(10),
+            sqlExecutionContextAccessor: accessor);
+
+        await service.StartAsync(CancellationToken.None);
+        await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.NotEmpty(capturedContexts);
+        Assert.All(capturedContexts, context =>
+        {
+            Assert.NotNull(context);
+            Assert.Equal(job.JobId, context!.JobId);
+            Assert.Equal(job.Category, context.Category);
+            Assert.Equal(job.SubmenuKey, context.SubmenuKey);
+        });
+        Assert.Null(accessor.CurrentContext);
     }
 
     [Fact]
@@ -621,9 +683,11 @@ public class MonitoringJobProcessingServiceTests
                 return payload;
             });
 
+        var executionContextAccessor = new SqlExecutionContextAccessor();
         var sp = new Mock<IServiceProvider>();
         sp.Setup(p => p.GetService(typeof(IMonitoringJobRepository))).Returns(repo.Object);
         sp.Setup(p => p.GetService(typeof(IEnumerable<IMonitoringJobExecutor>))).Returns(new[] { executor });
+        sp.Setup(p => p.GetService(typeof(SqlExecutionContextAccessor))).Returns(executionContextAccessor);
 
         var scope = new Mock<IServiceScope>();
         scope.Setup(s => s.ServiceProvider).Returns(sp.Object);

@@ -34,7 +34,7 @@ public class JobCancellationRegistryTests
     }
 
     [Fact]
-    public async Task CancelAllMonitoringJobs_ReleasesSignalForEachCancelledSource()
+    public async Task CancelAllMonitoringJobs_WakesCurrentWaiters_WithoutLeavingStaleSignals()
     {
         var registry = new JobCancellationRegistry();
         using var firstSource = new CancellationTokenSource();
@@ -51,6 +51,17 @@ public class JobCancellationRegistryTests
         await Task.WhenAll(
             firstWait.WaitAsync(TimeSpan.FromSeconds(1)),
             secondWait.WaitAsync(TimeSpan.FromSeconds(1)));
+
+        using var thirdSource = new CancellationTokenSource();
+        registry.RegisterMonitoringJob(3L, thirdSource);
+
+        var nextWait = registry.WaitForMonitoringJobCancellationAsync(CancellationToken.None);
+
+        await Assert.ThrowsAsync<TimeoutException>(() => nextWait.WaitAsync(TimeSpan.FromMilliseconds(150)));
+
+        Assert.True(registry.CancelMonitoringJob(3L));
+
+        await nextWait.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
     [Fact]
@@ -64,5 +75,36 @@ public class JobCancellationRegistryTests
         var cancelled = registry.CancelJvJob(1L);
 
         Assert.False(cancelled);
+    }
+
+    [Fact]
+    public async Task CancelAllJvJobs_WakesCurrentWaiters_WithoutLeavingStaleSignals()
+    {
+        var registry = new JobCancellationRegistry();
+        using var firstSource = new CancellationTokenSource();
+        using var secondSource = new CancellationTokenSource();
+        registry.RegisterJvJob(1L, firstSource);
+        registry.RegisterJvJob(2L, secondSource);
+
+        var firstWait = registry.WaitForJvJobCancellationAsync(CancellationToken.None);
+        var secondWait = registry.WaitForJvJobCancellationAsync(CancellationToken.None);
+
+        var cancelledCount = registry.CancelAllJvJobs();
+
+        Assert.Equal(2, cancelledCount);
+        await Task.WhenAll(
+            firstWait.WaitAsync(TimeSpan.FromSeconds(1)),
+            secondWait.WaitAsync(TimeSpan.FromSeconds(1)));
+
+        using var thirdSource = new CancellationTokenSource();
+        registry.RegisterJvJob(3L, thirdSource);
+
+        var nextWait = registry.WaitForJvJobCancellationAsync(CancellationToken.None);
+
+        await Assert.ThrowsAsync<TimeoutException>(() => nextWait.WaitAsync(TimeSpan.FromMilliseconds(150)));
+
+        Assert.True(registry.CancelJvJob(3L));
+
+        await nextWait.WaitAsync(TimeSpan.FromSeconds(1));
     }
 }

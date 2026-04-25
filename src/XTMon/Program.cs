@@ -163,8 +163,8 @@ builder.Services
         options.CategoryMaxConcurrentJobs.All(limit =>
             !string.IsNullOrWhiteSpace(limit.Key) &&
             limit.Value >= 1 &&
-            limit.Value <= options.MaxConcurrentJobs),
-        "MonitoringJobs options must define all required connection and stored procedure names.")
+            limit.Value <= 16),
+        "MonitoringJobs options must define all required connection names, stored procedure names, and valid concurrency limits.")
     .ValidateOnStart();
 builder.Services
     .AddOptions<BatchStatusOptions>()
@@ -494,6 +494,8 @@ builder.Services.AddHostedService(static serviceProvider => serviceProvider.GetR
 builder.Services.AddSingleton<JobDiagnosticsService>();
 builder.Services.AddHostedService<JvCalculationProcessingService>();
 builder.Services.AddHostedService<DataValidationMonitoringJobProcessingService>();
+builder.Services.AddHostedService<PricingMonitoringJobProcessingService>();
+builder.Services.AddHostedService<DailyBalanceMonitoringJobProcessingService>();
 builder.Services.AddHostedService<FunctionalRejectionMonitoringJobProcessingService>();
 
 // Use default authentication scheme (Negotiate)

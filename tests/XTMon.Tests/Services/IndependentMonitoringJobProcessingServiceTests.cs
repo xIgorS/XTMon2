@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using XTMon.Helpers;
+using XTMon.Infrastructure;
 using XTMon.Models;
 using XTMon.Options;
 using XTMon.Repositories;
@@ -76,9 +77,11 @@ public class IndependentMonitoringJobProcessingServiceTests
         TimeSpan? heartbeatInterval = null,
         JobCancellationRegistry? jobCancellationRegistry = null)
     {
+        var executionContextAccessor = new SqlExecutionContextAccessor();
         var serviceProvider = new Mock<IServiceProvider>();
         serviceProvider.Setup(provider => provider.GetService(typeof(IMonitoringJobRepository))).Returns(repository.Object);
         serviceProvider.Setup(provider => provider.GetService(typeof(IEnumerable<IMonitoringJobExecutor>))).Returns(executors);
+        serviceProvider.Setup(provider => provider.GetService(typeof(SqlExecutionContextAccessor))).Returns(executionContextAccessor);
 
         var scope = new Mock<IServiceScope>();
         scope.Setup(currentScope => currentScope.ServiceProvider).Returns(serviceProvider.Object);
@@ -96,22 +99,86 @@ public class IndependentMonitoringJobProcessingServiceTests
             jobCancellationRegistry);
     }
 
+    private static PricingMonitoringJobProcessingService CreatePricingService(
+        Mock<IMonitoringJobRepository> repository,
+        IEnumerable<IMonitoringJobExecutor> executors,
+        IOptions<MonitoringJobsOptions>? options = null,
+        TimeSpan? idleDelay = null,
+        TimeSpan? heartbeatInterval = null,
+        JobCancellationRegistry? jobCancellationRegistry = null)
+    {
+        var executionContextAccessor = new SqlExecutionContextAccessor();
+        var serviceProvider = new Mock<IServiceProvider>();
+        serviceProvider.Setup(provider => provider.GetService(typeof(IMonitoringJobRepository))).Returns(repository.Object);
+        serviceProvider.Setup(provider => provider.GetService(typeof(IEnumerable<IMonitoringJobExecutor>))).Returns(executors);
+        serviceProvider.Setup(provider => provider.GetService(typeof(SqlExecutionContextAccessor))).Returns(executionContextAccessor);
+
+        var scope = new Mock<IServiceScope>();
+        scope.Setup(currentScope => currentScope.ServiceProvider).Returns(serviceProvider.Object);
+        scope.Setup(currentScope => currentScope.Dispose());
+
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(factory => factory.CreateScope()).Returns(scope.Object);
+
+        return new PricingMonitoringJobProcessingService(
+            scopeFactory.Object,
+            options ?? CreateOptions(),
+            NullLogger<PricingMonitoringJobProcessingService>.Instance,
+            idleDelay ?? TimeSpan.FromMilliseconds(10),
+            heartbeatInterval,
+            jobCancellationRegistry);
+    }
+
+    private static DailyBalanceMonitoringJobProcessingService CreateDailyBalanceService(
+        Mock<IMonitoringJobRepository> repository,
+        IEnumerable<IMonitoringJobExecutor> executors,
+        IOptions<MonitoringJobsOptions>? options = null,
+        TimeSpan? idleDelay = null,
+        TimeSpan? heartbeatInterval = null,
+        JobCancellationRegistry? jobCancellationRegistry = null)
+    {
+        var executionContextAccessor = new SqlExecutionContextAccessor();
+        var serviceProvider = new Mock<IServiceProvider>();
+        serviceProvider.Setup(provider => provider.GetService(typeof(IMonitoringJobRepository))).Returns(repository.Object);
+        serviceProvider.Setup(provider => provider.GetService(typeof(IEnumerable<IMonitoringJobExecutor>))).Returns(executors);
+        serviceProvider.Setup(provider => provider.GetService(typeof(SqlExecutionContextAccessor))).Returns(executionContextAccessor);
+
+        var scope = new Mock<IServiceScope>();
+        scope.Setup(currentScope => currentScope.ServiceProvider).Returns(serviceProvider.Object);
+        scope.Setup(currentScope => currentScope.Dispose());
+
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(factory => factory.CreateScope()).Returns(scope.Object);
+
+        return new DailyBalanceMonitoringJobProcessingService(
+            scopeFactory.Object,
+            options ?? CreateOptions(),
+            NullLogger<DailyBalanceMonitoringJobProcessingService>.Instance,
+            idleDelay ?? TimeSpan.FromMilliseconds(10),
+            heartbeatInterval,
+            jobCancellationRegistry);
+    }
+
     [Fact]
-    public async Task DataValidationProcessor_ClaimsOnlyOwnedCategory()
+    public async Task DataValidationProcessor_ClaimsOnlyOwnedCategoryAndExcludesDedicatedHeavySubmenus()
     {
         var startedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var claimedExcludedCategories = new List<string[]>();
+        var claimedIncludedSubmenuKeys = new List<string[]>();
+        var claimedExcludedSubmenuKeys = new List<string[]>();
         var claimCallCount = 0;
         var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 1L);
         var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
 
         var repository = BaseRepo();
         repository
-            .Setup(repo => repo.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, CancellationToken _) =>
+            .Setup(repo => repo.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, IReadOnlyCollection<string>? includedSubmenuKeys, IReadOnlyCollection<string>? excludedSubmenuKeys, CancellationToken _) =>
             {
                 claimedExcludedCategories.Add(excludedCategories?.ToArray() ?? []);
+                claimedIncludedSubmenuKeys.Add(includedSubmenuKeys?.ToArray() ?? []);
+                claimedExcludedSubmenuKeys.Add(excludedSubmenuKeys?.ToArray() ?? []);
                 return Interlocked.Increment(ref claimCallCount) == 1
                     ? job
                     : null;
@@ -139,6 +206,10 @@ public class IndependentMonitoringJobProcessingServiceTests
         repository.Verify(repo => repo.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Contains(claimedExcludedCategories, excludedCategories => excludedCategories.Contains(MonitoringJobHelper.FunctionalRejectionCategory));
         Assert.DoesNotContain(claimedExcludedCategories, excludedCategories => excludedCategories.Contains(MonitoringJobHelper.DataValidationCategory));
+        Assert.DoesNotContain(claimedIncludedSubmenuKeys, includedSubmenuKeys => includedSubmenuKeys.Length > 0);
+        Assert.Contains(claimedExcludedSubmenuKeys, excludedSubmenuKeys =>
+            excludedSubmenuKeys.Contains(MonitoringJobHelper.DailyBalanceSubmenuKey)
+            && excludedSubmenuKeys.Contains(MonitoringJobHelper.PricingSubmenuKey));
     }
 
     [Fact]
@@ -149,14 +220,14 @@ public class IndependentMonitoringJobProcessingServiceTests
         var thirdJobStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseJobsTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var job1 = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 1L);
-        var job2 = MakeJob(MonitoringJobHelper.DataValidationCategory, "daily-balance", 2L);
-        var job3 = MakeJob(MonitoringJobHelper.DataValidationCategory, "pricing", 3L);
+        var job2 = MakeJob(MonitoringJobHelper.DataValidationCategory, "referential-data", 2L);
+        var job3 = MakeJob(MonitoringJobHelper.DataValidationCategory, "market-data", 3L);
         var completionCount = 0;
         var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
 
         var repository = BaseRepo();
         repository
-            .SetupSequence(repo => repo.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<CancellationToken>()))
+            .SetupSequence(repo => repo.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(job1)
             .ReturnsAsync(job2)
             .ReturnsAsync(job3)
@@ -222,6 +293,106 @@ public class IndependentMonitoringJobProcessingServiceTests
             releaseJobsTcs.TrySetResult(true);
             await service.StopAsync(CancellationToken.None);
         }
+    }
+
+    [Fact]
+    public async Task PricingProcessor_ClaimsOnlyPricingSubmenu()
+    {
+        var startedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var claimedExcludedCategories = new List<string[]>();
+        var claimedIncludedSubmenuKeys = new List<string[]>();
+        var claimedExcludedSubmenuKeys = new List<string[]>();
+        var claimCallCount = 0;
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.PricingSubmenuKey, 10L);
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+
+        var repository = BaseRepo();
+        repository
+            .Setup(repo => repo.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, IReadOnlyCollection<string>? includedSubmenuKeys, IReadOnlyCollection<string>? excludedSubmenuKeys, CancellationToken _) =>
+            {
+                claimedExcludedCategories.Add(excludedCategories?.ToArray() ?? []);
+                claimedIncludedSubmenuKeys.Add(includedSubmenuKeys?.ToArray() ?? []);
+                claimedExcludedSubmenuKeys.Add(excludedSubmenuKeys?.ToArray() ?? []);
+                return Interlocked.Increment(ref claimCallCount) == 1
+                    ? job
+                    : null;
+            });
+        repository
+            .Setup(repo => repo.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Callback(() => completedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            candidate => string.Equals(candidate.Category, MonitoringJobHelper.DataValidationCategory, StringComparison.Ordinal)
+                && string.Equals(candidate.SubmenuKey, MonitoringJobHelper.PricingSubmenuKey, StringComparison.Ordinal),
+            (_, _) =>
+            {
+                startedTcs.TrySetResult(true);
+                return Task.FromResult(payload);
+            });
+
+        var service = CreatePricingService(repository, [executor]);
+
+        await service.StartAsync(CancellationToken.None);
+        await startedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Contains(claimedExcludedCategories, excludedCategories => excludedCategories.Contains(MonitoringJobHelper.FunctionalRejectionCategory));
+        Assert.Contains(claimedIncludedSubmenuKeys, includedSubmenuKeys => includedSubmenuKeys.Contains(MonitoringJobHelper.PricingSubmenuKey));
+        Assert.DoesNotContain(claimedExcludedSubmenuKeys, excludedSubmenuKeys => excludedSubmenuKeys.Length > 0);
+    }
+
+    [Fact]
+    public async Task DailyBalanceProcessor_ClaimsOnlyDailyBalanceSubmenu()
+    {
+        var startedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var claimedExcludedCategories = new List<string[]>();
+        var claimedIncludedSubmenuKeys = new List<string[]>();
+        var claimedExcludedSubmenuKeys = new List<string[]>();
+        var claimCallCount = 0;
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.DailyBalanceSubmenuKey, 11L);
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+
+        var repository = BaseRepo();
+        repository
+            .Setup(repo => repo.TryTakeNextMonitoringJobAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, IReadOnlyCollection<string>? includedSubmenuKeys, IReadOnlyCollection<string>? excludedSubmenuKeys, CancellationToken _) =>
+            {
+                claimedExcludedCategories.Add(excludedCategories?.ToArray() ?? []);
+                claimedIncludedSubmenuKeys.Add(includedSubmenuKeys?.ToArray() ?? []);
+                claimedExcludedSubmenuKeys.Add(excludedSubmenuKeys?.ToArray() ?? []);
+                return Interlocked.Increment(ref claimCallCount) == 1
+                    ? job
+                    : null;
+            });
+        repository
+            .Setup(repo => repo.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Callback(() => completedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+
+        var executor = new StubExecutor(
+            candidate => string.Equals(candidate.Category, MonitoringJobHelper.DataValidationCategory, StringComparison.Ordinal)
+                && string.Equals(candidate.SubmenuKey, MonitoringJobHelper.DailyBalanceSubmenuKey, StringComparison.Ordinal),
+            (_, _) =>
+            {
+                startedTcs.TrySetResult(true);
+                return Task.FromResult(payload);
+            });
+
+        var service = CreateDailyBalanceService(repository, [executor]);
+
+        await service.StartAsync(CancellationToken.None);
+        await startedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Contains(claimedExcludedCategories, excludedCategories => excludedCategories.Contains(MonitoringJobHelper.FunctionalRejectionCategory));
+        Assert.Contains(claimedIncludedSubmenuKeys, includedSubmenuKeys => includedSubmenuKeys.Contains(MonitoringJobHelper.DailyBalanceSubmenuKey));
+        Assert.DoesNotContain(claimedExcludedSubmenuKeys, excludedSubmenuKeys => excludedSubmenuKeys.Length > 0);
     }
 
     private static async Task EventuallyAsync(Func<bool> condition)

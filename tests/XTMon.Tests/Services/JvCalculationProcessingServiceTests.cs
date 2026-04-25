@@ -457,12 +457,14 @@ public class JvCalculationProcessingServiceTests
     }
 
     [Fact]
-    public async Task CancellationSignal_WakesIdlePollLoop()
+    public async Task CancelJvJob_WakesIdlePollLoop()
     {
         var firstPollTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondPollTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var registry = new JobCancellationRegistry();
         var pollCount = 0;
+        using var registeredToken = new CancellationTokenSource();
+        registry.RegisterJvJob(1L, registeredToken);
 
         var repo = BaseRepo();
         repo.Setup(r => r.TryTakeNextJvJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -487,7 +489,7 @@ public class JvCalculationProcessingServiceTests
         try
         {
             await firstPollTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            registry.SignalJvJobCancellationRequested();
+            Assert.True(registry.CancelJvJob(1L));
             await secondPollTcs.Task.WaitAsync(TimeSpan.FromSeconds(2));
         }
         finally

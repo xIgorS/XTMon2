@@ -13,36 +13,24 @@ using XTMon.Services;
 
 namespace XTMon.Components.Pages;
 
-public partial class FunctionalRejection : ComponentBase, IDisposable
+public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejection>
 {
-    private const string DisplayDateFormat = "dd-MM-yyyy";
-    private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string GridDateFormat = "dd-MM-yyyy";
     private const string GridDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string LoadErrorMessage = "Unable to load Functional Rejection right now. Please try again.";
 
-    private readonly HashSet<DateOnly> availableDates = [];
+    protected override string MonitoringCategory => MonitoringJobHelper.FunctionalRejectionCategory;
+    protected override bool ShouldRestoreAfterPnlDateSelected => false;
+    protected override bool ShouldRestoreOnGlobalPnlDateChanged => string.IsNullOrWhiteSpace(PnlDate);
+    protected override string MonitoringSubmenuKey => BuildCurrentSubmenuKey();
+    protected override string MonitoringJobName => SourceSystemBusinessDataTypeCode ?? "Functional Rejection";
+    protected override string DefaultLoadErrorMessage => LoadErrorMessage;
 
     [Inject]
     private IFunctionalRejectionRepository Repository { get; set; } = default!;
 
     [Inject]
-    private IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
-
-    [Inject]
-    private IJvCalculationRepository PnlDateRepository { get; set; } = default!;
-
-    [Inject]
-    private PnlDateState PnlDateState { get; set; } = default!;
-
-    [Inject]
     private IOptions<FunctionalRejectionOptions> FunctionalRejectionOptions { get; set; } = default!;
-
-    [Inject]
-    private IOptions<MonitoringJobsOptions> MonitoringJobsOptions { get; set; } = default!;
-
-    [Inject]
-    private ILogger<FunctionalRejection> Logger { get; set; } = default!;
 
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
@@ -73,29 +61,18 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     [SupplyParameterFromQuery(Name = "pnlDate")]
     public string? PnlDate { get; set; }
 
-    private DateOnly? selectedPnlDate;
-    private bool isLoading;
-    private bool hasRun;
-    private string? validationError;
     private string? selectionError;
-    private string? runError;
     private string parsedQuery = string.Empty;
     private string? copyMessage;
     private bool copySucceeded;
     private bool showQuery;
-    private DateTime? lastRunAt;
     private TechnicalRejectResult? result;
     private string? lastAutoLoadKey;
-    private string? activeJobStatus;
-    private long? activeJobId;
     private DateTime? activeJobEnqueuedAt;
     private DateTime? activeJobStartedAt;
     private DateTime? activeJobCompletedAt;
     private string? savedParameterSummary;
     private IReadOnlyList<FunctionalRejectionMenuItem>? menuItemsForValidation;
-    private PeriodicTimer? pollTimer;
-    private CancellationTokenSource? pollCts;
-    private readonly CancellationTokenSource disposeCts = new();
 
     private bool HasValidSelection =>
         BusinessDataTypeId.HasValue &&
@@ -104,7 +81,6 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         !string.IsNullOrWhiteSpace(SourceSystemBusinessDataTypeCode);
 
     private bool CanRun => HasValidSelection && selectedPnlDate.HasValue;
-    private bool IsJobActive => MonitoringJobHelper.IsActiveStatus(activeJobStatus);
     private string MenuProcedureName => FunctionalRejectionOptions.Value.SourceSystemTechnicalRejectStoredProcedure;
     private string ProcedureName => FunctionalRejectionOptions.Value.TechnicalRejectStoredProcedure;
     private string FullyQualifiedMenuProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(FunctionalRejectionOptions.Value.MenuConnectionStringName, MenuProcedureName);
@@ -112,12 +88,6 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         ? JvCalculationHelper.BuildFullyQualifiedProcedureName(connectionStringName, ProcedureName)
         : "-";
     private string QueryDisplayText => string.IsNullOrWhiteSpace(parsedQuery) ? string.Empty : parsedQuery;
-    private string SelectedPnlDateText => selectedPnlDate.HasValue
-        ? selectedPnlDate.Value.ToString(DisplayDateFormat, CultureInfo.InvariantCulture)
-        : "-";
-    private string LastRunText => lastRunAt.HasValue
-        ? lastRunAt.Value.ToString(DisplayDateTimeFormat, CultureInfo.InvariantCulture)
-        : "-";
     private string SelectedCodeText => string.IsNullOrWhiteSpace(SourceSystemBusinessDataTypeCode)
         ? "-"
         : SourceSystemBusinessDataTypeCode;
@@ -130,10 +100,17 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     private string JobStatusText => string.IsNullOrWhiteSpace(activeJobStatus) ? "-" : activeJobStatus;
     private string SavedParameterSummaryText => string.IsNullOrWhiteSpace(savedParameterSummary) ? "Current submenu selection" : savedParameterSummary;
 
-    protected override async Task OnInitializedAsync()
+    protected override DateOnly? GetCurrentPnlDateFromState()
     {
-        await LoadPnlDatesAsync();
-        PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        return ResolveSelectedPnlDate();
+    }
+
+    protected override bool CanRestoreLatestJob() => HasValidSelection;
+
+    protected override async Task<bool> ValidateBeforeRunAsync()
+    {
+        await ValidateCurrentSelectionAsync(disposeCts.Token);
+        return string.IsNullOrWhiteSpace(selectionError);
     }
 
     protected override async Task OnParametersSetAsync()
@@ -150,9 +127,8 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
             parsedQuery = string.Empty;
             lastAutoLoadKey = null;
             savedParameterSummary = null;
-            activeJobStatus = null;
-            activeJobId = null;
-            StopPolling();
+            await StopPollingAsync();
+            ClearLoadedState();
             return;
         }
 
@@ -164,122 +140,36 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         await EnsureLoadedForCurrentSelectionAsync(force: false);
     }
 
-    private async Task LoadPnlDatesAsync()
+    protected override Task OnPnlDateSelectedCoreAsync()
     {
-        try
-        {
-            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
-            selectedPnlDate = PnlDateState.SelectedDate;
-
-            availableDates.Clear();
-            foreach (var date in PnlDateState.AvailableDates)
-            {
-                availableDates.Add(date);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Unable to load default PNL dates.");
-        }
-    }
-
-    private void OnGlobalPnlDateChanged()
-    {
-        _ = InvokeAsync(async () =>
-        {
-            if (!string.IsNullOrWhiteSpace(PnlDate))
-            {
-                return;
-            }
-
-            selectedPnlDate = PnlDateState.SelectedDate;
-            await EnsureLoadedForCurrentSelectionAsync(force: true);
-            StateHasChanged();
-        });
-    }
-
-    public void Dispose()
-    {
-        PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
-        StopPolling();
-        disposeCts.Cancel();
-        disposeCts.Dispose();
-    }
-
-    private Task OnPnlDateSelected(DateOnly date)
-    {
-        selectedPnlDate = date;
         validationError = null;
         runError = null;
-        UpdatePnlDateQuery(date);
+        if (selectedPnlDate.HasValue)
+        {
+            UpdatePnlDateQuery(selectedPnlDate.Value);
+        }
+
         return Task.CompletedTask;
     }
 
-    private async Task RunAsync()
+    protected override async Task<bool> TryHandleRunExceptionAsync(Exception exception)
     {
-        if (!CanRun || !selectedPnlDate.HasValue)
+        if (exception is not SqlException sqlException || !SqlDataHelper.IsMissingStoredProcedure(sqlException) || !selectedPnlDate.HasValue)
         {
-            validationError = "PNL DATE is required.";
-            return;
+            return false;
         }
 
         var businessDataTypeId = BusinessDataTypeId ?? 0;
 
-        if (!await ValidateCurrentSelectionAsync(disposeCts.Token))
-        {
-            return;
-        }
+        Logger.LogWarning(sqlException,
+            "Monitoring job procedures are unavailable. Falling back to direct Functional Rejection execution for DbConnection {DbConnection}, PnlDate {PnlDate}, BusinessDataTypeId {BusinessDataTypeId}, SourceSystemName {SourceSystemName}.",
+            DbConnection,
+            selectedPnlDate.Value,
+            businessDataTypeId,
+            SourceSystemName);
 
-        isLoading = true;
-        hasRun = true;
-        validationError = null;
-        runError = null;
-        copyMessage = null;
-        showQuery = false;
-
-        try
-        {
-            var parameters = BuildCurrentParameters();
-            var enqueueResult = await MonitoringJobRepository.EnqueueMonitoringJobAsync(
-                MonitoringJobHelper.FunctionalRejectionCategory,
-                BuildCurrentSubmenuKey(),
-                SourceSystemBusinessDataTypeCode,
-                selectedPnlDate.Value,
-                MonitoringJobHelper.SerializeParameters(parameters),
-                MonitoringJobHelper.BuildFunctionalRejectionParameterSummary(parameters),
-                disposeCts.Token);
-
-            activeJobId = enqueueResult.JobId;
-            await RefreshActiveJobAsync(disposeCts.Token);
-            StartPollingIfNeeded();
-        }
-        catch (SqlException ex) when (SqlDataHelper.IsMissingStoredProcedure(ex))
-        {
-            Logger.LogWarning(ex,
-                "Monitoring job procedures are unavailable. Falling back to direct Functional Rejection execution for DbConnection {DbConnection}, PnlDate {PnlDate}, BusinessDataTypeId {BusinessDataTypeId}, SourceSystemName {SourceSystemName}.",
-                DbConnection,
-                selectedPnlDate.Value,
-                businessDataTypeId,
-                SourceSystemName);
-
-            await LoadDirectResultAsync(selectedPnlDate.Value, businessDataTypeId, disposeCts.Token);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(
-                AppLogEvents.MonitoringLoadFailed,
-                ex,
-                "Failed to enqueue Functional Rejection for DbConnection {DbConnection}, PnlDate {PnlDate}, BusinessDataTypeId {BusinessDataTypeId}, SourceSystemName {SourceSystemName}.",
-                DbConnection,
-                selectedPnlDate.Value,
-                businessDataTypeId,
-                SourceSystemName);
-            runError = LoadErrorMessage;
-        }
-        finally
-        {
-            isLoading = false;
-        }
+        await LoadDirectResultAsync(selectedPnlDate.Value, businessDataTypeId, disposeCts.Token);
+        return true;
     }
 
     private async Task LoadDirectResultAsync(DateOnly pnlDate, int businessDataTypeId, CancellationToken cancellationToken)
@@ -301,6 +191,51 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         result = directResult;
         lastRunAt = DateTime.Now;
         runError = null;
+    }
+
+    protected override bool TryPrepareRun(out string? parametersJson, out string? parameterSummary)
+    {
+        if (!CanRun)
+        {
+            validationError = "PNL DATE is required.";
+            parametersJson = null;
+            parameterSummary = null;
+            return false;
+        }
+
+        var parameters = BuildCurrentParameters();
+        parametersJson = MonitoringJobHelper.SerializeParameters(parameters);
+        parameterSummary = MonitoringJobHelper.BuildFunctionalRejectionParameterSummary(parameters);
+        return true;
+    }
+
+    protected override void OnBeforeRun()
+    {
+        copyMessage = null;
+        showQuery = false;
+    }
+
+    protected override void LogRunFailure(Exception exception)
+    {
+        Logger.LogError(
+            AppLogEvents.MonitoringLoadFailed,
+            exception,
+            "Failed to enqueue Functional Rejection for DbConnection {DbConnection}, PnlDate {PnlDate}, BusinessDataTypeId {BusinessDataTypeId}, SourceSystemName {SourceSystemName}.",
+            DbConnection,
+            selectedPnlDate,
+            BusinessDataTypeId,
+            SourceSystemName);
+    }
+
+    protected override bool TryHandleRestoreException(Exception exception)
+    {
+        if (exception is SqlException sqlException && SqlDataHelper.IsMissingStoredProcedure(sqlException))
+        {
+            ClearLoadedState();
+            return true;
+        }
+
+        return false;
     }
 
     private async Task EnsureLoadedForCurrentSelectionAsync(bool force)
@@ -331,113 +266,11 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         }
 
         lastAutoLoadKey = requestKey;
-        await RestoreLatestJobForCurrentSelectionAsync();
+        await RestoreLatestJobAsync();
     }
 
-    private async Task RestoreLatestJobForCurrentSelectionAsync()
+    protected override void ApplyJobCore(MonitoringJobRecord job)
     {
-        StopPolling();
-
-        if (!selectedPnlDate.HasValue)
-        {
-            ClearLoadedState();
-            return;
-        }
-
-        if (!BusinessDataTypeId.HasValue || string.IsNullOrWhiteSpace(SourceSystemName) || string.IsNullOrWhiteSpace(DbConnection))
-        {
-            ClearLoadedState();
-            return;
-        }
-
-        try
-        {
-            var latestJob = await MonitoringJobRepository.GetLatestMonitoringJobAsync(
-                MonitoringJobHelper.FunctionalRejectionCategory,
-                BuildCurrentSubmenuKey(),
-                selectedPnlDate.Value,
-                disposeCts.Token);
-
-            if (latestJob is null)
-            {
-                ClearLoadedState();
-                return;
-            }
-
-            ApplyJob(latestJob);
-            StartPollingIfNeeded();
-        }
-        catch (SqlException ex) when (SqlDataHelper.IsMissingStoredProcedure(ex))
-        {
-            ClearLoadedState();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex,
-                "Unable to restore latest Functional Rejection job for DbConnection {DbConnection}, PnlDate {PnlDate}, BusinessDataTypeId {BusinessDataTypeId}, SourceSystemName {SourceSystemName}.",
-                DbConnection,
-                selectedPnlDate.Value,
-                BusinessDataTypeId.Value,
-                SourceSystemName);
-        }
-    }
-
-    private void StartPollingIfNeeded()
-    {
-        StopPolling();
-
-        if (!activeJobId.HasValue || !IsJobActive)
-        {
-            return;
-        }
-
-        pollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
-        pollTimer = new PeriodicTimer(TimeSpan.FromSeconds(MonitoringJobsOptions.Value.JobPollIntervalSeconds));
-        _ = PollJobAsync(pollTimer, pollCts.Token);
-    }
-
-    private async Task PollJobAsync(PeriodicTimer timer, CancellationToken cancellationToken)
-    {
-        try
-        {
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-            {
-                await RefreshActiveJobAsync(cancellationToken);
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-    }
-
-    private async Task RefreshActiveJobAsync(CancellationToken cancellationToken)
-    {
-        if (!activeJobId.HasValue)
-        {
-            return;
-        }
-
-        var job = await MonitoringJobRepository.GetMonitoringJobByIdAsync(activeJobId.Value, cancellationToken);
-        if (job is null)
-        {
-            return;
-        }
-
-        ApplyJob(job);
-        if (!IsJobActive)
-        {
-            StopPolling();
-        }
-    }
-
-    private void ApplyJob(MonitoringJobRecord job)
-    {
-        activeJobId = job.JobId;
-        activeJobStatus = job.Status;
         activeJobEnqueuedAt = job.EnqueuedAt;
         activeJobStartedAt = job.StartedAt;
         activeJobCompletedAt = job.CompletedAt;
@@ -458,44 +291,28 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         }
 
         parsedQuery = job.ParsedQuery ?? string.Empty;
-        hasRun = true;
-
-        var latestExecution = job.CompletedAt ?? job.StartedAt ?? job.EnqueuedAt;
-        lastRunAt = JvCalculationHelper.ToUtc(latestExecution).ToLocalTime();
-
-        if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
-        {
-            runError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, LoadErrorMessage);
-        }
-        else
-        {
-            runError = null;
-        }
     }
 
-    private void ClearLoadedState()
+    protected override void ClearLoadedStateCore()
     {
-        activeJobId = null;
-        activeJobStatus = null;
         activeJobEnqueuedAt = null;
         activeJobStartedAt = null;
         activeJobCompletedAt = null;
         savedParameterSummary = null;
-        hasRun = false;
         lastAutoLoadKey = null;
-        lastRunAt = null;
         parsedQuery = string.Empty;
         result = null;
-        runError = null;
     }
+
+    protected override bool HasLoadedResult() => result is not null;
 
     private async Task<bool> ValidateCurrentSelectionAsync(CancellationToken cancellationToken)
     {
         if (!HasValidSelection)
         {
             selectionError = "Choose a Functional Rejection submenu item from the navigation menu.";
+            await StopPollingAsync();
             ClearLoadedState();
-            StopPolling();
             return false;
         }
 
@@ -514,8 +331,8 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
             }
 
             selectionError = "Choose a valid Functional Rejection submenu item from the navigation menu.";
+            await StopPollingAsync();
             ClearLoadedState();
-            StopPolling();
             return false;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -526,8 +343,8 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         {
             Logger.LogWarning(ex, "Unable to validate Functional Rejection selection from navigation parameters.");
             selectionError = "Unable to validate Functional Rejection selection right now.";
+            await StopPollingAsync();
             ClearLoadedState();
-            StopPolling();
             return false;
         }
     }
@@ -548,16 +365,6 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
 
         menuItemsForValidation = FunctionalRejectionMenuState.MenuItems;
         return menuItemsForValidation;
-    }
-
-    private void StopPolling()
-    {
-        pollCts?.Cancel();
-        pollCts?.Dispose();
-        pollCts = null;
-
-        pollTimer?.Dispose();
-        pollTimer = null;
     }
 
     private void ToggleQueryVisibility()

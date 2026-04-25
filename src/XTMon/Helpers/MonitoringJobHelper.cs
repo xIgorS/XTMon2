@@ -8,6 +8,8 @@ internal static class MonitoringJobHelper
     public const string DataValidationCategory = "DataValidation";
     public const string FunctionalRejectionCategory = "FunctionalRejection";
     public const string BatchStatusSubmenuKey = "batch-status";
+    public const string DailyBalanceSubmenuKey = "daily-balance";
+    public const string PricingSubmenuKey = "pricing";
     public static IReadOnlyList<string> AllCategories { get; } = [DataValidationCategory, FunctionalRejectionCategory];
     public const string QueuedStatus = "Queued";
     public const string RunningStatus = "Running";

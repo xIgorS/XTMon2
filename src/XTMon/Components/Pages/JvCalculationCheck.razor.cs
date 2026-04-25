@@ -13,13 +13,11 @@ using XTMon.Services;
 
 namespace XTMon.Components.Pages;
 
-public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
+public partial class JvCalculationCheck : PnlDateAwarePageBase<JvCalculationCheck>
 {
     private const string CheckOnlyRequestType = "CheckOnly";
     private const string FixAndCheckRequestType = "FixAndCheck";
     private const string UnknownUserId = "Unknown";
-    private const string DisplayDateFormat = "dd-MM-yyyy";
-    private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string LoadErrorMessage = "Unable to load COB dates right now. Please try again.";
     private const string CheckErrorMessage = "Unable to run JV calculation check right now. Please try again.";
 
@@ -30,13 +28,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     private IOptions<JvCalculationOptions> JvOptions { get; set; } = default!;
 
     [Inject]
-    private ILogger<JvCalculationCheck> Logger { get; set; } = default!;
-
-    [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
-
-    [Inject]
-    private PnlDateState PnlDateState { get; set; } = default!;
 
     [Inject]
     private IBackgroundJobCancellationService BackgroundJobCancellationService { get; set; } = default!;
@@ -47,8 +39,6 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     [CascadingParameter]
     private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
 
-    private readonly HashSet<DateOnly> availableDates = new();
-    private DateOnly? selectedCobDate;
     private string? loadError;
     private string? checkError;
     private bool isLoadingDates;
@@ -73,7 +63,12 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
     private bool isCancellingJob;
     private PeriodicTimer? pollTimer;
     private CancellationTokenSource? pollCts;
-    private readonly CancellationTokenSource disposeCts = new();
+
+    private DateOnly? selectedCobDate
+    {
+        get => selectedPnlDate;
+        set => selectedPnlDate = value;
+    }
 
     private string CobDatesProcedureName => JvOptions.Value.GetPnlDatesStoredProcedure;
     private string JvCheckProcedureName => JvOptions.Value.CheckJvCalculationStoredProcedure;
@@ -98,10 +93,19 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         _ => "jv-status-badge--queued"
     };
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task EnsurePnlDatesLoadedAsync(CancellationToken cancellationToken)
     {
-        await LoadCobDatesAsync();
-        PnlDateState.OnDateChanged += OnGlobalPnlDateChanged;
+        await PnlDateState.EnsureLoadedAsync(Repository, cancellationToken);
+    }
+
+    protected override void HandlePnlDateLoadException(Exception exception)
+    {
+        Logger.LogError(AppLogEvents.JvPageLoadFailed, exception, "Failed to load JV COB dates from procedure {ProcedureName}.", CobDatesProcedureName);
+        loadError = LoadErrorMessage;
+    }
+
+    protected override async Task OnInitializedCoreAsync()
+    {
         await RestoreLatestJobAsync();
         StartPollingIfNeeded();
     }
@@ -114,19 +118,7 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
 
         try
         {
-            await PnlDateState.EnsureLoadedAsync(Repository, disposeCts.Token);
-            selectedCobDate = PnlDateState.SelectedDate;
-
-            availableDates.Clear();
-            foreach (var date in PnlDateState.AvailableDates)
-            {
-                availableDates.Add(date);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(AppLogEvents.JvPageLoadFailed, ex, "Failed to load JV COB dates from procedure {ProcedureName}.", CobDatesProcedureName);
-            loadError = LoadErrorMessage;
+            await ReloadPnlDatesAsync();
         }
         finally
         {
@@ -134,31 +126,24 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         }
     }
 
-    private void OnGlobalPnlDateChanged()
+    protected override async Task OnGlobalPnlDateChangedCoreAsync()
     {
-        _ = InvokeAsync(async () =>
+        checkError = null;
+
+        if (!selectedCobDate.HasValue)
         {
-            selectedCobDate = PnlDateState.SelectedDate;
-            checkError = null;
+            ClearLoadedState();
+            return;
+        }
 
-            if (!selectedCobDate.HasValue)
-            {
-                ClearLoadedState();
-                StateHasChanged();
-                return;
-            }
-
-            await RestoreLatestJobAsync();
-            StartPollingIfNeeded();
-            StateHasChanged();
-        });
+        await RestoreLatestJobAsync();
+        StartPollingIfNeeded();
     }
 
     private Task OnCobDateSelected(DateOnly date)
     {
-        PnlDateState.SetDate(date);
         checkError = null;
-        return Task.CompletedTask;
+        return SetGlobalPnlDateAsync(date);
     }
 
     private async Task RunJvCalculationCheckAsync()
@@ -509,14 +494,9 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
         pollTimer = null;
     }
 
-    public ValueTask DisposeAsync()
+    protected override void DisposeCore()
     {
-        PnlDateState.OnDateChanged -= OnGlobalPnlDateChanged;
         StopPolling();
-        disposeCts.Cancel();
-        disposeCts.Dispose();
-        GC.SuppressFinalize(this);
-        return ValueTask.CompletedTask;
     }
 
     private async Task CopySqlToClipboardAsync()

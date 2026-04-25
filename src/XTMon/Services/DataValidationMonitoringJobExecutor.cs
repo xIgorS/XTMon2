@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using XTMon.Helpers;
-using XTMon.Infrastructure;
 using XTMon.Models;
 using XTMon.Options;
 using XTMon.Repositories;
@@ -11,12 +10,10 @@ namespace XTMon.Services;
 public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly SqlExecutionContextAccessor _sqlExecutionContextAccessor;
 
-    public DataValidationMonitoringJobExecutor(IServiceProvider serviceProvider, SqlExecutionContextAccessor sqlExecutionContextAccessor)
+    public DataValidationMonitoringJobExecutor(IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
-        _sqlExecutionContextAccessor = sqlExecutionContextAccessor;
     }
 
     public bool CanExecute(MonitoringJobRecord job)
@@ -27,8 +24,6 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
 
     public async Task<MonitoringJobResultPayload> ExecuteAsync(MonitoringJobRecord job, CancellationToken cancellationToken)
     {
-        using var _ = _sqlExecutionContextAccessor.BeginMonitoringJobScope(job);
-
         var payload = await (job.SubmenuKey switch
         {
             "referential-data" => ExecuteResultAsync<IReferentialDataRepository, ReferentialDataResult>(repository => repository.GetReferentialDataAsync(job.PnlDate, cancellationToken)),

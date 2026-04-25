@@ -98,6 +98,16 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
 
     public async Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(string workerId, IReadOnlyCollection<string>? excludedCategories, CancellationToken cancellationToken)
     {
+        return await TryTakeNextMonitoringJobAsync(workerId, excludedCategories, includedSubmenuKeys: null, excludedSubmenuKeys: null, cancellationToken);
+    }
+
+    public async Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(
+        string workerId,
+        IReadOnlyCollection<string>? excludedCategories,
+        IReadOnlyCollection<string>? includedSubmenuKeys,
+        IReadOnlyCollection<string>? excludedSubmenuKeys,
+        CancellationToken cancellationToken)
+    {
         var stopwatch = Stopwatch.StartNew();
         try
         {
@@ -109,7 +119,15 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             command.Parameters.Add(new SqlParameter("@WorkerId", SqlDbType.VarChar, 100) { Value = workerId });
             command.Parameters.Add(new SqlParameter("@ExcludedCategoriesCsv", SqlDbType.NVarChar, 4000)
             {
-                Value = BuildExcludedCategoriesCsv(excludedCategories)
+                Value = BuildFilterCsv(excludedCategories)
+            });
+            command.Parameters.Add(new SqlParameter("@IncludedSubmenuKeysCsv", SqlDbType.NVarChar, 4000)
+            {
+                Value = BuildFilterCsv(includedSubmenuKeys)
+            });
+            command.Parameters.Add(new SqlParameter("@ExcludedSubmenuKeysCsv", SqlDbType.NVarChar, 4000)
+            {
+                Value = BuildFilterCsv(excludedSubmenuKeys)
             });
 
             await _connectionFactory.OpenAsync(connection, cancellationToken);
@@ -138,22 +156,22 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
     }
 
-    private static object BuildExcludedCategoriesCsv(IReadOnlyCollection<string>? excludedCategories)
+    private static object BuildFilterCsv(IReadOnlyCollection<string>? values)
     {
-        if (excludedCategories is null || excludedCategories.Count == 0)
+        if (values is null || values.Count == 0)
         {
             return DBNull.Value;
         }
 
-        var categories = excludedCategories
-            .Where(category => !string.IsNullOrWhiteSpace(category))
-            .Select(category => category.Trim())
+        var normalizedValues = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        return categories.Length == 0
+        return normalizedValues.Length == 0
             ? DBNull.Value
-            : string.Join(',', categories);
+            : string.Join(',', normalizedValues);
     }
 
     public async Task<MonitoringJobRecord?> GetMonitoringJobByIdAsync(long jobId, CancellationToken cancellationToken)

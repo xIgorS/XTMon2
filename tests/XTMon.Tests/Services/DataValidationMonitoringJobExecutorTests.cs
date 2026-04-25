@@ -1,6 +1,5 @@
 using Moq;
 using XTMon.Helpers;
-using XTMon.Infrastructure;
 using XTMon.Models;
 using XTMon.Services;
 
@@ -13,7 +12,7 @@ public class DataValidationMonitoringJobExecutorTests
     [Fact]
     public void CanExecute_ReturnsFalse_ForBatchStatus()
     {
-        var executor = new DataValidationMonitoringJobExecutor(Mock.Of<IServiceProvider>(), new SqlExecutionContextAccessor());
+        var executor = new DataValidationMonitoringJobExecutor(Mock.Of<IServiceProvider>());
         var job = MakeJob(MonitoringJobHelper.BatchStatusSubmenuKey);
 
         var canExecute = executor.CanExecute(job);
@@ -24,7 +23,7 @@ public class DataValidationMonitoringJobExecutorTests
     [Fact]
     public void CanExecute_ReturnsTrue_ForOwnedDataValidationSubmenu()
     {
-        var executor = new DataValidationMonitoringJobExecutor(Mock.Of<IServiceProvider>(), new SqlExecutionContextAccessor());
+        var executor = new DataValidationMonitoringJobExecutor(Mock.Of<IServiceProvider>());
         var job = MakeJob("daily-balance");
 
         var canExecute = executor.CanExecute(job);

@@ -1,5 +1,6 @@
 @page "/replay-flows"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits PnlDateAwarePageBase<ReplayFlows>
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "UamRestricted")]
 
 <PageTitle>Replay Flows</PageTitle>

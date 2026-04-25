@@ -1,5 +1,6 @@
 @page "/batch-status"
 @rendermode InteractiveServer
+@inherits MonitoringJobPageBase<BatchStatus>
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "UamRestricted")]
 
 <PageTitle>Batch Status</PageTitle>

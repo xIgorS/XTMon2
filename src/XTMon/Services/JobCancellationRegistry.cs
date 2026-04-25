@@ -6,8 +6,10 @@ public sealed class JobCancellationRegistry
 {
     private readonly ConcurrentDictionary<long, CancellationTokenSource> _monitoringJobTokens = new();
     private readonly ConcurrentDictionary<long, CancellationTokenSource> _jvJobTokens = new();
-    private readonly SemaphoreSlim _monitoringJobCancellationSignal = new(0);
-    private readonly SemaphoreSlim _jvJobCancellationSignal = new(0);
+    private readonly object _monitoringJobCancellationSignalGate = new();
+    private readonly object _jvJobCancellationSignalGate = new();
+    private TaskCompletionSource<bool> _monitoringJobCancellationSignal = CreateCancellationSignal();
+    private TaskCompletionSource<bool> _jvJobCancellationSignal = CreateCancellationSignal();
 
     public void RegisterMonitoringJob(long jobId, CancellationTokenSource cancellationTokenSource)
     {
@@ -34,7 +36,7 @@ public sealed class JobCancellationRegistry
             return false;
         }
 
-        _monitoringJobCancellationSignal.Release();
+        SignalMonitoringJobCancellationRequested();
         return true;
     }
 
@@ -54,7 +56,7 @@ public sealed class JobCancellationRegistry
 
         if (cancelledCount > 0)
         {
-            _monitoringJobCancellationSignal.Release(cancelledCount);
+            SignalMonitoringJobCancellationRequested();
         }
 
         return cancelledCount;
@@ -68,12 +70,25 @@ public sealed class JobCancellationRegistry
 
     public Task WaitForMonitoringJobCancellationAsync(CancellationToken cancellationToken)
     {
-        return _monitoringJobCancellationSignal.WaitAsync(cancellationToken);
+        Task signalTask;
+        lock (_monitoringJobCancellationSignalGate)
+        {
+            signalTask = _monitoringJobCancellationSignal.Task;
+        }
+
+        return signalTask.WaitAsync(cancellationToken);
     }
 
     public void SignalJvJobCancellationRequested()
     {
-        _jvJobCancellationSignal.Release();
+        TaskCompletionSource<bool> signalToRelease;
+        lock (_jvJobCancellationSignalGate)
+        {
+            signalToRelease = _jvJobCancellationSignal;
+            _jvJobCancellationSignal = CreateCancellationSignal();
+        }
+
+        signalToRelease.TrySetResult(true);
     }
 
     public void RegisterJvJob(long jobId, CancellationTokenSource cancellationTokenSource)
@@ -96,7 +111,13 @@ public sealed class JobCancellationRegistry
             return false;
         }
 
-        return TryCancel(cancellationTokenSource);
+        if (!TryCancel(cancellationTokenSource))
+        {
+            return false;
+        }
+
+        SignalJvJobCancellationRequested();
+        return true;
     }
 
     public int CancelAllJvJobs()
@@ -113,12 +134,40 @@ public sealed class JobCancellationRegistry
             cancelledCount++;
         }
 
+        if (cancelledCount > 0)
+        {
+            SignalJvJobCancellationRequested();
+        }
+
         return cancelledCount;
     }
 
     public Task WaitForJvJobCancellationAsync(CancellationToken cancellationToken)
     {
-        return _jvJobCancellationSignal.WaitAsync(cancellationToken);
+        Task signalTask;
+        lock (_jvJobCancellationSignalGate)
+        {
+            signalTask = _jvJobCancellationSignal.Task;
+        }
+
+        return signalTask.WaitAsync(cancellationToken);
+    }
+
+    private void SignalMonitoringJobCancellationRequested()
+    {
+        TaskCompletionSource<bool> signalToRelease;
+        lock (_monitoringJobCancellationSignalGate)
+        {
+            signalToRelease = _monitoringJobCancellationSignal;
+            _monitoringJobCancellationSignal = CreateCancellationSignal();
+        }
+
+        signalToRelease.TrySetResult(true);
+    }
+
+    private static TaskCompletionSource<bool> CreateCancellationSignal()
+    {
+        return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     private static bool TryCancel(CancellationTokenSource cancellationTokenSource)

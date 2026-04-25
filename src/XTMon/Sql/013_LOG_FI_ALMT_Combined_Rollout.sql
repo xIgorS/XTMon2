@@ -130,7 +130,6 @@ AS
 -- SELECT @JobId AS JobId, @AlreadyActive AS AlreadyActive;
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     IF @RequestType IS NULL
         SET @RequestType = 'FixAndCheck';
@@ -195,7 +194,6 @@ AS
 -- EXEC [monitoring].[UspJvJobTakeNext] @WorkerId = 'XTMonWorker01';
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     DECLARE @Now DATETIME2(3) = SYSUTCDATETIME();
     DECLARE @Claimed TABLE ([JobId] BIGINT PRIMARY KEY);
@@ -259,7 +257,6 @@ AS
 -- EXEC [monitoring].[UspJvJobHeartbeat] @JobId = 1;
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET [LastHeartbeatAt] = SYSUTCDATETIME()
@@ -290,7 +287,6 @@ AS
 --     @GridRowsJson = N'[["OK","Done"]]';
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     IF EXISTS (SELECT 1 FROM [monitoring].[JvCalculationJobResults] WHERE [JobId] = @JobId)
     BEGIN
@@ -340,7 +336,6 @@ AS
 -- EXEC [monitoring].[UspJvJobMarkCompleted] @JobId = 1;
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET
@@ -370,7 +365,6 @@ AS
 --     @ErrorMessage = N'JV calculation failed due to timeout.';
 BEGIN
     SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     UPDATE [monitoring].[JvCalculationJobs]
     SET
@@ -889,7 +883,9 @@ DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobTakeNext]
 GO
 CREATE PROCEDURE [monitoring].[UspMonitoringJobTakeNext]
     @WorkerId VARCHAR(100),
-    @ExcludedCategoriesCsv NVARCHAR(4000) = NULL
+    @ExcludedCategoriesCsv NVARCHAR(4000) = NULL,
+    @IncludedSubmenuKeysCsv NVARCHAR(4000) = NULL,
+    @ExcludedSubmenuKeysCsv NVARCHAR(4000) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -897,6 +893,33 @@ BEGIN
     SET LOCK_TIMEOUT 5000;
 
     DECLARE @Selected TABLE ([JobId] BIGINT NOT NULL);
+    DECLARE @ExcludedCategories TABLE ([Category] VARCHAR(64) NOT NULL PRIMARY KEY);
+    DECLARE @IncludedSubmenuKeys TABLE ([SubmenuKey] NVARCHAR(512) NOT NULL PRIMARY KEY);
+    DECLARE @ExcludedSubmenuKeys TABLE ([SubmenuKey] NVARCHAR(512) NOT NULL PRIMARY KEY);
+
+    IF @ExcludedCategoriesCsv IS NOT NULL
+    BEGIN
+        INSERT INTO @ExcludedCategories ([Category])
+        SELECT DISTINCT CONVERT(VARCHAR(64), LTRIM(RTRIM([value])))
+        FROM STRING_SPLIT(@ExcludedCategoriesCsv, ',')
+        WHERE LTRIM(RTRIM([value])) <> '';
+    END
+
+    IF @IncludedSubmenuKeysCsv IS NOT NULL
+    BEGIN
+        INSERT INTO @IncludedSubmenuKeys ([SubmenuKey])
+        SELECT DISTINCT CONVERT(NVARCHAR(512), LTRIM(RTRIM([value])))
+        FROM STRING_SPLIT(@IncludedSubmenuKeysCsv, ',')
+        WHERE LTRIM(RTRIM([value])) <> '';
+    END
+
+    IF @ExcludedSubmenuKeysCsv IS NOT NULL
+    BEGIN
+        INSERT INTO @ExcludedSubmenuKeys ([SubmenuKey])
+        SELECT DISTINCT CONVERT(NVARCHAR(512), LTRIM(RTRIM([value])))
+        FROM STRING_SPLIT(@ExcludedSubmenuKeysCsv, ',')
+        WHERE LTRIM(RTRIM([value])) <> '';
+    END
 
     BEGIN TRANSACTION;
 
@@ -906,12 +929,30 @@ BEGIN
         FROM [monitoring].[MonitoringJobs] WITH (UPDLOCK, READPAST, ROWLOCK)
         WHERE [Status] = 'Queued'
           AND (
-                @ExcludedCategoriesCsv IS NULL
+                NOT EXISTS (SELECT 1 FROM @ExcludedCategories)
                 OR NOT EXISTS
                 (
                     SELECT 1
-                    FROM STRING_SPLIT(@ExcludedCategoriesCsv, ',') AS [excluded]
-                    WHERE LTRIM(RTRIM([excluded].[value])) = [MonitoringJobs].[Category]
+                    FROM @ExcludedCategories AS [excluded]
+                    WHERE [excluded].[Category] = [MonitoringJobs].[Category]
+                )
+              )
+          AND (
+                NOT EXISTS (SELECT 1 FROM @IncludedSubmenuKeys)
+                OR EXISTS
+                (
+                    SELECT 1
+                    FROM @IncludedSubmenuKeys AS [included]
+                    WHERE [included].[SubmenuKey] = [MonitoringJobs].[SubmenuKey]
+                )
+              )
+          AND (
+                NOT EXISTS (SELECT 1 FROM @ExcludedSubmenuKeys)
+                OR NOT EXISTS
+                (
+                    SELECT 1
+                    FROM @ExcludedSubmenuKeys AS [excludedSubmenu]
+                    WHERE [excludedSubmenu].[SubmenuKey] = [MonitoringJobs].[SubmenuKey]
                 )
               )
         ORDER BY [EnqueuedAt], [JobId]

@@ -61,7 +61,7 @@ public sealed class MonitoringJobsOptions
     public int NavAlertPollIntervalSeconds { get; set; } = 30;
 
     [Range(1, 16)]
-    public int MaxConcurrentJobs { get; set; } = 1;
+    public int MaxConcurrentJobs { get; set; } = 3;
 
     public Dictionary<string, int> CategoryMaxConcurrentJobs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

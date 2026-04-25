@@ -37,6 +37,7 @@ public sealed class DataValidationMonitoringJobProcessingService : MonitoringJob
             jobCancellationRegistry,
             processorName: "Data Validation monitoring job processing service",
             ownedCategories: [MonitoringJobHelper.DataValidationCategory],
+            excludedSubmenuKeys: [MonitoringJobHelper.DailyBalanceSubmenuKey, MonitoringJobHelper.PricingSubmenuKey],
             maxConcurrentJobs: GetConfiguredWorkerCount(options.Value, MonitoringJobHelper.DataValidationCategory))
     {
     }
