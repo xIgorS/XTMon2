@@ -157,6 +157,12 @@
                     }
                     else
                     {
+                        @if (!string.IsNullOrWhiteSpace(loadWarning))
+                        {
+                            <tr class="db-grid__row">
+                                <td class="db-grid__cell db-grid__cell--text muted" colspan="10">@loadWarning</td>
+                            </tr>
+                        }
                         @foreach (var row in rows)
                         {
                             <tr class="db-grid__row">

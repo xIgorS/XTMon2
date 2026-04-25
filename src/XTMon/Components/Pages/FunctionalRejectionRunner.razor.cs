@@ -16,7 +16,7 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
     private const string DisplayDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
 
     [Inject]
-    private IFunctionalRejectionRepository FunctionalRejectionRepository { get; set; } = default!;
+    private FunctionalRejectionMenuState FunctionalRejectionMenuState { get; set; } = default!;
 
     [Inject]
     private IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
@@ -50,6 +50,7 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
     private bool isRefreshing;
     private bool isLoadingRows;
     private string? loadError;
+    private string? loadWarning;
     private int selectedRowsCount;
     private int activeChecksCount;
     private string? statusMessage;
@@ -99,30 +100,23 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
     {
         isLoadingRows = true;
         loadError = null;
+        loadWarning = null;
 
         try
         {
-            var items = await FunctionalRejectionRepository.GetMenuItemsAsync(disposeCts.Token);
+            await FunctionalRejectionMenuState.RefreshAsync(disposeCts.Token);
             rows.Clear();
-            foreach (var item in items)
+            foreach (var item in FunctionalRejectionMenuState.MenuItems)
             {
                 rows.Add(new BatchRunRow(item));
             }
 
+            loadError = FunctionalRejectionMenuState.ErrorMessage;
+            loadWarning = FunctionalRejectionMenuState.WarningMessage;
             UpdateSelectedRowsCount();
         }
         catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
         {
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(
-                AppLogEvents.MonitoringLoadFailed,
-                ex,
-                "Failed to load Functional Rejection menu items for batch runner.");
-            loadError = "Unable to load Functional Rejection items right now.";
-            rows.Clear();
-            UpdateSelectedRowsCount();
         }
         finally
         {

@@ -3,10 +3,8 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using XTMon.Helpers;
-using XTMon.Infrastructure;
 using XTMon.Models;
 using XTMon.Options;
-using XTMon.Repositories;
 using XTMon.Services;
 
 namespace XTMon.Components.Layout;
@@ -19,13 +17,10 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
     private CancellationTokenSource? alertsPollCts;
 
     [Inject]
-    private IFunctionalRejectionRepository Repository { get; set; } = default!;
+    private FunctionalRejectionMenuState FunctionalRejectionMenuState { get; set; } = default!;
 
     [Inject]
     private NavigationManager NavigationManager { get; set; } = default!;
-
-    [Inject]
-    private ILogger<FunctionalRejectionNav> Logger { get; set; } = default!;
 
     [Inject]
     private FunctionalRejectionNavAlertState FunctionalRejectionNavAlertState { get; set; } = default!;
@@ -41,6 +36,7 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
     private bool isLoading;
     private string? loadError;
+    private string? loadWarning;
 
     protected override async Task OnInitializedAsync()
     {
@@ -67,25 +63,19 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
     {
         isLoading = true;
         loadError = null;
+        loadWarning = null;
 
         try
         {
-            var items = await Repository.GetMenuItemsAsync(disposeCts.Token);
+            await FunctionalRejectionMenuState.RefreshAsync(disposeCts.Token);
             menuItems.Clear();
-            menuItems.AddRange(items);
+            menuItems.AddRange(FunctionalRejectionMenuState.MenuItems);
+            loadError = FunctionalRejectionMenuState.ErrorMessage;
+            loadWarning = FunctionalRejectionMenuState.WarningMessage;
         }
         catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
         {
             return;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(
-                AppLogEvents.MonitoringLoadFailed,
-                ex,
-                "Failed to load Functional Rejection navigation items.");
-            loadError = "Unable to load Functional Rejection items right now.";
-            menuItems.Clear();
         }
         finally
         {
@@ -235,11 +225,6 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
     {
         var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         var route = relativePath.Split('?', 2)[0].TrimEnd('/');
-
-        if (string.Equals(route, "functional-rejection-runner", StringComparison.OrdinalIgnoreCase))
-        {
-            return GetItemRunState(item) == DataValidationNavRunState.Running;
-        }
 
         if (!string.Equals(route, "functional-rejection", StringComparison.OrdinalIgnoreCase))
         {

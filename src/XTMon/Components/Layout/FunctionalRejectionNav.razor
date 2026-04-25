@@ -57,6 +57,15 @@
         }
         else
         {
+            @if (!string.IsNullOrWhiteSpace(loadWarning))
+            {
+                <span class="submenu-link muted" aria-live="polite">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007v.008H12v-.008ZM10.29 3.86 1.82 18a1.875 1.875 0 0 0 1.607 2.812h16.946A1.875 1.875 0 0 0 21.98 18L13.51 3.86a1.875 1.875 0 0 0-3.22 0Z" />
+                    </svg>
+                    @loadWarning
+                </span>
+            }
             @foreach (var item in menuItems)
             {
                 <a class="@GetSubmenuLinkClass(item)"

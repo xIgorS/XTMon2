@@ -50,6 +50,9 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     [Inject]
     private NavigationManager NavigationManager { get; set; } = default!;
 
+    [Inject]
+    private FunctionalRejectionMenuState FunctionalRejectionMenuState { get; set; } = default!;
+
     [Parameter]
     [SupplyParameterFromQuery(Name = "code")]
     public string? SourceSystemBusinessDataTypeCode { get; set; }
@@ -536,7 +539,14 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
             return menuItemsForValidation;
         }
 
-        menuItemsForValidation = await Repository.GetMenuItemsAsync(cancellationToken);
+        await FunctionalRejectionMenuState.RefreshAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(FunctionalRejectionMenuState.ErrorMessage)
+            && FunctionalRejectionMenuState.MenuItems.Count == 0)
+        {
+            throw new InvalidOperationException(FunctionalRejectionMenuState.ErrorMessage);
+        }
+
+        menuItemsForValidation = FunctionalRejectionMenuState.MenuItems;
         return menuItemsForValidation;
     }
 

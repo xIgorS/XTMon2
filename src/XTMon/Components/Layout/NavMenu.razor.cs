@@ -220,13 +220,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 	{
 		var normalizedRoute = MonitoringJobHelper.BuildDataValidationSubmenuKey(route);
 
-		if (IsCurrentRoute(normalizedRoute))
-		{
-			return true;
-		}
-
-		return IsCurrentRoute(DataValidationCheckCatalog.BatchRunRoute)
-			&& GetDataValidationRunState(normalizedRoute) == DataValidationNavRunState.Running;
+		return IsCurrentRoute(normalizedRoute);
 	}
 
 	private DataValidationNavRunState GetDataValidationAggregateState()

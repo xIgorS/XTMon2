@@ -480,6 +480,7 @@ builder.Services.AddScoped<AuthorizationFeedbackState>();
 builder.Services.AddScoped<PnlDateState>();
 builder.Services.AddScoped<DataValidationNavAlertState>();
 builder.Services.AddScoped<FunctionalRejectionNavAlertState>();
+builder.Services.AddScoped<FunctionalRejectionMenuState>();
 builder.Services.AddScoped<JvCalculationNavAlertState>();
 builder.Services.AddScoped<ReplayFlowsNavAlertState>();
 builder.Services.AddScoped<DatabaseSpaceNavAlertState>();
