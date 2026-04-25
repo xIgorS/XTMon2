@@ -288,6 +288,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             {
                 using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 connectCts.CancelAfter(TimeSpan.FromSeconds(_systemDiagnosticsOptions.CheckConnectionTimeoutSeconds));
+                // Diagnostics intentionally open directly because this path is not tied to a job execution scope.
                 await connection.OpenAsync(connectCts.Token);
             }
             catch (Exception ex)

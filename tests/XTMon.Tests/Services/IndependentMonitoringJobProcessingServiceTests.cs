@@ -208,8 +208,10 @@ public class IndependentMonitoringJobProcessingServiceTests
             await firstJobStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await secondJobStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            await Task.Delay(250);
-            Assert.False(thirdJobStartedTcs.Task.IsCompleted, "The Data Validation processor should stop at its configured worker count of 2.");
+            await AssertRemainsIncompleteAsync(
+                thirdJobStartedTcs.Task,
+                TimeSpan.FromMilliseconds(250),
+                "The Data Validation processor should stop at its configured worker count of 2.");
 
             releaseJobsTcs.TrySetResult(true);
             await thirdJobStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -230,6 +232,17 @@ public class IndependentMonitoringJobProcessingServiceTests
         {
             timeoutCts.Token.ThrowIfCancellationRequested();
             await Task.Delay(25, timeoutCts.Token);
+        }
+    }
+
+    private static async Task AssertRemainsIncompleteAsync(Task task, TimeSpan duration, string? message = null)
+    {
+        using var timeoutCts = new CancellationTokenSource(duration);
+
+        while (!timeoutCts.IsCancellationRequested)
+        {
+            Assert.False(task.IsCompleted, message);
+            await Task.Delay(25, CancellationToken.None);
         }
     }
 

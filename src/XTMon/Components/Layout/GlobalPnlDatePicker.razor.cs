@@ -6,6 +6,8 @@ namespace XTMon.Components.Layout;
 
 public partial class GlobalPnlDatePicker : ComponentBase, IDisposable
 {
+    private readonly CancellationTokenSource disposeCts = new();
+
     [Inject]
     private PnlDateState PnlDateState { get; set; } = default!;
 
@@ -21,7 +23,10 @@ public partial class GlobalPnlDatePicker : ComponentBase, IDisposable
 
         try
         {
-            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, CancellationToken.None);
+            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
@@ -37,7 +42,9 @@ public partial class GlobalPnlDatePicker : ComponentBase, IDisposable
 
     public void Dispose()
     {
+        disposeCts.Cancel();
         PnlDateState.OnDateChanged -= OnPnlDateChanged;
+        disposeCts.Dispose();
     }
 
     private void OnPnlDateChanged()

@@ -7,6 +7,7 @@ public sealed class JobCancellationRegistry
     private readonly ConcurrentDictionary<long, CancellationTokenSource> _monitoringJobTokens = new();
     private readonly ConcurrentDictionary<long, CancellationTokenSource> _jvJobTokens = new();
     private readonly SemaphoreSlim _monitoringJobCancellationSignal = new(0);
+    private readonly SemaphoreSlim _jvJobCancellationSignal = new(0);
 
     public void RegisterMonitoringJob(long jobId, CancellationTokenSource cancellationTokenSource)
     {
@@ -28,7 +29,11 @@ public sealed class JobCancellationRegistry
             return false;
         }
 
-        cancellationTokenSource.Cancel();
+        if (!TryCancel(cancellationTokenSource))
+        {
+            return false;
+        }
+
         _monitoringJobCancellationSignal.Release();
         return true;
     }
@@ -39,18 +44,17 @@ public sealed class JobCancellationRegistry
 
         foreach (var entry in _monitoringJobTokens)
         {
-            if (entry.Value.IsCancellationRequested)
+            if (!TryCancel(entry.Value))
             {
                 continue;
             }
 
-            entry.Value.Cancel();
             cancelledCount++;
         }
 
         if (cancelledCount > 0)
         {
-            _monitoringJobCancellationSignal.Release();
+            _monitoringJobCancellationSignal.Release(cancelledCount);
         }
 
         return cancelledCount;
@@ -65,6 +69,11 @@ public sealed class JobCancellationRegistry
     public Task WaitForMonitoringJobCancellationAsync(CancellationToken cancellationToken)
     {
         return _monitoringJobCancellationSignal.WaitAsync(cancellationToken);
+    }
+
+    public void SignalJvJobCancellationRequested()
+    {
+        _jvJobCancellationSignal.Release();
     }
 
     public void RegisterJvJob(long jobId, CancellationTokenSource cancellationTokenSource)
@@ -87,8 +96,7 @@ public sealed class JobCancellationRegistry
             return false;
         }
 
-        cancellationTokenSource.Cancel();
-        return true;
+        return TryCancel(cancellationTokenSource);
     }
 
     public int CancelAllJvJobs()
@@ -97,15 +105,37 @@ public sealed class JobCancellationRegistry
 
         foreach (var entry in _jvJobTokens)
         {
-            if (entry.Value.IsCancellationRequested)
+            if (!TryCancel(entry.Value))
             {
                 continue;
             }
 
-            entry.Value.Cancel();
             cancelledCount++;
         }
 
         return cancelledCount;
+    }
+
+    public Task WaitForJvJobCancellationAsync(CancellationToken cancellationToken)
+    {
+        return _jvJobCancellationSignal.WaitAsync(cancellationToken);
+    }
+
+    private static bool TryCancel(CancellationTokenSource cancellationTokenSource)
+    {
+        if (cancellationTokenSource.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        try
+        {
+            cancellationTokenSource.Cancel();
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
     }
 }

@@ -113,7 +113,7 @@ public partial class ReverseConsoFile : ComponentBase, IDisposable
     {
         try
         {
-            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, CancellationToken.None);
+            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
             selectedPnlDate = PnlDateState.SelectedDate;
 
             availableDates.Clear();
@@ -153,7 +153,7 @@ public partial class ReverseConsoFile : ComponentBase, IDisposable
 
         try
         {
-            var availableSourceSystems = await Repository.GetSourceSystemsAsync(CancellationToken.None);
+            var availableSourceSystems = await Repository.GetSourceSystemsAsync(disposeCts.Token);
             sourceSystems.Clear();
             sourceSystems.AddRange(availableSourceSystems.Select(static sourceSystem => new SourceSystemSelection(sourceSystem.Code, true)));
         }
@@ -349,7 +349,7 @@ public partial class ReverseConsoFile : ComponentBase, IDisposable
 
         if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
         {
-            runError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? ReverseConsoFileLoadErrorMessage : job.ErrorMessage;
+            runError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, ReverseConsoFileLoadErrorMessage);
         }
         else
         {

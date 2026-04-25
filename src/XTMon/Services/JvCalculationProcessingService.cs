@@ -84,13 +84,13 @@ public sealed class JvCalculationProcessingService : BackgroundService
                 {
                     LogProcessorException(ex, "processing loop poll");
                     _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, ex, "JV calculation processing loop encountered a transient error. Retrying after delay.");
-                    await Task.Delay(_idleDelay, stoppingToken);
+                    await WaitForNextPollOpportunityAsync(stoppingToken);
                     continue;
                 }
 
                 if (job is null)
                 {
-                    await Task.Delay(_idleDelay, stoppingToken);
+                    await WaitForNextPollOpportunityAsync(stoppingToken);
                     continue;
                 }
 
@@ -103,6 +103,13 @@ public sealed class JvCalculationProcessingService : BackgroundService
         }
 
         _logger.LogInformation("JV calculation processing service stopped.");
+    }
+
+    private async Task WaitForNextPollOpportunityAsync(CancellationToken stoppingToken)
+    {
+        var idleDelayTask = Task.Delay(_idleDelay, stoppingToken);
+        var cancellationSignalTask = _jobCancellationRegistry.WaitForJvJobCancellationAsync(stoppingToken);
+        await Task.WhenAny(idleDelayTask, cancellationSignalTask);
     }
 
     private async Task ProcessJobAsync(JvJobRecord job, CancellationToken cancellationToken)
@@ -162,7 +169,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
                 return;
             }
 
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId);
             heartbeatLoopCts = null;
             heartbeatLoopTask = null;
 
@@ -184,18 +191,18 @@ public sealed class JvCalculationProcessingService : BackgroundService
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId);
             throw;
         }
         catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
         {
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId);
             _logger.LogInformation("JV job {JobId} cancellation was requested.", job.JobId);
             await EnsureJvJobMarkedCancelledAsync(job.JobId, cancellationToken);
         }
         catch (Exception ex)
         {
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId);
             LogProcessorException(ex, $"job {job.JobId}");
             _logger.LogError(AppLogEvents.JvProcessorBackgroundFailed, ex, "JV job {JobId} failed.", job.JobId);
 
@@ -207,7 +214,7 @@ public sealed class JvCalculationProcessingService : BackgroundService
         }
         finally
         {
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId);
             _jobCancellationRegistry.UnregisterJvJob(job.JobId, jobCancellation);
         }
     }
@@ -361,7 +368,11 @@ public sealed class JvCalculationProcessingService : BackgroundService
         return await executionTask;
     }
 
-    private static async Task StopHeartbeatLoopAsync(CancellationTokenSource? heartbeatLoopCts, Task? heartbeatLoopTask)
+    private static async Task StopHeartbeatLoopAsync(
+        CancellationTokenSource? heartbeatLoopCts,
+        Task? heartbeatLoopTask,
+        ILogger logger,
+        long jobId)
     {
         if (heartbeatLoopCts is null || heartbeatLoopTask is null)
         {
@@ -379,6 +390,10 @@ public sealed class JvCalculationProcessingService : BackgroundService
         }
         catch (Exception) when (heartbeatLoopTask.IsFaulted)
         {
+            logger.LogWarning(
+                heartbeatLoopTask.Exception,
+                "Heartbeat loop fault was swallowed while stopping JV calculation processing for job {JobId}.",
+                jobId);
         }
         finally
         {

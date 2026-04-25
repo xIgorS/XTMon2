@@ -21,7 +21,8 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
 
     public bool CanExecute(MonitoringJobRecord job)
     {
-        return string.Equals(job.Category, MonitoringJobHelper.DataValidationCategory, StringComparison.Ordinal);
+        return string.Equals(job.Category, MonitoringJobHelper.DataValidationCategory, StringComparison.Ordinal)
+            && !string.Equals(job.SubmenuKey, MonitoringJobHelper.BatchStatusSubmenuKey, StringComparison.Ordinal);
     }
 
     public async Task<MonitoringJobResultPayload> ExecuteAsync(MonitoringJobRecord job, CancellationToken cancellationToken)
@@ -30,7 +31,6 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
 
         var payload = await (job.SubmenuKey switch
         {
-            "batch-status" => ExecuteBatchStatusAsync(job, cancellationToken),
             "referential-data" => ExecuteResultAsync<IReferentialDataRepository, ReferentialDataResult>(repository => repository.GetReferentialDataAsync(job.PnlDate, cancellationToken)),
             "market-data" => ExecuteResultAsync<IMarketDataRepository, MarketDataResult>(repository => repository.GetMarketDataAsync(job.PnlDate, cancellationToken)),
             "out-of-scope-portfolio" => ExecuteResultAsync<IOutOfScopePortfolioRepository, OutOfScopePortfolioResult>(repository => repository.GetOutOfScopePortfolioAsync(job.PnlDate, cancellationToken)),
@@ -65,13 +65,6 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
             payload.ParsedQuery,
             payload.Table,
             DataValidationNavAlertHelper.BuildMetadataJson(job.SubmenuKey, payload.Table));
-    }
-
-    private async Task<MonitoringJobResultPayload> ExecuteBatchStatusAsync(MonitoringJobRecord job, CancellationToken cancellationToken)
-    {
-        var repository = _serviceProvider.GetRequiredService<IBatchStatusRepository>();
-        var table = await repository.GetBatchStatusAsync(job.PnlDate, cancellationToken);
-        return new MonitoringJobResultPayload(null, table, null);
     }
 
     private async Task<MonitoringJobResultPayload> ExecuteDailyBalanceAsync(MonitoringJobRecord job, CancellationToken cancellationToken)

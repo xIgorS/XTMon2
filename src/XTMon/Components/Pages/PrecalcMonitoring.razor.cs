@@ -98,7 +98,7 @@ public partial class PrecalcMonitoring : ComponentBase, IDisposable
     {
         try
         {
-            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, CancellationToken.None);
+            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
             selectedPnlDate = PnlDateState.SelectedDate;
 
             availableDates.Clear();
@@ -284,7 +284,7 @@ public partial class PrecalcMonitoring : ComponentBase, IDisposable
 
         if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
         {
-            runError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? LoadErrorMessage : job.ErrorMessage;
+            runError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, LoadErrorMessage);
         }
         else
         {

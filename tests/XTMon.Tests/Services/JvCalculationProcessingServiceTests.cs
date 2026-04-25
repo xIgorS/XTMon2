@@ -109,8 +109,7 @@ public class JvCalculationProcessingServiceTests
         var (svc, _) = CreateService(repo);
         await svc.StartAsync(CancellationToken.None);
 
-        // Let it idle briefly then stop
-        await Task.Delay(100);
+        await EventuallyAsync(() => repo.Invocations.Any(invocation => invocation.Method.Name == nameof(IJvCalculationRepository.TryTakeNextJvJobAsync)));
         await svc.StopAsync(CancellationToken.None);
 
         repo.Verify(r => r.MarkJvJobCompletedAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -452,10 +451,62 @@ public class JvCalculationProcessingServiceTests
         await service.StartAsync(CancellationToken.None);
 
         await cancellationRequestedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(100);
         await service.StopAsync(CancellationToken.None);
 
         repo.Verify(r => r.MarkJvJobCompletedAsync(1L, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancellationSignal_WakesIdlePollLoop()
+    {
+        var firstPollTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondPollTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new JobCancellationRegistry();
+        var pollCount = 0;
+
+        var repo = BaseRepo();
+        repo.Setup(r => r.TryTakeNextJvJobAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                var currentPoll = Interlocked.Increment(ref pollCount);
+                if (currentPoll == 1)
+                {
+                    firstPollTcs.TrySetResult(true);
+                }
+                else if (currentPoll == 2)
+                {
+                    secondPollTcs.TrySetResult(true);
+                }
+
+                return (JvJobRecord?)null;
+            });
+
+        var (service, _) = CreateService(repo, idleDelay: TimeSpan.FromSeconds(30), jobCancellationRegistry: registry);
+        await service.StartAsync(CancellationToken.None);
+
+        try
+        {
+            await firstPollTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            registry.SignalJvJobCancellationRequested();
+            await secondPollTcs.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        Assert.True(Volatile.Read(ref pollCount) >= 2);
+    }
+
+    private static async Task EventuallyAsync(Func<bool> condition)
+    {
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        while (!condition())
+        {
+            timeoutCts.Token.ThrowIfCancellationRequested();
+            await Task.Delay(25, timeoutCts.Token);
+        }
     }
 
     private static SqlException MakeSqlException(int number, string message)

@@ -148,8 +148,7 @@ public class MonitoringJobProcessingServiceTests
         await service.StartAsync(CancellationToken.None);
 
         await firstStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(150);
-        Assert.False(secondStartedTcs.Task.IsCompleted);
+        await AssertRemainsIncompleteAsync(secondStartedTcs.Task, TimeSpan.FromMilliseconds(150));
 
         firstReleaseTcs.TrySetResult(true);
         await secondStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -750,7 +749,6 @@ public class MonitoringJobProcessingServiceTests
         await service.StartAsync(CancellationToken.None);
 
         await cancellationRequestedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(100);
         await service.StopAsync(CancellationToken.None);
 
         repo.Verify(r => r.MarkMonitoringJobCompletedAsync(1L, It.IsAny<CancellationToken>()), Times.Never);
@@ -842,8 +840,10 @@ public class MonitoringJobProcessingServiceTests
         {
             await firstJobCancelledTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            await Task.Delay(250);
-            Assert.False(secondJobStartedTcs.Task.IsCompleted, "The next queued job must not start while the cancelled task is still unwinding.");
+            await AssertRemainsIncompleteAsync(
+                secondJobStartedTcs.Task,
+                TimeSpan.FromMilliseconds(250),
+                "The next queued job must not start while the cancelled task is still unwinding.");
 
             allowCancelledJobToFinishTcs.TrySetResult(true);
 
@@ -975,8 +975,10 @@ public class MonitoringJobProcessingServiceTests
             await secondJobStartedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await firstJobCancelledTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            await Task.Delay(250);
-            Assert.False(thirdJobStartedTcs.Task.IsCompleted, "A cancelled Data Validation task must still count toward the category limit until it fully unwinds.");
+            await AssertRemainsIncompleteAsync(
+                thirdJobStartedTcs.Task,
+                TimeSpan.FromMilliseconds(250),
+                "A cancelled Data Validation task must still count toward the category limit until it fully unwinds.");
 
             allowCancelledJobToFinishTcs.TrySetResult(true);
 
@@ -1010,6 +1012,17 @@ public class MonitoringJobProcessingServiceTests
         {
             timeoutCts.Token.ThrowIfCancellationRequested();
             await Task.Delay(25, timeoutCts.Token);
+        }
+    }
+
+    private static async Task AssertRemainsIncompleteAsync(Task task, TimeSpan duration, string? message = null)
+    {
+        using var timeoutCts = new CancellationTokenSource(duration);
+
+        while (!timeoutCts.IsCancellationRequested)
+        {
+            Assert.False(task.IsCompleted, message);
+            await Task.Delay(25, CancellationToken.None);
         }
     }
 
@@ -1103,8 +1116,10 @@ public class MonitoringJobProcessingServiceTests
         await executionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Give the heartbeat loop time to emit at least one failing tick.
-        await Task.Delay(TimeSpan.FromMilliseconds(200));
-        Assert.False(completedTcs.Task.IsCompleted, "Execution should still be running; a single heartbeat failure must not cancel it.");
+        await AssertRemainsIncompleteAsync(
+            completedTcs.Task,
+            TimeSpan.FromMilliseconds(200),
+            "Execution should still be running; a single heartbeat failure must not cancel it.");
 
         executionRelease.TrySetResult(true);
         await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -1346,11 +1361,12 @@ public class MonitoringJobProcessingServiceTests
 
         var heartbeatLoopCts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken.None);
         var heartbeatLoopTask = Task.CompletedTask;
+        var logger = NullLogger.Instance;
 
-        var firstStop = (Task)method!.Invoke(null, [heartbeatLoopCts, heartbeatLoopTask])!;
+        var firstStop = (Task)method!.Invoke(null, [heartbeatLoopCts, heartbeatLoopTask, logger, 1L, "test processor"])!;
         await firstStop;
 
-        var secondStop = (Task)method.Invoke(null, [heartbeatLoopCts, heartbeatLoopTask])!;
+        var secondStop = (Task)method.Invoke(null, [heartbeatLoopCts, heartbeatLoopTask, logger, 1L, "test processor"])!;
         await secondStop;
     }
 

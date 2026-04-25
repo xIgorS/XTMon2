@@ -260,8 +260,19 @@ public class MonitoringJobProcessingService : BackgroundService
         {
             using var scope = _scopeFactory.CreateScope();
             var repository = scope.ServiceProvider.GetRequiredService<IMonitoringJobRepository>();
-            var executors = scope.ServiceProvider.GetServices<IMonitoringJobExecutor>();
-            var executor = executors.FirstOrDefault(candidate => candidate.CanExecute(job))
+            var executors = scope.ServiceProvider.GetServices<IMonitoringJobExecutor>().ToList();
+            var matchingExecutors = executors.Where(candidate => candidate.CanExecute(job)).ToList();
+            if (matchingExecutors.Count > 1)
+            {
+                _logger.LogWarning(
+                    "Multiple monitoring executors matched job {JobId} for {Category}/{SubmenuKey}: {ExecutorTypes}. Using the first match.",
+                    job.JobId,
+                    job.Category,
+                    job.SubmenuKey,
+                    string.Join(", ", matchingExecutors.Select(candidate => candidate.GetType().Name)));
+            }
+
+            var executor = matchingExecutors.FirstOrDefault()
                 ?? throw new InvalidOperationException($"No monitoring executor is registered for category '{job.Category}' and submenu '{job.SubmenuKey}'.");
 
             if (!await IsJobActiveAsync(repository, job.JobId, cancellationToken))
@@ -297,7 +308,7 @@ public class MonitoringJobProcessingService : BackgroundService
                 return;
             }
 
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId, _processorName);
             heartbeatLoopCts = null;
             heartbeatLoopTask = null;
 
@@ -319,18 +330,18 @@ public class MonitoringJobProcessingService : BackgroundService
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId, _processorName);
             throw;
         }
         catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
         {
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId, _processorName);
             _logger.LogInformation("Monitoring job {JobId} cancellation was requested.", job.JobId);
             await EnsureMonitoringJobMarkedCancelledAsync(job.JobId, cancellationToken);
         }
         catch (Exception ex)
         {
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId, _processorName);
             LogProcessorException(ex, $"job {job.JobId}");
             _logger.LogError(AppLogEvents.MonitoringProcessorBackgroundFailed, ex, "Monitoring job {JobId} failed.", job.JobId);
 
@@ -342,7 +353,7 @@ public class MonitoringJobProcessingService : BackgroundService
         }
         finally
         {
-            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask);
+            await StopHeartbeatLoopAsync(heartbeatLoopCts, heartbeatLoopTask, _logger, job.JobId, _processorName);
             _jobCancellationRegistry.UnregisterMonitoringJob(job.JobId, jobCancellation);
         }
     }
@@ -528,7 +539,12 @@ public class MonitoringJobProcessingService : BackgroundService
         return await executionTask;
     }
 
-    private static async Task StopHeartbeatLoopAsync(CancellationTokenSource? heartbeatLoopCts, Task? heartbeatLoopTask)
+    private static async Task StopHeartbeatLoopAsync(
+        CancellationTokenSource? heartbeatLoopCts,
+        Task? heartbeatLoopTask,
+        ILogger logger,
+        long jobId,
+        string processorName)
     {
         if (heartbeatLoopCts is null || heartbeatLoopTask is null)
         {
@@ -552,6 +568,11 @@ public class MonitoringJobProcessingService : BackgroundService
         }
         catch (Exception) when (heartbeatLoopTask.IsFaulted)
         {
+            logger.LogWarning(
+                heartbeatLoopTask.Exception,
+                "Heartbeat loop fault was swallowed while stopping {ProcessorName} for monitoring job {JobId}.",
+                processorName,
+                jobId);
         }
         finally
         {

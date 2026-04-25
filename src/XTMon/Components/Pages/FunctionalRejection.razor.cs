@@ -89,6 +89,7 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     private DateTime? activeJobStartedAt;
     private DateTime? activeJobCompletedAt;
     private string? savedParameterSummary;
+    private IReadOnlyList<FunctionalRejectionMenuItem>? menuItemsForValidation;
     private PeriodicTimer? pollTimer;
     private CancellationTokenSource? pollCts;
     private readonly CancellationTokenSource disposeCts = new();
@@ -104,7 +105,9 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     private string MenuProcedureName => FunctionalRejectionOptions.Value.SourceSystemTechnicalRejectStoredProcedure;
     private string ProcedureName => FunctionalRejectionOptions.Value.TechnicalRejectStoredProcedure;
     private string FullyQualifiedMenuProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(FunctionalRejectionOptions.Value.MenuConnectionStringName, MenuProcedureName);
-    private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(ResolveDetailConnectionStringName(), ProcedureName);
+    private string FullyQualifiedProcedureName => TryResolveDetailConnectionStringName(out var connectionStringName)
+        ? JvCalculationHelper.BuildFullyQualifiedProcedureName(connectionStringName, ProcedureName)
+        : "-";
     private string QueryDisplayText => string.IsNullOrWhiteSpace(parsedQuery) ? string.Empty : parsedQuery;
     private string SelectedPnlDateText => selectedPnlDate.HasValue
         ? selectedPnlDate.Value.ToString(DisplayDateFormat, CultureInfo.InvariantCulture)
@@ -150,7 +153,11 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
             return;
         }
 
-        selectionError = null;
+        if (!await ValidateCurrentSelectionAsync(disposeCts.Token))
+        {
+            return;
+        }
+
         await EnsureLoadedForCurrentSelectionAsync(force: false);
     }
 
@@ -158,7 +165,7 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     {
         try
         {
-            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, CancellationToken.None);
+            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
             selectedPnlDate = PnlDateState.SelectedDate;
 
             availableDates.Clear();
@@ -214,6 +221,11 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         }
 
         var businessDataTypeId = BusinessDataTypeId ?? 0;
+
+        if (!await ValidateCurrentSelectionAsync(disposeCts.Token))
+        {
+            return;
+        }
 
         isLoading = true;
         hasRun = true;
@@ -291,6 +303,11 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
     private async Task EnsureLoadedForCurrentSelectionAsync(bool force)
     {
         if (!HasValidSelection)
+        {
+            return;
+        }
+
+        if (!await ValidateCurrentSelectionAsync(disposeCts.Token))
         {
             return;
         }
@@ -445,7 +462,7 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
 
         if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
         {
-            runError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? LoadErrorMessage : job.ErrorMessage;
+            runError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, LoadErrorMessage);
         }
         else
         {
@@ -462,10 +479,65 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
         activeJobCompletedAt = null;
         savedParameterSummary = null;
         hasRun = false;
+        lastAutoLoadKey = null;
         lastRunAt = null;
         parsedQuery = string.Empty;
         result = null;
         runError = null;
+    }
+
+    private async Task<bool> ValidateCurrentSelectionAsync(CancellationToken cancellationToken)
+    {
+        if (!HasValidSelection)
+        {
+            selectionError = "Choose a Functional Rejection submenu item from the navigation menu.";
+            ClearLoadedState();
+            StopPolling();
+            return false;
+        }
+
+        try
+        {
+            var menuItems = await GetMenuItemsForValidationAsync(cancellationToken);
+            if (FunctionalRejectionSelectionHelper.ContainsSelection(
+                menuItems,
+                SourceSystemBusinessDataTypeCode,
+                BusinessDataTypeId,
+                SourceSystemName,
+                DbConnection))
+            {
+                selectionError = null;
+                return true;
+            }
+
+            selectionError = "Choose a valid Functional Rejection submenu item from the navigation menu.";
+            ClearLoadedState();
+            StopPolling();
+            return false;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to validate Functional Rejection selection from navigation parameters.");
+            selectionError = "Unable to validate Functional Rejection selection right now.";
+            ClearLoadedState();
+            StopPolling();
+            return false;
+        }
+    }
+
+    private async Task<IReadOnlyList<FunctionalRejectionMenuItem>> GetMenuItemsForValidationAsync(CancellationToken cancellationToken)
+    {
+        if (menuItemsForValidation is not null)
+        {
+            return menuItemsForValidation;
+        }
+
+        menuItemsForValidation = await Repository.GetMenuItemsAsync(cancellationToken);
+        return menuItemsForValidation;
     }
 
     private void StopPolling()
@@ -596,13 +668,32 @@ public partial class FunctionalRejection : ComponentBase, IDisposable
 
     private string ResolveDetailConnectionStringName()
     {
+        if (TryResolveDetailConnectionStringName(out var connectionStringName))
+        {
+            return connectionStringName;
+        }
+
+        throw new InvalidOperationException($"Unsupported Functional Rejection dbconnexion value '{DbConnection}'.");
+    }
+
+    private bool TryResolveDetailConnectionStringName(out string connectionStringName)
+    {
         if (string.Equals(DbConnection, "DTM", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(DbConnection, "DTM_FI", StringComparison.OrdinalIgnoreCase))
         {
-            return FunctionalRejectionOptions.Value.DtmConnectionStringName;
+            connectionStringName = FunctionalRejectionOptions.Value.DtmConnectionStringName;
+            return true;
         }
 
-        return FunctionalRejectionOptions.Value.StagingConnectionStringName;
+        if (string.Equals(DbConnection, "STAGING", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(DbConnection, "STAGING_FI_ALMT", StringComparison.OrdinalIgnoreCase))
+        {
+            connectionStringName = FunctionalRejectionOptions.Value.StagingConnectionStringName;
+            return true;
+        }
+
+        connectionStringName = string.Empty;
+        return false;
     }
 
     private static string GetColumnAlignmentClass(string columnName) => JvCalculationHelper.GetColumnAlignmentClass(columnName);

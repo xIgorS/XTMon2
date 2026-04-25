@@ -130,7 +130,7 @@ public sealed class ReplayFlowRepository : IReplayFlowRepository
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _replayOptions.CommandTimeoutSeconds;
 
-            var table = new DataTable();
+            using var table = new DataTable();
             table.Columns.Add("FlowIdDerivedFrom", typeof(long));
             table.Columns.Add("FlowId", typeof(long));
             table.Columns.Add("PnlDate", typeof(DateTime));

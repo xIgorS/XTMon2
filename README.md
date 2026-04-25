@@ -265,19 +265,19 @@ Edit `web.config` in the published folder to control the mode:
 
 ### Step 7: Update Connection Strings
 
-Edit `appsettings.json` in the published folder to point to the target SQL Server:
+Provide the target SQL Server connection strings through deployment configuration or environment variables. Use the IIS App Pool identity with integrated security when possible:
 
 ```json
 "ConnectionStrings": {
-    "LogFiAlmt": "Server=PROD_SQL;Database=LOG_FI_ALMT;Integrated Security=true;TrustServerCertificate=True;",
-    "StagingFiAlmt": "Server=PROD_SQL;Database=STAGING_FI_ALMT;Integrated Security=true;TrustServerCertificate=True;",
-    "Publication": "Server=PROD_SQL;Database=PUBLICATION;Integrated Security=true;TrustServerCertificate=True;",
-    "DtmFi": "Server=PROD_SQL;Database=DTM_FI;Integrated Security=true;TrustServerCertificate=True;",
-    "MainUam": "Server=PROD_SQL;Database=MAIN_UAM;Integrated Security=true;TrustServerCertificate=True;"
+   "LogFiAlmt": "Server=PROD_SQL;Database=LOG_FI_ALMT;Integrated Security=true;Encrypt=True;TrustServerCertificate=False;",
+   "StagingFiAlmt": "Server=PROD_SQL;Database=STAGING_FI_ALMT;Integrated Security=true;Encrypt=True;TrustServerCertificate=False;",
+   "Publication": "Server=PROD_SQL;Database=PUBLICATION;Integrated Security=true;Encrypt=True;TrustServerCertificate=False;",
+   "DtmFi": "Server=PROD_SQL;Database=DTM_FI;Integrated Security=true;Encrypt=True;TrustServerCertificate=False;",
+   "MainUam": "Server=PROD_SQL;Database=MAIN_UAM;Integrated Security=true;Encrypt=True;TrustServerCertificate=False;"
 }
 ```
 
-> **Tip:** Use `Integrated Security=true` so the app connects to SQL Server using the IIS App Pool identity.
+> **Tip:** Keep secrets out of committed files. If SQL authentication is required, inject credentials from the hosting environment or a secrets manager, and keep certificate validation enabled in production.
 
 ### What IIS Handles vs What appsettings.json Handles
 

@@ -85,7 +85,7 @@ public partial class FunctionalRejectionRunner : ComponentBase, IDisposable
 
     private async Task LoadPnlDatesAsync()
     {
-        await PnlDateState.EnsureLoadedAsync(PnlDateRepository, CancellationToken.None);
+        await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
         selectedPnlDate = PnlDateState.SelectedDate;
 
         availableDates.Clear();

@@ -31,6 +31,13 @@ internal static class MonitoringDisplayHelper
         return value;
     }
 
+    public static string GetSafeBackgroundJobMessage(string? storedErrorMessage, string fallbackMessage)
+    {
+        return string.IsNullOrWhiteSpace(fallbackMessage)
+            ? "The background job failed."
+            : fallbackMessage;
+    }
+
     public static string GetMonitoringJobCompletionTime(MonitoringJobRecord? job)
     {
         if (job is null)

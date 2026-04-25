@@ -50,6 +50,7 @@ public sealed class BackgroundJobCancellationService : IBackgroundJobCancellatio
 
         await repository.MarkJvJobCancelledAsync(jobId, JvJobCanceledMessage, cancellationToken);
         _jobCancellationRegistry.CancelJvJob(jobId);
+        _jobCancellationRegistry.SignalJvJobCancellationRequested();
         return await VerifyCancellationAsync(
             jobId,
             cancellationToken,
@@ -67,6 +68,11 @@ public sealed class BackgroundJobCancellationService : IBackgroundJobCancellatio
 
         var monitoringJobsCancelled = await monitoringRepository.CancelActiveMonitoringJobsAsync(MonitoringJobCanceledMessage, cancellationToken);
         var jvJobsCancelled = await jvRepository.CancelActiveJvJobsAsync(JvJobCanceledMessage, cancellationToken);
+
+        if (jvWorkersCancellationRequested > 0 || jvJobsCancelled > 0)
+        {
+            _jobCancellationRegistry.SignalJvJobCancellationRequested();
+        }
 
         var activeMonitoringJobsRemaining = await monitoringRepository.CountActiveMonitoringJobsAsync(cancellationToken);
         var activeJvJobsRemaining = await jvRepository.CountActiveJvJobsAsync(cancellationToken);

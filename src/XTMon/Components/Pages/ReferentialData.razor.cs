@@ -84,7 +84,7 @@ public partial class ReferentialData : ComponentBase, IDisposable
     {
         try
         {
-            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, CancellationToken.None);
+            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
             selectedPnlDate = PnlDateState.SelectedDate;
 
             availableDates.Clear();
@@ -270,7 +270,7 @@ public partial class ReferentialData : ComponentBase, IDisposable
 
         if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && result is null)
         {
-            loadError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? LoadErrorMessage : job.ErrorMessage;
+            loadError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, LoadErrorMessage);
         }
         else
         {

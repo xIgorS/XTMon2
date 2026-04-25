@@ -55,6 +55,24 @@ public class MonitoringDisplayHelperTests
     }
 
     [Fact]
+    public void GetSafeBackgroundJobMessage_WhenStoredErrorHasInternalDetails_ReturnsFallback()
+    {
+        var result = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(
+            "SqlException: Login failed for server PROD_SQL. Procedure dbo.Secret failed.",
+            "Unable to load data right now. Please try again.");
+
+        Assert.Equal("Unable to load data right now. Please try again.", result);
+    }
+
+    [Fact]
+    public void GetSafeBackgroundJobMessage_WhenFallbackBlank_ReturnsGenericMessage()
+    {
+        var result = MonitoringDisplayHelper.GetSafeBackgroundJobMessage("internal detail", " ");
+
+        Assert.Equal("The background job failed.", result);
+    }
+
+    [Fact]
     public void GetMonitoringJobCompletionTime_WhenCompletedAtPresent_ReturnsFormattedTime()
     {
         var completedAt = new DateTime(2025, 1, 1, 10, 7, 30);

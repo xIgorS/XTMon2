@@ -80,7 +80,7 @@ public partial class BatchStatus : ComponentBase, IDisposable
     {
         try
         {
-            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, CancellationToken.None);
+            await PnlDateState.EnsureLoadedAsync(PnlDateRepository, disposeCts.Token);
             selectedPnlDate = PnlDateState.SelectedDate;
 
             availableDates.Clear();
@@ -256,7 +256,7 @@ public partial class BatchStatus : ComponentBase, IDisposable
         activeJobEnqueuedAt = job.EnqueuedAt;
         activeJobStartedAt = job.StartedAt;
         activeJobCompletedAt = job.CompletedAt;
-        activeJobError = job.ErrorMessage;
+        activeJobError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, LoadErrorMessage);
 
         var table = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
         gridRows = BatchStatusHelper.BuildGridRows(table);
@@ -267,7 +267,7 @@ public partial class BatchStatus : ComponentBase, IDisposable
 
         if (string.Equals(job.Status, "Failed", StringComparison.OrdinalIgnoreCase) && gridRows.Count == 0)
         {
-            loadError = string.IsNullOrWhiteSpace(job.ErrorMessage) ? LoadErrorMessage : job.ErrorMessage;
+            loadError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, LoadErrorMessage);
         }
         else
         {

@@ -416,15 +416,11 @@ public partial class JvCalculationCheck : ComponentBase, IAsyncDisposable
 
         if (MonitoringJobHelper.IsFailedStatus(job.Status))
         {
-            checkError = string.IsNullOrWhiteSpace(job.ErrorMessage)
-                ? "JV background job failed."
-                : job.ErrorMessage;
+            checkError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, "JV background job failed.");
         }
         else if (MonitoringJobHelper.IsCancelledStatus(job.Status))
         {
-            checkError = string.IsNullOrWhiteSpace(job.ErrorMessage)
-                ? "JV background job was cancelled."
-                : job.ErrorMessage;
+            checkError = MonitoringDisplayHelper.GetSafeBackgroundJobMessage(job.ErrorMessage, "JV background job was cancelled.");
         }
         else
         {
