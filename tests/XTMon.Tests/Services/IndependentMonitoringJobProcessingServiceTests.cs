@@ -1,7 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Data.SqlClient;
 using Moq;
+using System.Reflection;
 using XTMon.Helpers;
 using XTMon.Infrastructure;
 using XTMon.Models;
@@ -296,6 +298,77 @@ public class IndependentMonitoringJobProcessingServiceTests
     }
 
     [Fact]
+    public async Task DataValidationProcessor_FallsBackToLegacyClaimWhenTakeNextProcHasOldSignature()
+    {
+        var startedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var legacyClaimCalls = 0;
+        var extendedClaimCalls = 0;
+        var job = MakeJob(MonitoringJobHelper.DataValidationCategory, MonitoringJobHelper.BatchStatusSubmenuKey, 21L);
+        var payload = new MonitoringJobResultPayload("SELECT 1", new MonitoringTableResult([], []), null);
+
+        var repository = BaseRepo();
+        repository
+            .Setup(repo => repo.TryTakeNextMonitoringJobAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyCollection<string>?>(),
+                It.IsAny<IReadOnlyCollection<string>?>(),
+                It.IsAny<IReadOnlyCollection<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(MakeSqlException(8144, "Procedure or function UspMonitoringJobTakeNext has too many arguments specified."));
+        repository
+            .SetupSequence(repo => repo.TryTakeNextMonitoringJobAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyCollection<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, CancellationToken _) =>
+            {
+                legacyClaimCalls++;
+                Assert.NotNull(excludedCategories);
+                Assert.Contains(MonitoringJobHelper.FunctionalRejectionCategory, excludedCategories!);
+                return job;
+            })
+            .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, CancellationToken _) =>
+            {
+                legacyClaimCalls++;
+                Assert.NotNull(excludedCategories);
+                Assert.Contains(MonitoringJobHelper.FunctionalRejectionCategory, excludedCategories!);
+                return null;
+            });
+        repository
+            .Setup(repo => repo.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()))
+            .Callback(() => completedTcs.TrySetResult(true))
+            .Returns(Task.CompletedTask);
+        repository
+            .Setup(repo => repo.TryTakeNextMonitoringJobAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyCollection<string>?>(),
+                It.IsAny<IReadOnlyCollection<string>?>(),
+                It.IsAny<IReadOnlyCollection<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback(() => Interlocked.Increment(ref extendedClaimCalls))
+            .ThrowsAsync(MakeSqlException(8144, "Procedure or function UspMonitoringJobTakeNext has too many arguments specified."));
+
+        var executor = new StubExecutor(
+            candidate => string.Equals(candidate.Category, MonitoringJobHelper.DataValidationCategory, StringComparison.Ordinal),
+            (_, _) =>
+            {
+                startedTcs.TrySetResult(true);
+                return Task.FromResult(payload);
+            });
+
+        var service = CreateDataValidationService(repository, [executor]);
+
+        await service.StartAsync(CancellationToken.None);
+        await startedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Equal(1, Volatile.Read(ref extendedClaimCalls));
+        Assert.True(Volatile.Read(ref legacyClaimCalls) >= 2);
+    }
+
+    [Fact]
     public async Task PricingProcessor_ClaimsOnlyPricingSubmenu()
     {
         var startedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -434,5 +507,54 @@ public class IndependentMonitoringJobProcessingServiceTests
 
         public Task<MonitoringJobResultPayload> ExecuteAsync(MonitoringJobRecord job, CancellationToken cancellationToken) =>
             _execute(job, cancellationToken);
+    }
+
+    private static SqlException MakeSqlException(int number, string message)
+    {
+        const BindingFlags nonPublicInstance = BindingFlags.NonPublic | BindingFlags.Instance;
+
+        var errorCtor = typeof(SqlError)
+            .GetConstructors(nonPublicInstance)
+            .First(ctor =>
+            {
+                var parameters = ctor.GetParameters();
+                return parameters.Length >= 8
+                    && parameters[0].ParameterType == typeof(int)
+                    && parameters[3].ParameterType == typeof(string);
+            });
+
+        var errorArgs = errorCtor.GetParameters()
+            .Select(parameter => parameter.ParameterType == typeof(int) ? number
+                : parameter.ParameterType == typeof(byte) ? (object)(byte)0
+                : parameter.ParameterType == typeof(Exception) ? null!
+                : parameter.ParameterType == typeof(uint) ? 0u
+                : parameter.ParameterType == typeof(string) ? message
+                : parameter.HasDefaultValue ? parameter.DefaultValue!
+                : parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType)!
+                : null)
+            .ToArray();
+
+        var error = (SqlError)errorCtor.Invoke(errorArgs);
+
+        var collectionCtor = typeof(SqlErrorCollection).GetConstructors(nonPublicInstance)[0];
+        var errors = (SqlErrorCollection)collectionCtor.Invoke(Array.Empty<object>());
+        var addMethod = typeof(SqlErrorCollection).GetMethod("Add", nonPublicInstance)!;
+        addMethod.Invoke(errors, [error]);
+
+        var exceptionCtor = typeof(SqlException)
+            .GetConstructors(nonPublicInstance)
+            .First(ctor => ctor.GetParameters().Any(parameter => parameter.ParameterType == typeof(SqlErrorCollection)));
+
+        var exceptionArgs = exceptionCtor.GetParameters()
+            .Select(parameter => parameter.ParameterType == typeof(string) ? message
+                : parameter.ParameterType == typeof(SqlErrorCollection) ? errors
+                : parameter.ParameterType == typeof(Exception) ? null!
+                : parameter.ParameterType == typeof(Guid) ? Guid.NewGuid()
+                : parameter.HasDefaultValue ? parameter.DefaultValue!
+                : parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType)!
+                : null)
+            .ToArray();
+
+        return (SqlException)exceptionCtor.Invoke(exceptionArgs);
     }
 }

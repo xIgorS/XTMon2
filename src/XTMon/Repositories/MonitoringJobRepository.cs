@@ -113,6 +113,9 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         {
             using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
             using var command = connection.CreateCommand();
+            var includedSubmenuKeysCsv = BuildFilterCsv(includedSubmenuKeys);
+            var excludedSubmenuKeysCsv = BuildFilterCsv(excludedSubmenuKeys);
+
             command.CommandText = _options.JobTakeNextStoredProcedure;
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
@@ -121,14 +124,22 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             {
                 Value = BuildFilterCsv(excludedCategories)
             });
-            command.Parameters.Add(new SqlParameter("@IncludedSubmenuKeysCsv", SqlDbType.NVarChar, 4000)
+
+            if (includedSubmenuKeysCsv is not DBNull)
             {
-                Value = BuildFilterCsv(includedSubmenuKeys)
-            });
-            command.Parameters.Add(new SqlParameter("@ExcludedSubmenuKeysCsv", SqlDbType.NVarChar, 4000)
+                command.Parameters.Add(new SqlParameter("@IncludedSubmenuKeysCsv", SqlDbType.NVarChar, 4000)
+                {
+                    Value = includedSubmenuKeysCsv
+                });
+            }
+
+            if (excludedSubmenuKeysCsv is not DBNull)
             {
-                Value = BuildFilterCsv(excludedSubmenuKeys)
-            });
+                command.Parameters.Add(new SqlParameter("@ExcludedSubmenuKeysCsv", SqlDbType.NVarChar, 4000)
+                {
+                    Value = excludedSubmenuKeysCsv
+                });
+            }
 
             await _connectionFactory.OpenAsync(connection, cancellationToken);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);

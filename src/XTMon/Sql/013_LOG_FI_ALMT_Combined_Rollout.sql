@@ -894,8 +894,8 @@ BEGIN
 
     DECLARE @Selected TABLE ([JobId] BIGINT NOT NULL);
     DECLARE @ExcludedCategories TABLE ([Category] VARCHAR(64) NOT NULL PRIMARY KEY);
-    DECLARE @IncludedSubmenuKeys TABLE ([SubmenuKey] NVARCHAR(512) NOT NULL PRIMARY KEY);
-    DECLARE @ExcludedSubmenuKeys TABLE ([SubmenuKey] NVARCHAR(512) NOT NULL PRIMARY KEY);
+    DECLARE @IncludedSubmenuKeys TABLE ([SubmenuKey] NVARCHAR(512) NOT NULL);
+    DECLARE @ExcludedSubmenuKeys TABLE ([SubmenuKey] NVARCHAR(512) NOT NULL);
 
     IF @ExcludedCategoriesCsv IS NOT NULL
     BEGIN

@@ -26,6 +26,7 @@ BEGIN
 END;
 
 DECLARE @PatchedDefinition NVARCHAR(MAX) = @CurrentDefinition;
+DECLARE @NormalizedDefinition NVARCHAR(MAX);
 
 SET @PatchedDefinition = REPLACE(
     @PatchedDefinition,
@@ -40,50 +41,40 @@ SET @PatchedDefinition = REPLACE(
     N'ALTER PROCEDURE [monitoring].[UspXtgMonitoringBalancesCalculation]',
     N'CREATE OR ALTER PROCEDURE [monitoring].[UspXtgMonitoringBalancesCalculation]');
 
-IF CHARINDEX(N'coalesce(arkflowP, 0) < coalesce(arkflowP, 0)', @PatchedDefinition) > 0
-BEGIN
-    SET @PatchedDefinition = REPLACE(
-        @PatchedDefinition,
-        N'coalesce(arkflowP, 0) < coalesce(arkflowP, 0)',
-        N'coalesce(arkflowP, 0) < coalesce(arkflow1P, 0)');
-END
-ELSE IF CHARINDEX(N'coalesce(arkflowP, 0) < coalesce(arkflow1P, 0)', @PatchedDefinition) = 0
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'coalesce(arkflowP, 0) < coalesce(arkflowP, 0)', N'coalesce(arkflowP, 0) < coalesce(arkflow1P, 0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'coalesce(arkflowP,0) < coalesce(arkflowP,0)', N'coalesce(arkflowP,0) < coalesce(arkflow1P,0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'coalesce(arkflowP, 0)<coalesce(arkflowP, 0)', N'coalesce(arkflowP, 0)<coalesce(arkflow1P, 0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'coalesce(arkflowP,0)<coalesce(arkflowP,0)', N'coalesce(arkflowP,0)<coalesce(arkflow1P,0)');
+SET @NormalizedDefinition = REPLACE(REPLACE(REPLACE(REPLACE(@PatchedDefinition, CHAR(13), N''), CHAR(10), N''), CHAR(9), N''), N' ', N'');
+IF CHARINDEX(N'coalesce(arkflowP,0)<coalesce(arkflow1P,0)', @NormalizedDefinition) = 0
 BEGIN
     THROW 50001, 'Hotfix aborted: expected arkflowP fragment was not found in the deployed procedure text.', 1;
 END;
 
-IF CHARINDEX(N'coalesce(arkflowS, 0) < coalesce(arkflowS, 0)', @PatchedDefinition) > 0
-BEGIN
-    SET @PatchedDefinition = REPLACE(
-        @PatchedDefinition,
-        N'coalesce(arkflowS, 0) < coalesce(arkflowS, 0)',
-        N'coalesce(arkflowS, 0) < coalesce(arkflow1S, 0)');
-END
-ELSE IF CHARINDEX(N'coalesce(arkflowS, 0) < coalesce(arkflow1S, 0)', @PatchedDefinition) = 0
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'coalesce(arkflowS, 0) < coalesce(arkflowS, 0)', N'coalesce(arkflowS, 0) < coalesce(arkflow1S, 0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'coalesce(arkflowS,0) < coalesce(arkflowS,0)', N'coalesce(arkflowS,0) < coalesce(arkflow1S,0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'coalesce(arkflowS, 0)<coalesce(arkflowS, 0)', N'coalesce(arkflowS, 0)<coalesce(arkflow1S, 0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'coalesce(arkflowS,0)<coalesce(arkflowS,0)', N'coalesce(arkflowS,0)<coalesce(arkflow1S,0)');
+SET @NormalizedDefinition = REPLACE(REPLACE(REPLACE(REPLACE(@PatchedDefinition, CHAR(13), N''), CHAR(10), N''), CHAR(9), N''), N' ', N'');
+IF CHARINDEX(N'coalesce(arkflowS,0)<coalesce(arkflow1S,0)', @NormalizedDefinition) = 0
 BEGIN
     THROW 50002, 'Hotfix aborted: expected arkflowS fragment was not found in the deployed procedure text.', 1;
 END;
 
-IF CHARINDEX(N'WHERE pnldate = @PnLDate AND IsAdj = 0 OR @IsAdjSplitted = 0', @PatchedDefinition) > 0
-BEGIN
-    SET @PatchedDefinition = REPLACE(
-        @PatchedDefinition,
-        N'WHERE pnldate = @PnLDate AND IsAdj = 0 OR @IsAdjSplitted = 0',
-        N'WHERE pnldate = @PnLDate AND (IsAdj = 0 OR @IsAdjSplitted = 0)');
-END
-ELSE IF CHARINDEX(N'WHERE pnldate = @PnLDate AND (IsAdj = 0 OR @IsAdjSplitted = 0)', @PatchedDefinition) = 0
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'WHERE pnldate = @PnLDate AND IsAdj = 0 OR @IsAdjSplitted = 0', N'WHERE pnldate = @PnLDate AND (IsAdj = 0 OR @IsAdjSplitted = 0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'WHERE pnldate = @PnLDate AND IsAdj=0 OR @IsAdjSplitted=0', N'WHERE pnldate = @PnLDate AND (IsAdj = 0 OR @IsAdjSplitted = 0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'WHERE pnldate=@PnLDate AND IsAdj=0 OR @IsAdjSplitted=0', N'WHERE pnldate = @PnLDate AND (IsAdj = 0 OR @IsAdjSplitted = 0)');
+SET @NormalizedDefinition = REPLACE(REPLACE(REPLACE(REPLACE(@PatchedDefinition, CHAR(13), N''), CHAR(10), N''), CHAR(9), N''), N' ', N'');
+IF CHARINDEX(N'WHEREpnldate=@PnLDateAND(IsAdj=0OR@IsAdjSplitted=0)', @NormalizedDefinition) = 0
 BEGIN
     THROW 50003, 'Hotfix aborted: expected current-day IsAdj filter fragment was not found in the deployed procedure text.', 1;
 END;
 
-IF CHARINDEX(N'WHERE pnldate = @PrevPnL AND IsAdj = 0 OR @IsAdjSplitted = 0', @PatchedDefinition) > 0
-BEGIN
-    SET @PatchedDefinition = REPLACE(
-        @PatchedDefinition,
-        N'WHERE pnldate = @PrevPnL AND IsAdj = 0 OR @IsAdjSplitted = 0',
-        N'WHERE pnldate = @PrevPnL AND (IsAdj = 0 OR @IsAdjSplitted = 0)');
-END
-ELSE IF CHARINDEX(N'WHERE pnldate = @PrevPnL AND (IsAdj = 0 OR @IsAdjSplitted = 0)', @PatchedDefinition) = 0
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'WHERE pnldate = @PrevPnL AND IsAdj = 0 OR @IsAdjSplitted = 0', N'WHERE pnldate = @PrevPnL AND (IsAdj = 0 OR @IsAdjSplitted = 0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'WHERE pnldate = @PrevPnL AND IsAdj=0 OR @IsAdjSplitted=0', N'WHERE pnldate = @PrevPnL AND (IsAdj = 0 OR @IsAdjSplitted = 0)');
+SET @PatchedDefinition = REPLACE(@PatchedDefinition, N'WHERE pnldate=@PrevPnL AND IsAdj=0 OR @IsAdjSplitted=0', N'WHERE pnldate = @PrevPnL AND (IsAdj = 0 OR @IsAdjSplitted = 0)');
+SET @NormalizedDefinition = REPLACE(REPLACE(REPLACE(REPLACE(@PatchedDefinition, CHAR(13), N''), CHAR(10), N''), CHAR(9), N''), N' ', N'');
+IF CHARINDEX(N'WHEREpnldate=@PrevPnLAND(IsAdj=0OR@IsAdjSplitted=0)', @NormalizedDefinition) = 0
 BEGIN
     THROW 50004, 'Hotfix aborted: expected previous-day IsAdj filter fragment was not found in the deployed procedure text.', 1;
 END;

@@ -12,6 +12,7 @@ namespace XTMon.Services;
 public class MonitoringJobProcessingService : BackgroundService
 {
     private const long SlowPollStageThresholdMilliseconds = 1000;
+    private const int TooManyArgumentsSqlErrorNumber = 8144;
     private const string StaleRunningJobErrorMessage = "Monitoring background job timed out while in Running status and was auto-failed.";
     private const int HeartbeatMaxConsecutiveFailures = 3;
     private const int MarkStateMaxAttempts = 3;
@@ -29,7 +30,9 @@ public class MonitoringJobProcessingService : BackgroundService
     private readonly string[] _claimExcludedCategories;
     private readonly string[] _claimIncludedSubmenuKeys;
     private readonly string[] _claimExcludedSubmenuKeys;
+    private readonly bool _hasClaimSubmenuKeyFilters;
     private readonly bool _isClaimScopedProcessor;
+    private int _claimSubmenuKeyFallbackToLegacy;
 
     public MonitoringJobProcessingService(
         IServiceScopeFactory scopeFactory,
@@ -66,6 +69,7 @@ public class MonitoringJobProcessingService : BackgroundService
         _claimExcludedCategories = BuildClaimExcludedCategories(ownedCategories);
         _claimIncludedSubmenuKeys = BuildClaimSubmenuKeys(includedSubmenuKeys);
         _claimExcludedSubmenuKeys = BuildClaimSubmenuKeys(excludedSubmenuKeys);
+        _hasClaimSubmenuKeyFilters = _claimIncludedSubmenuKeys.Length > 0 || _claimExcludedSubmenuKeys.Length > 0;
         _isClaimScopedProcessor = _claimExcludedCategories.Length > 0 || _claimIncludedSubmenuKeys.Length > 0 || _claimExcludedSubmenuKeys.Length > 0;
     }
 
@@ -223,12 +227,7 @@ public class MonitoringJobProcessingService : BackgroundService
         {
             if (_isClaimScopedProcessor)
             {
-                return await repository.TryTakeNextMonitoringJobAsync(
-                    Environment.MachineName,
-                    _claimExcludedCategories,
-                    _claimIncludedSubmenuKeys,
-                    _claimExcludedSubmenuKeys,
-                    cancellationToken);
+                return await TryTakeNextClaimScopedMonitoringJobAsync(repository, cancellationToken);
             }
 
             var prioritizedExcludedCategories = preferredExcludedCategories
@@ -255,6 +254,37 @@ public class MonitoringJobProcessingService : BackgroundService
         finally
         {
             LogSlowPollStage("take-next", stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    private async Task<MonitoringJobRecord?> TryTakeNextClaimScopedMonitoringJobAsync(
+        IMonitoringJobRepository repository,
+        CancellationToken cancellationToken)
+    {
+        if (!_hasClaimSubmenuKeyFilters || Volatile.Read(ref _claimSubmenuKeyFallbackToLegacy) != 0)
+        {
+            return await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, _claimExcludedCategories, cancellationToken);
+        }
+
+        try
+        {
+            return await repository.TryTakeNextMonitoringJobAsync(
+                Environment.MachineName,
+                _claimExcludedCategories,
+                _claimIncludedSubmenuKeys,
+                _claimExcludedSubmenuKeys,
+                cancellationToken);
+        }
+        catch (SqlException ex) when (ex.Number == TooManyArgumentsSqlErrorNumber)
+        {
+            if (Interlocked.Exchange(ref _claimSubmenuKeyFallbackToLegacy, 1) == 0)
+            {
+                _logger.LogWarning(
+                    "{ProcessorName} detected a legacy monitoring take-next stored procedure signature. XTMon will keep claiming jobs without submenu filters until the application restarts.",
+                    _processorName);
+            }
+
+            return await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, _claimExcludedCategories, cancellationToken);
         }
     }
 
