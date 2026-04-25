@@ -16,6 +16,7 @@ public interface IMonitoringJobRepository
     Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(string workerId, CancellationToken cancellationToken);
     Task<MonitoringJobRecord?> TryTakeNextMonitoringJobAsync(string workerId, IReadOnlyCollection<string>? excludedCategories, CancellationToken cancellationToken);
     Task<MonitoringJobRecord?> GetMonitoringJobByIdAsync(long jobId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<MonitoringJobRecord>> GetActiveMonitoringJobsAsync(CancellationToken cancellationToken);
     Task<MonitoringJobRecord?> GetLatestMonitoringJobAsync(string category, string submenuKey, DateOnly pnlDate, CancellationToken cancellationToken);
     Task<IReadOnlyList<MonitoringJobRecord>> GetLatestMonitoringJobsByCategoryAsync(string category, DateOnly pnlDate, CancellationToken cancellationToken);
     Task SaveMonitoringJobResultAsync(long jobId, MonitoringJobResultPayload payload, CancellationToken cancellationToken);
@@ -23,8 +24,10 @@ public interface IMonitoringJobRepository
     Task MarkMonitoringJobFailedAsync(long jobId, string errorMessage, CancellationToken cancellationToken);
     Task MarkMonitoringJobCancelledAsync(long jobId, string errorMessage, CancellationToken cancellationToken);
     Task HeartbeatMonitoringJobAsync(long jobId, CancellationToken cancellationToken);
+    Task<IReadOnlySet<long>> GetRunningMonitoringJobIdsByDmvAsync(CancellationToken cancellationToken);
     Task<int> CancelActiveMonitoringJobsAsync(string errorMessage, CancellationToken cancellationToken);
     Task<int> CountActiveMonitoringJobsAsync(CancellationToken cancellationToken);
+    Task<int> RecoverOrphanedMonitoringJobsAsync(TimeSpan minimumActivityAge, string errorMessage, CancellationToken cancellationToken);
     Task<int> FailRunningMonitoringJobsAsync(string errorMessage, CancellationToken cancellationToken);
     Task<int> ExpireStaleRunningMonitoringJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken);
     Task<IReadOnlyList<MonitoringJobRecord>> GetStuckMonitoringJobsAsync(TimeSpan activityOlderThan, CancellationToken cancellationToken);

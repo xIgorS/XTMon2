@@ -1112,7 +1112,6 @@ DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetRuntimeByDmv]
 GO
 CREATE PROCEDURE [monitoring].[UspMonitoringJobGetRuntimeByDmv]
     @JobId BIGINT = NULL
-WITH EXECUTE AS OWNER
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -1172,11 +1171,10 @@ BEGIN
         ) AS [ec]
         OUTER APPLY
         (
-            SELECT [lead_blocker] = 1
-            FROM [master].[dbo].[sysprocesses] AS [sp]
-            WHERE [sp].[spid] IN (SELECT [blocked] FROM [master].[dbo].[sysprocesses])
-              AND [sp].[blocked] = 0
-              AND [sp].[spid] = [er].[session_id]
+                        SELECT TOP (1) [lead_blocker] = 1
+                        FROM [sys].[dm_exec_requests] AS [blocked]
+                        WHERE [blocked].[blocking_session_id] = [er].[session_id]
+                            AND [blocked].[blocking_session_id] > 0
         ) AS [lb]
         WHERE DATALENGTH([ses].[context_info]) >= 16
           AND SUBSTRING([ses].[context_info], 1, 8) = 0x58544D4F4E4A4F42
@@ -1227,7 +1225,6 @@ GO
 CREATE PROCEDURE [monitoring].[UspMonitoringJobRecoverOrphanedRunningByDmv]
     @MinimumActivityAgeSeconds INT = 0,
     @ErrorMessage NVARCHAR(MAX)
-WITH EXECUTE AS OWNER
 AS
 BEGIN
     SET NOCOUNT ON;

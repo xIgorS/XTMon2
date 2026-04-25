@@ -54,6 +54,10 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private StuckJobsReport? stuckJobsReport;
     private string? stuckJobsMessage;
     private bool stuckJobsIsError;
+    private bool isLoadingProcessorHealth;
+    private MonitoringProcessorHealthReport? processorHealthReport;
+    private string? processorHealthMessage;
+    private bool processorHealthIsError;
     private bool ShowCleanupButtons => SystemDiagnosticsOptions.Value.ShowCleanupButtons;
     private MonitoringJobConcurrencyPolicy EffectiveMonitoringJobConcurrencyPolicy => BuildMonitoringJobConcurrencyPolicy(MonitoringJobsOptions.Value);
 
@@ -207,6 +211,32 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         }
     }
 
+    private async Task LoadProcessorHealthAsync()
+    {
+        isLoadingProcessorHealth = true;
+        processorHealthMessage = null;
+        processorHealthIsError = false;
+
+        try
+        {
+            processorHealthReport = await JobDiagnosticsService.GetMonitoringProcessorHealthReportAsync(disposeCts.Token);
+            processorHealthMessage = BuildProcessorHealthMessage(processorHealthReport);
+        }
+        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load monitoring processor health.");
+            processorHealthMessage = SystemDiagnosticsErrorHelper.BuildFailureMessage(ex, "Unable to load monitoring processor health right now.");
+            processorHealthIsError = true;
+        }
+        finally
+        {
+            isLoadingProcessorHealth = false;
+        }
+    }
+
     private async Task CleanHistoryAsync()
     {
         isCleaningHistory = true;
@@ -282,6 +312,21 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
 
         var normalized = detail.Replace(Environment.NewLine, " ", StringComparison.Ordinal).Trim();
         return $" ({normalized})";
+    }
+
+    private static string BuildProcessorHealthMessage(MonitoringProcessorHealthReport report)
+    {
+        if (!report.DmvAvailable)
+        {
+            return "DMV runtime lookup is unavailable, so live worker health could not be verified.";
+        }
+
+        if (!report.HasIssues)
+        {
+            return $"No underfilled monitoring processors detected. Queued-job backlog is only flagged after {report.QueueBacklogGracePeriod.TotalSeconds:0} seconds.";
+        }
+
+        return $"Detected {report.IssueCount} processor issue(s). A processor is flagged when queued work waits longer than {report.QueueBacklogGracePeriod.TotalSeconds:0} seconds while live DMV runtime stays below the configured worker count.";
     }
 
     public ValueTask DisposeAsync()

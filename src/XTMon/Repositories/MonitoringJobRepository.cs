@@ -194,6 +194,69 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         }
     }
 
+    public async Task<IReadOnlyList<MonitoringJobRecord>> GetActiveMonitoringJobsAsync(CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const string commandName = "get-active-monitoring-jobs";
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT [JobId],
+       [Category],
+       [SubmenuKey],
+       [DisplayName],
+       [PnlDate],
+       [Status],
+       [WorkerId],
+       [ParametersJson],
+       [ParameterSummary],
+       [EnqueuedAt],
+       [StartedAt],
+       [LastHeartbeatAt],
+       [CompletedAt],
+       [FailedAt],
+       [ErrorMessage],
+       [ParsedQuery],
+       [GridColumnsJson],
+       [GridRowsJson],
+       [MetadataJson],
+       [SavedAt]
+FROM [monitoring].[MonitoringJobs]
+WHERE [Status] IN ('Queued', 'Running')
+ORDER BY [Category], [EnqueuedAt], [JobId];";
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+
+            var jobs = new List<MonitoringJobRecord>();
+
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                jobs.Add(ReadMonitoringJobRecord(reader));
+            }
+
+            return jobs;
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(GetActiveMonitoringJobsAsync), commandName, stopwatch.ElapsedMilliseconds);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring active job list query failed.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(GetActiveMonitoringJobsAsync), commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     public async Task<MonitoringJobRecord?> GetLatestMonitoringJobAsync(string category, string submenuKey, DateOnly pnlDate, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -342,6 +405,52 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         return ExecuteMonitoringJobStateProcedureAsync(_options.JobHeartbeatStoredProcedure, jobId, null, cancellationToken);
     }
 
+    public async Task<IReadOnlySet<long>> GetRunningMonitoringJobIdsByDmvAsync(CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var commandName = _options.JobGetRuntimeByDmvStoredProcedure;
+
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = commandName;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+
+            var activeJobIds = new HashSet<long>();
+
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (reader["JobId"] is long jobId)
+                {
+                    activeJobIds.Add(jobId);
+                    continue;
+                }
+
+                activeJobIds.Add(Convert.ToInt64(reader["JobId"], CultureInfo.InvariantCulture));
+            }
+
+            return activeJobIds;
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(GetRunningMonitoringJobIdsByDmvAsync), commandName, stopwatch.ElapsedMilliseconds);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring runtime DMV query failed.");
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(GetRunningMonitoringJobIdsByDmvAsync), commandName, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     public async Task<int> CancelActiveMonitoringJobsAsync(string errorMessage, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -421,10 +530,15 @@ WHERE [Status] IN ('Queued', 'Running');";
 
     public async Task<int> FailRunningMonitoringJobsAsync(string errorMessage, CancellationToken cancellationToken)
     {
+        return await RecoverOrphanedMonitoringJobsAsync(TimeSpan.FromSeconds(5), errorMessage, cancellationToken);
+    }
+
+    public async Task<int> RecoverOrphanedMonitoringJobsAsync(TimeSpan minimumActivityAge, string errorMessage, CancellationToken cancellationToken)
+    {
         var stopwatch = Stopwatch.StartNew();
-        const string operationName = nameof(FailRunningMonitoringJobsAsync);
+        const string operationName = nameof(RecoverOrphanedMonitoringJobsAsync);
         var commandName = _options.JobRecoverOrphanedStoredProcedure;
-        var minimumActivityAgeSeconds = 5;
+        var minimumActivityAgeSeconds = Math.Max(0, Convert.ToInt32(minimumActivityAge.TotalSeconds, CultureInfo.InvariantCulture));
 
         try
         {
@@ -455,7 +569,7 @@ WHERE [Status] IN ('Queued', 'Running');";
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring startup recovery failed while failing running jobs.");
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex, "Monitoring orphaned job recovery failed.");
             throw;
         }
         finally

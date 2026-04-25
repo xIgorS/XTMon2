@@ -32,7 +32,10 @@ public sealed class BackgroundJobCancellationService : IBackgroundJobCancellatio
 
         await repository.MarkMonitoringJobCancelledAsync(jobId, MonitoringJobCanceledMessage, cancellationToken);
         _jobCancellationRegistry.CancelMonitoringJob(jobId);
-        return await VerifyMonitoringJobCancellationAsync(repository, jobId, cancellationToken);
+        return await VerifyCancellationAsync(
+            jobId,
+            cancellationToken,
+            async (id, ct) => (await repository.GetMonitoringJobByIdAsync(id, ct))?.Status);
     }
 
     public async Task<BackgroundJobCancellationResult> CancelJvJobAsync(long jobId, CancellationToken cancellationToken)
@@ -47,7 +50,10 @@ public sealed class BackgroundJobCancellationService : IBackgroundJobCancellatio
 
         await repository.MarkJvJobCancelledAsync(jobId, JvJobCanceledMessage, cancellationToken);
         _jobCancellationRegistry.CancelJvJob(jobId);
-        return await VerifyJvJobCancellationAsync(repository, jobId, cancellationToken);
+        return await VerifyCancellationAsync(
+            jobId,
+            cancellationToken,
+            async (id, ct) => (await repository.GetJvJobByIdAsync(id, ct))?.Status);
     }
 
     public async Task<BackgroundJobBulkCancellationResult> CancelAllBackgroundJobsAsync(CancellationToken cancellationToken)
@@ -74,37 +80,15 @@ public sealed class BackgroundJobCancellationService : IBackgroundJobCancellatio
             activeJvJobsRemaining);
     }
 
-    private static async Task<BackgroundJobCancellationResult> VerifyMonitoringJobCancellationAsync(
-        IMonitoringJobRepository repository,
+    private static async Task<BackgroundJobCancellationResult> VerifyCancellationAsync(
         long jobId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<long, CancellationToken, Task<string?>> getStatusAsync)
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            var job = await repository.GetMonitoringJobByIdAsync(jobId, cancellationToken);
-            if (job is null || !MonitoringJobHelper.IsActiveStatus(job.Status))
-            {
-                return BackgroundJobCancellationResult.Confirmed;
-            }
-
-            if (attempt < 2)
-            {
-                await Task.Delay(VerificationRetryDelay, cancellationToken);
-            }
-        }
-
-        return BackgroundJobCancellationResult.Pending;
-    }
-
-    private static async Task<BackgroundJobCancellationResult> VerifyJvJobCancellationAsync(
-        IJvCalculationRepository repository,
-        long jobId,
-        CancellationToken cancellationToken)
-    {
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            var job = await repository.GetJvJobByIdAsync(jobId, cancellationToken);
-            if (job is null || !MonitoringJobHelper.IsActiveStatus(job.Status))
+            var status = await getStatusAsync(jobId, cancellationToken);
+            if (status is null || !MonitoringJobHelper.IsActiveStatus(status))
             {
                 return BackgroundJobCancellationResult.Confirmed;
             }

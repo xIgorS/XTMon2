@@ -278,6 +278,58 @@
                 <p class="muted mt-1 text-xs">A category that reaches its own limit will wait even if the global pool still has free slots. Categories without a specific cap can use the remaining global capacity.</p>
             </div>
         </div>
+
+        <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button class="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    @onclick="LoadProcessorHealthAsync"
+                    disabled="@isLoadingProcessorHealth">
+                @(isLoadingProcessorHealth ? "Loading processor health..." : (processorHealthReport is null ? "Load Processor Health" : "Refresh Processor Health"))
+            </button>
+            <p class="muted text-xs">Flags processors whose queued jobs wait longer than the grace period while live DMV runtime remains below the configured worker count.</p>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(processorHealthMessage))
+        {
+            <div class="mt-4 rounded-2xl border px-4 py-3 @(processorHealthIsError || processorHealthReport?.HasIssues == true ? "border-rose-500/30 bg-rose-50/80 text-rose-700" : "border-emerald-500/30 bg-emerald-50/80 text-emerald-700")">
+                <p class="text-sm font-semibold">@(processorHealthIsError ? "Processor health check failed" : "Processor health summary")</p>
+                <p class="mt-1 text-sm">@processorHealthMessage</p>
+            </div>
+        }
+
+        @if (processorHealthReport is not null)
+        {
+            <div class="mt-4 db-grid__wrap">
+                <table class="db-grid">
+                    <thead>
+                        <tr>
+                            <th class="db-grid__head db-grid__cell--text">Processor</th>
+                            <th class="db-grid__head db-grid__cell--text">Configured Workers</th>
+                            <th class="db-grid__head db-grid__cell--text">Live DMV Runtime</th>
+                            <th class="db-grid__head db-grid__cell--text">Running Rows</th>
+                            <th class="db-grid__head db-grid__cell--text">Queued Rows</th>
+                            <th class="db-grid__head db-grid__cell--text">Oldest Queued (UTC)</th>
+                            <th class="db-grid__head db-grid__cell--text">Status</th>
+                            <th class="db-grid__head db-grid__cell--text">Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in processorHealthReport.Rows)
+                        {
+                            <tr class="db-grid__row">
+                                <td class="db-grid__cell db-grid__cell--text text-xs">@row.DisplayName</td>
+                                <td class="db-grid__cell db-grid__cell--text text-xs">@row.ConfiguredWorkers</td>
+                                <td class="db-grid__cell db-grid__cell--text text-xs">@row.LiveRuntimeJobs</td>
+                                <td class="db-grid__cell db-grid__cell--text text-xs">@row.RunningJobs</td>
+                                <td class="db-grid__cell db-grid__cell--text text-xs">@row.QueuedJobs</td>
+                                <td class="db-grid__cell db-grid__cell--text text-xs">@(row.OldestQueuedAtUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                                <td class="db-grid__cell db-grid__cell--text text-xs">@row.Status</td>
+                                <td class="db-grid__cell db-grid__cell--text text-xs">@row.Detail</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     </div>
 
     @if (isRunning)

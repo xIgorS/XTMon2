@@ -492,7 +492,8 @@ builder.Services.AddSingleton<StartupJobRecoveryService>();
 builder.Services.AddHostedService(static serviceProvider => serviceProvider.GetRequiredService<StartupJobRecoveryService>());
 builder.Services.AddSingleton<JobDiagnosticsService>();
 builder.Services.AddHostedService<JvCalculationProcessingService>();
-builder.Services.AddHostedService<MonitoringJobProcessingService>();
+builder.Services.AddHostedService<DataValidationMonitoringJobProcessingService>();
+builder.Services.AddHostedService<FunctionalRejectionMonitoringJobProcessingService>();
 
 // Use default authentication scheme (Negotiate)
 builder.Services.AddAuthorization(options =>

@@ -9,7 +9,7 @@ using XTMon.Repositories;
 
 namespace XTMon.Services;
 
-public sealed class MonitoringJobProcessingService : BackgroundService
+public class MonitoringJobProcessingService : BackgroundService
 {
     private const long SlowPollStageThresholdMilliseconds = 1000;
     private const string StaleRunningJobErrorMessage = "Monitoring background job timed out while in Running status and was auto-failed.";
@@ -17,13 +17,17 @@ public sealed class MonitoringJobProcessingService : BackgroundService
     private const int MarkStateMaxAttempts = 3;
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<MonitoringJobProcessingService> _logger;
+    private readonly ILogger _logger;
     private readonly MonitoringJobsOptions _options;
     private readonly TimeSpan _idleDelay;
     private readonly TimeSpan _heartbeatInterval;
     private readonly TimeSpan _markStateShutdownGrace;
     private readonly TimeSpan _markStateRetryDelay;
     private readonly JobCancellationRegistry _jobCancellationRegistry;
+    private readonly int _maxConcurrentJobs;
+    private readonly string _processorName;
+    private readonly string[] _claimExcludedCategories;
+    private readonly bool _isCategoryScopedProcessor;
 
     public MonitoringJobProcessingService(
         IServiceScopeFactory scopeFactory,
@@ -37,10 +41,13 @@ public sealed class MonitoringJobProcessingService : BackgroundService
     internal MonitoringJobProcessingService(
         IServiceScopeFactory scopeFactory,
         IOptions<MonitoringJobsOptions> options,
-        ILogger<MonitoringJobProcessingService> logger,
+        ILogger logger,
         TimeSpan idleDelay,
         TimeSpan? heartbeatInterval = null,
-        JobCancellationRegistry? jobCancellationRegistry = null)
+        JobCancellationRegistry? jobCancellationRegistry = null,
+        string? processorName = null,
+        IReadOnlyCollection<string>? ownedCategories = null,
+        int? maxConcurrentJobs = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -50,13 +57,18 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         _markStateShutdownGrace = TimeSpan.FromSeconds(_options.ProcessorMarkStateShutdownGraceSeconds);
         _markStateRetryDelay = TimeSpan.FromSeconds(_options.ProcessorMarkStateRetryDelaySeconds);
         _jobCancellationRegistry = jobCancellationRegistry ?? new JobCancellationRegistry();
+        _maxConcurrentJobs = Math.Max(1, maxConcurrentJobs ?? _options.MaxConcurrentJobs);
+        _processorName = string.IsNullOrWhiteSpace(processorName) ? nameof(MonitoringJobProcessingService) : processorName;
+        _claimExcludedCategories = BuildClaimExcludedCategories(ownedCategories);
+        _isCategoryScopedProcessor = _claimExcludedCategories.Length > 0;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "Monitoring job processing service started with MaxConcurrentJobs={MaxConcurrentJobs}, PollIntervalSeconds={PollIntervalSeconds}, StaleTimeoutSeconds={StaleTimeoutSeconds}, HeartbeatIntervalSeconds={HeartbeatIntervalSeconds}.",
-            _options.MaxConcurrentJobs,
+            "{ProcessorName} started with MaxConcurrentJobs={MaxConcurrentJobs}, PollIntervalSeconds={PollIntervalSeconds}, StaleTimeoutSeconds={StaleTimeoutSeconds}, HeartbeatIntervalSeconds={HeartbeatIntervalSeconds}.",
+            _processorName,
+            _maxConcurrentJobs,
             _options.JobPollIntervalSeconds,
             _options.JobRunningStaleTimeoutSeconds,
             _heartbeatInterval.TotalSeconds);
@@ -99,7 +111,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                         _logger.LogWarning("Marked {ExpiredCount} stale monitoring job(s) as failed.", expiredCount);
                     }
 
-                    while (!stoppingToken.IsCancellationRequested && CountDispatchActiveJobs(activeJobs) < _options.MaxConcurrentJobs)
+                    while (!stoppingToken.IsCancellationRequested && CountDispatchActiveJobs(activeJobs) < _maxConcurrentJobs)
                     {
                         MonitoringJobRecord? job;
                         var preferredExcludedCategories = BuildPreferredExcludedCategories(activeJobs);
@@ -147,11 +159,12 @@ public sealed class MonitoringJobProcessingService : BackgroundService
                 {
                     var dispatchActiveJobs = CountDispatchActiveJobs(activeJobs);
                     _logger.LogDebug(
-                        "Monitoring processor cycle claimed {ClaimedJobs} job(s); {DispatchActiveJobs} dispatch-active job(s) and {TrackedJobs} tracked job(s) are present out of {MaxConcurrentJobs} slot(s).",
+                        "{ProcessorName} cycle claimed {ClaimedJobs} job(s); {DispatchActiveJobs} dispatch-active job(s) and {TrackedJobs} tracked job(s) are present out of {MaxConcurrentJobs} slot(s).",
+                        _processorName,
                         claimedJobs,
                         dispatchActiveJobs,
                         activeJobs.Count,
-                        _options.MaxConcurrentJobs);
+                        _maxConcurrentJobs);
                 }
 
                 await WaitForNextDispatchOpportunityAsync(activeJobs, stoppingToken);
@@ -166,7 +179,7 @@ public sealed class MonitoringJobProcessingService : BackgroundService
             await DrainActiveJobsAsync(activeJobs);
         }
 
-        _logger.LogInformation("Monitoring job processing service stopped.");
+        _logger.LogInformation("{ProcessorName} stopped.", _processorName);
     }
 
     private async Task RunJobSafelyAsync(MonitoringJobRecord job, CancellationToken stoppingToken)
@@ -202,6 +215,13 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         var stopwatch = Stopwatch.StartNew();
         try
         {
+            if (_isCategoryScopedProcessor)
+            {
+                return _claimExcludedCategories.Length == 0
+                    ? await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, cancellationToken)
+                    : await repository.TryTakeNextMonitoringJobAsync(Environment.MachineName, _claimExcludedCategories, cancellationToken);
+            }
+
             var prioritizedExcludedCategories = preferredExcludedCategories
                 .Concat(hardExcludedCategories)
                 .Distinct(StringComparer.Ordinal)
@@ -625,6 +645,11 @@ public sealed class MonitoringJobProcessingService : BackgroundService
 
     private IReadOnlyCollection<string> BuildPreferredExcludedCategories(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
     {
+        if (_isCategoryScopedProcessor)
+        {
+            return Array.Empty<string>();
+        }
+
         var dispatchActiveJobs = GetDispatchActiveJobs(activeJobs);
         if (dispatchActiveJobs.Count == 0)
         {
@@ -639,6 +664,11 @@ public sealed class MonitoringJobProcessingService : BackgroundService
 
     private IReadOnlyCollection<string> BuildHardExcludedCategories(IReadOnlyCollection<ActiveMonitoringJob> activeJobs)
     {
+        if (_isCategoryScopedProcessor)
+        {
+            return Array.Empty<string>();
+        }
+
         var dispatchActiveJobs = GetDispatchActiveJobs(activeJobs);
         if (dispatchActiveJobs.Count == 0 || _options.CategoryMaxConcurrentJobs.Count == 0)
         {
@@ -667,6 +697,28 @@ public sealed class MonitoringJobProcessingService : BackgroundService
         }
 
         return activeJobs.ToList();
+    }
+
+    private static string[] BuildClaimExcludedCategories(IReadOnlyCollection<string>? ownedCategories)
+    {
+        if (ownedCategories is null || ownedCategories.Count == 0)
+        {
+            return [];
+        }
+
+        var ownedCategorySet = ownedCategories
+            .Where(category => !string.IsNullOrWhiteSpace(category))
+            .Select(category => category.Trim())
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (ownedCategorySet.Count == 0)
+        {
+            return [];
+        }
+
+        return MonitoringJobHelper.AllCategories
+            .Where(category => !ownedCategorySet.Contains(category))
+            .ToArray();
     }
 
     private sealed record ActiveMonitoringJob(MonitoringJobRecord Job, Task Task);

@@ -8,11 +8,27 @@ internal static class MonitoringJobHelper
     public const string DataValidationCategory = "DataValidation";
     public const string FunctionalRejectionCategory = "FunctionalRejection";
     public const string BatchStatusSubmenuKey = "batch-status";
+    public static IReadOnlyList<string> AllCategories { get; } = [DataValidationCategory, FunctionalRejectionCategory];
     public const string QueuedStatus = "Queued";
     public const string RunningStatus = "Running";
     public const string CompletedStatus = "Completed";
     public const string FailedStatus = "Failed";
     public const string CancelledStatus = "Cancelled";
+
+    public static string GetCategoryDisplayName(string category)
+    {
+        if (string.Equals(category, DataValidationCategory, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Data Validation";
+        }
+
+        if (string.Equals(category, FunctionalRejectionCategory, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Functional Rejection";
+        }
+
+        return category;
+    }
 
     public static string BuildDataValidationSubmenuKey(string route)
     {
