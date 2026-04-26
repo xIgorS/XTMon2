@@ -12,37 +12,27 @@ Changed objects:
 
 Changed source files:
 
-- `src/XTMon/Sql/004_LOG_FI_ALMT_MonitoringJob_Orchestration.sql`
-- `src/XTMon/Sql/005_LOG_FI_ALMT_JvAndMonitoringJob_Release.sql`
-- `src/XTMon/Sql/011_LOG_FI_ALMT_ReplayFlow_Recovery.sql`
+- `src/XTMon/Sql/016_LOG_FI_ALMT_Full_Migration.sql`
+- `src/XTMon/Sql/017_LOG_FI_ALMT_PostDeploy_Verification.sql`
 
 ## Choose The Correct Deployment Path
 
-### Path A: Existing environment, preserve orchestration data
+### Rebuild environment, destructive reset is acceptable
 
-Use `004_LOG_FI_ALMT_MonitoringJob_Orchestration.sql`.
-
-Reason:
-
-- It uses `CREATE OR ALTER PROCEDURE` for the monitoring-job objects.
-- It preserves existing `MonitoringJobs` and `MonitoringLatestResults` rows.
-- It is the safe path for environments already running Data Validation or Functional Rejection jobs.
-
-### Path B: Rebuild environment, destructive reset is acceptable
-
-Use `005_LOG_FI_ALMT_JvAndMonitoringJob_Release.sql`.
+Use `016_LOG_FI_ALMT_Full_Migration.sql` and then `017_LOG_FI_ALMT_PostDeploy_Verification.sql`.
 
 Reason:
 
-- It recreates JV and Monitoring orchestration objects together.
-- It is destructive and clears orchestration history plus latest-result data.
+- `016` recreates the full XTMon-managed LOG_FI_ALMT object surface in one script.
+- `016` is destructive and clears orchestration history plus latest-result data.
+- `017` verifies the rebuilt object surface, key signatures, and selected indexes immediately after deployment.
 
-Do not use Path B on a live environment unless losing job history and latest cached results is explicitly acceptable.
+Do not use this path on a live environment unless losing job history and latest cached results is explicitly acceptable.
 
 ## Pre-Deployment Checks
 
 1. Confirm the target database is `LogFiAlmt`.
-2. Confirm no deployment is running against the destructive release script by mistake.
+2. Confirm no deployment is running against the destructive full migration by mistake.
 3. Record current definitions for rollback/reference:
 
 ```sql
@@ -70,25 +60,31 @@ ORDER BY [Status];
 
 ## Deployment Steps
 
-### Safe production-style rollout
-
-1. Connect to the `LogFiAlmt` database.
-2. Run the procedure changes from `src/XTMon/Sql/004_LOG_FI_ALMT_MonitoringJob_Orchestration.sql`.
-3. Run `src/XTMon/Sql/011_LOG_FI_ALMT_ReplayFlow_Recovery.sql` to create the replay startup-recovery and diagnostics procedures required by current XTMon config.
-4. Do not rerun unrelated object creation unless the environment requires it.
-5. Restart the XTMon application after the SQL deployment so the worker picks up the new behavior immediately.
-
 ### Destructive rebuild rollout
 
 1. Confirm orchestration history can be discarded.
 2. Connect to the `LogFiAlmt` database.
-3. Run `src/XTMon/Sql/005_LOG_FI_ALMT_JvAndMonitoringJob_Release.sql`.
-4. The destructive release script now also recreates the replay recovery procedures used by startup recovery and System Diagnostics.
-5. Restart the XTMon application.
+3. Run `src/XTMon/Sql/016_LOG_FI_ALMT_Full_Migration.sql`.
+4. Run `src/XTMon/Sql/017_LOG_FI_ALMT_PostDeploy_Verification.sql`.
+5. The full migration recreates the replay recovery procedures used by startup recovery and System Diagnostics.
+6. Restart the XTMon application.
 
 ## What To Verify After Deployment
 
-### 1. Procedure body checks
+### 1. Verification script
+
+Run:
+
+```sql
+:r .\017_LOG_FI_ALMT_PostDeploy_Verification.sql
+```
+
+Expected:
+
+- the result set shows all checks with `Passed = 1`
+- the script finishes with `LOG_FI_ALMT post-deploy verification passed.`
+
+### 2. Procedure body checks
 
 `UspMonitoringJobTakeNext` and `UspMonitoringJobExpireStale` should contain:
 
@@ -120,7 +116,7 @@ WHERE [o].[schema_id] = SCHEMA_ID('monitoring')
   );
 ```
 
-### 2. Category polling returns lightweight rows
+### 3. Category polling returns lightweight rows
 
 Run:
 
@@ -137,7 +133,7 @@ Expected:
 - `GridRowsJson` is `NULL`
 - `MetadataJson` remains populated when a completed result exists
 
-### 3. Worker recovery behavior
+### 4. Worker recovery behavior
 
 After app restart, check application logs for the new stage-specific messages around stale-expiry and take-next instead of a single opaque poll failure.
 
@@ -154,4 +150,4 @@ If the deployment needs to be rolled back:
 2. Restart the XTMon application.
 3. Recheck monitoring-job polling and batch responsiveness.
 
-If the deployment used the destructive release script, rollback of cleared orchestration data is not possible without a database backup.
+If the deployment used the destructive full migration, rollback of cleared orchestration data is not possible without a database backup.

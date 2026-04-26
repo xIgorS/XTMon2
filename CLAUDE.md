@@ -103,7 +103,7 @@ Five SQL Server databases configured in `appsettings.json`:
 
 All stored procedure names are configured as options (not hardcoded) and validated at startup by `DeploymentCheckService` (singleton). The `/system-diagnostics` page runs the same check on demand: it connects to every configured DB and queries `sys.objects`/`sys.parameters` to verify each stored procedure exists and reports its signature. When adding a new stored procedure, add a `(ConnectionStringName, StoredProcedure)` entry to `DeploymentCheckService.BuildChecks` so it participates in this validation.
 
-DDL for each database lives in `src/XTMon/Sql/` (`001_STAGING_FI_ALMT_Setup.sql`, `002_LOG_FI_ALMT_Logging_Setup.sql`, `003_LOG_FI_ALMT_JvJob_Orchestration.sql`, `004_LOG_FI_ALMT_MonitoringJob_Orchestration.sql`, and `<DB>.sql` snapshots). The `00N_*.sql` scripts are idempotent and safe to re-run.
+DDL for each database lives in `src/XTMon/Sql/`. For LOG_FI_ALMT, `016_LOG_FI_ALMT_Full_Migration.sql` is the authoritative destructive rebuild script and `017_LOG_FI_ALMT_PostDeploy_Verification.sql` is the matching post-deploy verification.
 
 ### Logging
 

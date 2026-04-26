@@ -19,7 +19,7 @@ XTMon2/
 │       ├── Repositories/        # SQL Server data-access layer
 │       ├── Security/            # UAM authorization requirement/handler/state
 │       ├── Services/            # Hosted services and diagnostics services
-│       ├── Sql/                 # SQL scripts / database artifacts
+│       ├── Sql/                 # SQL scripts / database artifacts; use 016/017 for full LOG_FI_ALMT rebuild + verification
 │       ├── Styles/              # Tailwind source styles
 │       ├── wwwroot/             # Static assets and compiled CSS
 │       ├── Program.cs           # Application bootstrap and DI wiring

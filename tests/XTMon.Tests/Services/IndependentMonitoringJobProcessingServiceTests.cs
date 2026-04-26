@@ -312,28 +312,13 @@ public class IndependentMonitoringJobProcessingServiceTests
             .Setup(repo => repo.TryTakeNextMonitoringJobAsync(
                 It.IsAny<string>(),
                 It.IsAny<IReadOnlyCollection<string>?>(),
-                It.IsAny<IReadOnlyCollection<string>?>(),
-                It.IsAny<IReadOnlyCollection<string>?>(),
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(MakeSqlException(8144, "Procedure or function UspMonitoringJobTakeNext has too many arguments specified."));
-        repository
-            .SetupSequence(repo => repo.TryTakeNextMonitoringJobAsync(
-                It.IsAny<string>(),
-                It.IsAny<IReadOnlyCollection<string>?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, CancellationToken _) =>
             {
-                legacyClaimCalls++;
+                var callNumber = Interlocked.Increment(ref legacyClaimCalls);
                 Assert.NotNull(excludedCategories);
                 Assert.Contains(MonitoringJobHelper.FunctionalRejectionCategory, excludedCategories!);
-                return job;
-            })
-            .ReturnsAsync((string _, IReadOnlyCollection<string>? excludedCategories, CancellationToken _) =>
-            {
-                legacyClaimCalls++;
-                Assert.NotNull(excludedCategories);
-                Assert.Contains(MonitoringJobHelper.FunctionalRejectionCategory, excludedCategories!);
-                return null;
+                return callNumber == 1 ? job : null;
             });
         repository
             .Setup(repo => repo.MarkMonitoringJobCompletedAsync(job.JobId, It.IsAny<CancellationToken>()))
