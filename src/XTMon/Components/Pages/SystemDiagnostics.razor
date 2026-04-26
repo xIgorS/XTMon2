@@ -9,7 +9,7 @@
         <div>
             <p class="section-label">Deployment verification</p>
             <h1 class="text-2xl font-bold text-heading mt-1">System Diagnostics</h1>
-            <p class="muted mt-1">Checks database connections and stored procedure signatures for monitoring, pricing validation, out-of-scope portfolio, missing SOG check, adjustment links check, column store check, trading vs Fivr check, mirrorization, result transfer, rollovered portfolios, sas tables, non XTG portfolio, rejected XTG portfolio, feedout extraction, future cash, fact PV/CA consistency, multiple feed version, replay flows, JV calculation, logging, and UAM authorization.</p>
+            <p class="muted mt-1">Checks database connections and stored procedure signatures for monitoring, pricing validation, out-of-scope portfolio, missing SOG check, adjustment links check, column store check, trading vs Fivr check, mirrorization, result transfer, rollovered portfolios, sas tables, non XTG portfolio, rejected XTG portfolio, feedout extraction, future cash, fact PV/CA consistency, multiple feed version, replay flows, JV calculation, application logging, and UAM authorization.</p>
         </div>
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
             <button class="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -44,6 +44,20 @@
             </div>
         }
     </div>
+
+    @if (ShowApplicationLogsViewer)
+    {
+        <div class="surface !border-teal-200/80">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <p class="section-label">Application Logs</p>
+                    <h2 class="mt-1 text-lg font-bold text-heading">Browse stored log rows</h2>
+                    <p class="muted mt-1 text-sm">Open the in-app viewer for recent Serilog rows stored in LOG_FI_ALMT without requiring direct database access.</p>
+                </div>
+                <NavLink href="/application-logs" class="primary-button-filled">Open Application Logs</NavLink>
+            </div>
+        </div>
+    }
 
     <div class="surface !border-sky-200/80">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -358,7 +372,7 @@
                 <div>
                     <p class="stat-label">Coverage</p>
                     <p class="mt-1 text-sm text-heading">Monitoring and validation stack</p>
-                    <p class="muted mt-1 text-xs">Database Space, Database Backups, Pricing, Pricing File Reception, Out of Scope Portfolio, Missing SOG Check, Adjustment Links Check, Column Store Check, Trading vs Fivr Check, Mirrorization, Result Transfer, Rollovered Portfolios, Sas tables, Non XTG Portfolio, Rejected XTG Portfolio, FeedOut Extraction, Future Cash, Fact PV/CA Consistency, Multiple Feed Version, Daily Balance, Adjustments, Replay Flows, JV Calculation, and UAM authorization.</p>
+                    <p class="muted mt-1 text-xs">Database Space, Database Backups, Pricing, Pricing File Reception, Out of Scope Portfolio, Missing SOG Check, Adjustment Links Check, Column Store Check, Trading vs Fivr Check, Mirrorization, Result Transfer, Rollovered Portfolios, Sas tables, Non XTG Portfolio, Rejected XTG Portfolio, FeedOut Extraction, Future Cash, Fact PV/CA Consistency, Multiple Feed Version, Daily Balance, Adjustments, Replay Flows, JV Calculation, Application Logs, and UAM authorization.</p>
                 </div>
                 <div>
                     <p class="stat-label">What Is Verified</p>

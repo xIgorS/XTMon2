@@ -19,6 +19,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IConfiguration configuration,
         IOptions<MonitoringOptions> monitoringOptions,
         IOptions<SystemDiagnosticsOptions> systemDiagnosticsOptions,
+        IOptions<ApplicationLogsOptions> applicationLogsOptions,
         IOptions<ReplayFlowsOptions> replayFlowsOptions,
         IOptions<JvCalculationOptions> jvOptions,
         IOptions<MonitoringJobsOptions> monitoringJobsOptions,
@@ -59,6 +60,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             configuration,
             monitoringOptions.Value,
             systemDiagnosticsOptions.Value,
+            applicationLogsOptions.Value,
             replayFlowsOptions.Value,
             jvOptions.Value,
             monitoringJobsOptions.Value,
@@ -98,6 +100,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
         IConfiguration configuration,
         MonitoringOptions monitoring,
         SystemDiagnosticsOptions systemDiagnostics,
+        ApplicationLogsOptions applicationLogs,
         ReplayFlowsOptions replay,
         JvCalculationOptions jv,
         MonitoringJobsOptions monitoringJobs,
@@ -143,6 +146,9 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
                 configuration["StoredProcedureLogging:ConnectionStringName"] ?? "LogFiAlmt",
                 configuration["StoredProcedureLogging:StoredProcedure"] ?? "monitoring.UspInsertAPSActionsLog"
             ),
+
+            // Application logs viewer
+            (applicationLogs.ConnectionStringName, applicationLogs.GetApplicationLogsStoredProcedure),
 
             // Replay flows
             (replay.ConnectionStringName, replay.GetFailedFlowsStoredProcedure),
@@ -232,6 +238,11 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             // UAM authorization
             (uam.ConnectionStringName, uam.GetAdminUserStoredProcedure),
         };
+
+        if (!applicationLogs.Enabled)
+        {
+            checks.Remove((applicationLogs.ConnectionStringName, applicationLogs.GetApplicationLogsStoredProcedure));
+        }
 
         if (systemDiagnostics.ShowCleanupButtons)
         {

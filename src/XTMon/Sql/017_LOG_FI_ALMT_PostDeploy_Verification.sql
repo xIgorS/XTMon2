@@ -75,6 +75,7 @@ FROM [RequiredTables];
         (N'monitoring', N'spGetDbSizeStats'),
         (N'monitoring', N'UspGetDBBackups'),
         (N'monitoring', N'UspGetDbSizePlusDisk'),
+        (N'monitoring', N'UspGetApplicationLogs'),
         (N'monitoring', N'UspInsertAPSActionsLog'),
         (N'monitoring', N'UspJvJobEnqueue'),
         (N'monitoring', N'UspJvJobTakeNext'),
@@ -131,6 +132,7 @@ FROM [UnexpectedProcedures];
 (
     SELECT [SchemaName], [TableName], [IndexName]
     FROM (VALUES
+        (N'monitoring', N'APSActionsLogs', N'IX_APSActionsLogs_TimeStamp_Level'),
         (N'monitoring', N'JvCalculationJobs', N'UX_JvCalculationJobs_Active_User_PnlDate_RequestType'),
         (N'monitoring', N'JvCalculationJobs', N'IX_JvCalculationJobs_Queued_EnqueuedAt_JobId'),
         (N'monitoring', N'JvCalculationJobs', N'IX_JvCalculationJobs_Running_ActivityAt_JobId'),
@@ -204,6 +206,37 @@ FROM [ComputedColumns];
 
 INSERT INTO @Results ([CheckGroup], [CheckName], [Passed], [Details])
 SELECT
+        N'Column',
+        N'[monitoring].[APSActionsLogs].[TimeStamp] datatype',
+        CASE WHEN EXISTS
+        (
+                SELECT 1
+                FROM [sys].[columns] AS [col]
+                INNER JOIN [sys].[tables] AS [tbl] ON [tbl].[object_id] = [col].[object_id]
+                INNER JOIN [sys].[schemas] AS [sch] ON [sch].[schema_id] = [tbl].[schema_id]
+                INNER JOIN [sys].[types] AS [typ] ON [typ].[user_type_id] = [col].[user_type_id]
+                WHERE [sch].[name] = N'monitoring'
+                    AND [tbl].[name] = N'APSActionsLogs'
+                    AND [col].[name] = N'TimeStamp'
+                    AND [typ].[name] = N'datetime2'
+                    AND [col].[scale] = 3
+        ) THEN 1 ELSE 0 END,
+        CASE WHEN EXISTS
+        (
+                SELECT 1
+                FROM [sys].[columns] AS [col]
+                INNER JOIN [sys].[tables] AS [tbl] ON [tbl].[object_id] = [col].[object_id]
+                INNER JOIN [sys].[schemas] AS [sch] ON [sch].[schema_id] = [tbl].[schema_id]
+                INNER JOIN [sys].[types] AS [typ] ON [typ].[user_type_id] = [col].[user_type_id]
+                WHERE [sch].[name] = N'monitoring'
+                    AND [tbl].[name] = N'APSActionsLogs'
+                    AND [col].[name] = N'TimeStamp'
+                    AND [typ].[name] = N'datetime2'
+                    AND [col].[scale] = 3
+        ) THEN NULL ELSE N'Expected datetime2(3) column.' END;
+
+INSERT INTO @Results ([CheckGroup], [CheckName], [Passed], [Details])
+SELECT
     N'Constraint',
     N'[administration].[ReplayFlows].[ProcessStatus] default constraint',
     CASE WHEN EXISTS
@@ -239,6 +272,7 @@ SELECT
 (
     SELECT [SchemaName], [ObjectName], [ExpectedCount]
     FROM (VALUES
+        (N'monitoring', N'UspGetApplicationLogs', 5),
         (N'monitoring', N'UspJvJobGetLatestByUserPnlDate', 3),
         (N'monitoring', N'UspJvJobTakeNext', 1),
         (N'monitoring', N'UspMonitoringJobCancelActive', 1),
@@ -264,6 +298,11 @@ OUTER APPLY
 (
     SELECT [SchemaName], [ObjectName], [ParameterName]
     FROM (VALUES
+        (N'monitoring', N'UspGetApplicationLogs', N'@TopN'),
+        (N'monitoring', N'UspGetApplicationLogs', N'@FromTimeStamp'),
+        (N'monitoring', N'UspGetApplicationLogs', N'@ToTimeStamp'),
+        (N'monitoring', N'UspGetApplicationLogs', N'@LevelsCsv'),
+        (N'monitoring', N'UspGetApplicationLogs', N'@MessageContains'),
         (N'monitoring', N'UspMonitoringJobTakeNext', N'@IncludedSubmenuKeysCsv'),
         (N'monitoring', N'UspMonitoringJobTakeNext', N'@ExcludedSubmenuKeysCsv'),
         (N'monitoring', N'UspJvJobGetLatestByUserPnlDate', N'@UserId'),
@@ -312,6 +351,7 @@ Run these manually only if you want extra confidence in the read paths.
 
 EXEC [monitoring].[UspGetDBBackups];
 EXEC [monitoring].[UspGetDbSizePlusDisk];
+EXEC [monitoring].[UspGetApplicationLogs] @TopN = 5;
 EXEC [monitoring].[spGetDbSizeStats];
 EXEC [administration].[UspGetStuckReplayBatches];
 

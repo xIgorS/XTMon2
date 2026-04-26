@@ -30,6 +30,9 @@ public static class AppLogEvents
     public static readonly EventId RepositoryMonitoringJobSqlTimeout = new(3010, nameof(RepositoryMonitoringJobSqlTimeout));
     public static readonly EventId RepositoryMonitoringJobConnectionFailed = new(3011, nameof(RepositoryMonitoringJobConnectionFailed));
     public static readonly EventId RepositoryMonitoringJobSlowOperation = new(3012, nameof(RepositoryMonitoringJobSlowOperation));
+    public static readonly EventId RepositoryApplicationLogsQueryFailed = new(3013, nameof(RepositoryApplicationLogsQueryFailed));
+    public static readonly EventId RepositoryApplicationLogsQuerySlow = new(3014, nameof(RepositoryApplicationLogsQuerySlow));
+    public static readonly EventId RepositoryApplicationLogsQueryTimeout = new(3015, nameof(RepositoryApplicationLogsQueryTimeout));
 
     public static readonly EventId ReplayProcessorBackgroundFailed = new(4001, nameof(ReplayProcessorBackgroundFailed));
     public static readonly EventId JvProcessorSqlTimeout = new(4002, nameof(JvProcessorSqlTimeout));

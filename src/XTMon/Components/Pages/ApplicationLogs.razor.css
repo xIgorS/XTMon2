@@ -1,0 +1,81 @@
+.application-logs-input {
+  border: 1px solid var(--input-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  width: 100%;
+  min-height: 2.5rem;
+  background-color: var(--input-bg);
+  color: var(--input-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.application-logs-input:focus {
+  outline: none;
+  border-color: #0d9488;
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);
+}
+
+.application-logs-input:disabled {
+  opacity: 0.5;
+}
+
+.application-logs-input--compact {
+  width: 8rem;
+}
+
+.application-logs-input--wide {
+  max-width: none;
+}
+
+.application-logs-level-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-body, #334155);
+}
+
+.application-logs-checkbox {
+  appearance: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 2px solid var(--text-muted, #94a3b8);
+  border-radius: 0.2rem;
+  background-color: transparent;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.application-logs-checkbox:checked {
+  border-color: #0d9488;
+  background-color: #0d9488;
+}
+
+.application-logs-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  display: block;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='white'%3E%3Cpath d='M12.207 4.793a1 1 0 0 1 0 1.414l-5 5a1 1 0 0 1-1.414 0l-2-2a1 1 0 0 1 1.414-1.414L6.5 9.086l4.293-4.293a1 1 0 0 1 1.414 0z'/%3E%3C/svg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='white'%3E%3Cpath d='M12.207 4.793a1 1 0 0 1 0 1.414l-5 5a1 1 0 0 1-1.414 0l-2-2a1 1 0 0 1 1.414-1.414L6.5 9.086l4.293-4.293a1 1 0 0 1 1.414 0z'/%3E%3C/svg%3E");
+  mask-size: 100%;
+  -webkit-mask-size: 100%;
+  background-color: white;
+}
+
+.application-logs-checkbox:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.application-logs-checkbox:disabled:checked {
+  opacity: 0.65;
+}
+
+.application-logs-row {
+  cursor: pointer;
+}

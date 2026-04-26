@@ -1,0 +1,183 @@
+@page "/application-logs"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "UamRestricted")]
+
+<PageTitle>Application Logs</PageTitle>
+
+<div class="space-y-5">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+            <p class="section-label">Operations</p>
+            <h1 class="text-2xl font-bold text-heading mt-1">Application Logs</h1>
+            <p class="muted mt-1">Browse recent Serilog rows stored in LOG_FI_ALMT with server-side filters.</p>
+            <p class="muted mt-1">Procedure: @FullyQualifiedProcedureName</p>
+        </div>
+    </div>
+
+    @if (!ViewerEnabled)
+    {
+        <div class="surface !border-amber-500/30">
+            <p class="text-sm font-semibold text-heading">Application log viewer is disabled.</p>
+            <p class="mt-2 text-sm muted">Enable the <strong>ApplicationLogs:Enabled</strong> configuration flag to show this screen.</p>
+        </div>
+    }
+    else
+    {
+        <div class="surface space-y-4">
+            <div class="grid gap-4 xl:grid-cols-[repeat(4,minmax(0,1fr))]">
+                <div class="flex flex-col gap-1.5">
+                    <label class="stat-label" for="applicationLogsFrom">From</label>
+                    <input id="applicationLogsFrom"
+                           class="application-logs-input"
+                           type="datetime-local"
+                              @bind-value="fromInput"
+                              @bind-value:format="yyyy-MM-ddTHH:mm"
+                           disabled="@isLoading" />
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                    <label class="stat-label" for="applicationLogsTo">To</label>
+                    <input id="applicationLogsTo"
+                           class="application-logs-input"
+                           type="datetime-local"
+                              @bind-value="toInput"
+                              @bind-value:format="yyyy-MM-ddTHH:mm"
+                           disabled="@isLoading" />
+                </div>
+
+                <div class="flex flex-col gap-1.5 xl:col-span-2">
+                    <label class="stat-label" for="applicationLogsMessageContains">Message contains</label>
+                    <input id="applicationLogsMessageContains"
+                           class="application-logs-input application-logs-input--wide"
+                           type="text"
+                           placeholder="Search rendered message text"
+                           @bind="messageContains"
+                           @bind:event="oninput"
+                           disabled="@isLoading" />
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div class="space-y-2">
+                    <p class="stat-label">Levels</p>
+                    <div class="flex flex-wrap gap-3">
+                        @foreach (var level in AvailableLevels)
+                        {
+                            <label class="application-logs-level-option">
+                                <input type="checkbox"
+                                       class="application-logs-checkbox"
+                                       checked="@IsLevelSelected(level)"
+                                       @onchange="args => OnLevelSelectionChanged(level, args)"
+                                       disabled="@isLoading" />
+                                <span>@level</span>
+                            </label>
+                        }
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-end">
+                    <div class="flex flex-col gap-1.5">
+                        <label class="stat-label" for="applicationLogsTopN">Top N</label>
+                        <input id="applicationLogsTopN"
+                               class="application-logs-input application-logs-input--compact"
+                               type="number"
+                               min="1"
+                               max="@MaxTopN"
+                               @bind="topN"
+                               disabled="@isLoading" />
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                        <button class="primary-button-filled" @onclick="RefreshAsync" disabled="@isLoading">
+                            @(isLoading ? "Refreshing..." : "Refresh")
+                        </button>
+                        <button class="primary-button" @onclick="ResetFiltersAsync" disabled="@isLoading">
+                            Reset filters
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <p class="muted text-xs">Filters and displayed timestamps use the stored log timestamp value without any timezone conversion.</p>
+        </div>
+
+        <div class="surface">
+            <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <p class="stat-label">@ResultSummaryText</p>
+                <p class="muted text-xs">Last refreshed: @LastRefreshedText</p>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="surface">
+                <p class="muted">Loading application log rows...</p>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="surface !border-rose-500/30">
+                <p class="text-sm font-semibold text-error">Failed to load application logs.</p>
+                <p class="mt-2 text-sm text-error/80">@errorMessage</p>
+            </div>
+        }
+        else if (rows.Count == 0)
+        {
+            <div class="surface">
+                <p class="muted">No log rows match these filters.</p>
+            </div>
+        }
+        else
+        {
+            <div class="surface">
+                <div class="db-grid__wrap">
+                    <table class="db-grid">
+                        <thead>
+                            <tr>
+                                <th class="db-grid__head db-grid__cell--text"></th>
+                                <th class="db-grid__head db-grid__cell--text">Timestamp</th>
+                                <th class="db-grid__head db-grid__cell--text">Level</th>
+                                <th class="db-grid__head db-grid__cell--text">Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in rows)
+                            {
+                                var isExpanded = IsRowExpanded(row.Id);
+
+                                <tr class="db-grid__row application-logs-row" @onclick="() => ToggleRow(row.Id)">
+                                    <td class="db-grid__cell db-grid__cell--text text-xs text-slate-500">@(isExpanded ? "▾" : "▸")</td>
+                                    <td class="db-grid__cell db-grid__cell--text text-xs font-mono">@FormatTimestamp(row.TimeStamp)</td>
+                                    <td class="db-grid__cell db-grid__cell--text text-xs">
+                                        <span class="@GetLevelBadgeClass(row.Level)">@GetLevelDisplay(row.Level)</span>
+                                    </td>
+                                    <td class="db-grid__cell db-grid__cell--text text-xs">
+                                        <span class="block max-w-[38rem] truncate">@GetMessagePreview(row.Message)</span>
+                                    </td>
+                                </tr>
+
+                                @if (isExpanded)
+                                {
+                                    <tr class="db-grid__row">
+                                        <td class="db-grid__cell db-grid__cell--text" colspan="4">
+                                            <div class="space-y-4 py-1">
+                                                <div>
+                                                    <p class="stat-label">Exception</p>
+                                                    <pre class="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50/70 p-3 text-xs text-body-secondary dark:bg-slate-900/40">@GetExpandedText(row.Exception)</pre>
+                                                </div>
+                                                <div>
+                                                    <p class="stat-label">Properties</p>
+                                                    <pre class="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50/70 p-3 text-xs text-body-secondary dark:bg-slate-900/40">@FormatProperties(row.Properties)</pre>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+</div>

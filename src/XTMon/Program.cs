@@ -96,6 +96,17 @@ builder.Services
         "SystemDiagnostics options must define the required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<ApplicationLogsOptions>()
+    .Bind(builder.Configuration.GetSection(ApplicationLogsOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+        options.DefaultTopN <= options.MaxTopN &&
+        (!options.Enabled ||
+         (!string.IsNullOrWhiteSpace(options.ConnectionStringName) &&
+          !string.IsNullOrWhiteSpace(options.GetApplicationLogsStoredProcedure))),
+        "ApplicationLogs options must define the required connection and stored procedure names and keep DefaultTopN within MaxTopN.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<UamAuthorizationOptions>()
     .Bind(builder.Configuration.GetSection(UamAuthorizationOptions.SectionName))
     .ValidateDataAnnotations()
@@ -438,6 +449,7 @@ builder.Services.AddSingleton<SqlConnectionFactory>();
 builder.Services.AddSingleton<SqlExecutionContextAccessor>();
 builder.Services.AddScoped<IMonitoringRepository, MonitoringRepository>();
 builder.Services.AddScoped<ISystemDiagnosticsRepository, SystemDiagnosticsRepository>();
+builder.Services.AddScoped<IApplicationLogsRepository, ApplicationLogsRepository>();
 builder.Services.AddScoped<IJvCalculationRepository, JvCalculationRepository>();
 builder.Services.AddScoped<IMonitoringJobRepository, MonitoringJobRepository>();
 builder.Services.AddSingleton<JobCancellationRegistry>();

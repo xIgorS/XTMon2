@@ -64,6 +64,7 @@ DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobTakeNext];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobEnqueue];
 DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanHistory];
 DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanLogging];
+DROP PROCEDURE IF EXISTS [monitoring].[UspGetApplicationLogs];
 DROP PROCEDURE IF EXISTS [monitoring].[UspInsertAPSActionsLog];
 DROP PROCEDURE IF EXISTS [monitoring].[UspGetDBBackups];
 DROP PROCEDURE IF EXISTS [monitoring].[UspGetDBbackups];
@@ -130,11 +131,16 @@ CREATE TABLE [monitoring].[APSActionsLogs](
     [Message] [nvarchar](max) NULL,
     [MessageTemplate] [nvarchar](max) NULL,
     [Level] [nvarchar](max) NULL,
-    [TimeStamp] [datetime] NULL,
+    [TimeStamp] [datetime2](3) NULL,
     [Exception] [nvarchar](max) NULL,
     [Properties] [nvarchar](max) NULL,
     CONSTRAINT [PK_APSActionsLogs] PRIMARY KEY CLUSTERED ([Id] ASC)
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+
+CREATE NONCLUSTERED INDEX [IX_APSActionsLogs_TimeStamp_Level]
+    ON [monitoring].[APSActionsLogs] ([TimeStamp] DESC)
+    INCLUDE ([Level]);
 GO
 
 CREATE TABLE [monitoring].[DBandBackup](
@@ -303,6 +309,51 @@ BEGIN
         @Exception,
         @Properties
     );
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspGetApplicationLogs]
+    @TopN INT = 200,
+    @FromTimeStamp DATETIME2(3) = NULL,
+    @ToTimeStamp DATETIME2(3) = NULL,
+    @LevelsCsv NVARCHAR(256) = NULL,
+    @MessageContains NVARCHAR(400) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @TopN IS NULL OR @TopN < 1 SET @TopN = 200;
+    IF @TopN > 10000 SET @TopN = 10000;
+
+    SET @LevelsCsv = NULLIF(LTRIM(RTRIM(@LevelsCsv)), N'');
+    SET @MessageContains = NULLIF(LTRIM(RTRIM(@MessageContains)), N'');
+
+    DECLARE @Levels TABLE
+    (
+        [Level] NVARCHAR(32) NOT NULL PRIMARY KEY
+    );
+
+    IF @LevelsCsv IS NOT NULL
+    BEGIN
+        INSERT INTO @Levels ([Level])
+        SELECT DISTINCT LTRIM(RTRIM([value]))
+        FROM STRING_SPLIT(@LevelsCsv, N',')
+        WHERE LTRIM(RTRIM([value])) <> N'';
+    END
+
+    SELECT TOP (@TopN)
+        [Id],
+        [TimeStamp],
+        [Level],
+        [Message],
+        [Exception],
+        [Properties]
+    FROM [monitoring].[APSActionsLogs] WITH (NOLOCK)
+    WHERE (@FromTimeStamp IS NULL OR [TimeStamp] >= @FromTimeStamp)
+      AND (@ToTimeStamp IS NULL OR [TimeStamp] <= @ToTimeStamp)
+      AND (NOT EXISTS (SELECT 1 FROM @Levels) OR EXISTS (SELECT 1 FROM @Levels AS [levels] WHERE [levels].[Level] = [APSActionsLogs].[Level]))
+      AND (@MessageContains IS NULL OR [Message] LIKE N'%' + @MessageContains + N'%')
+    ORDER BY [TimeStamp] DESC, [Id] DESC;
 END
 GO
 

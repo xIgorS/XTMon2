@@ -20,6 +20,9 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private IOptions<SystemDiagnosticsOptions> SystemDiagnosticsOptions { get; set; } = default!;
 
     [Inject]
+    private IOptions<ApplicationLogsOptions> ApplicationLogsOptions { get; set; } = default!;
+
+    [Inject]
     private IBackgroundJobCancellationService BackgroundJobCancellationService { get; set; } = default!;
 
     [Inject]
@@ -59,6 +62,7 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private string? processorHealthMessage;
     private bool processorHealthIsError;
     private bool ShowCleanupButtons => SystemDiagnosticsOptions.Value.ShowCleanupButtons;
+    private bool ShowApplicationLogsViewer => ApplicationLogsOptions.Value.Enabled;
     private MonitoringJobConcurrencyPolicy EffectiveMonitoringJobConcurrencyPolicy => BuildMonitoringJobConcurrencyPolicy(MonitoringJobsOptions.Value);
 
     protected override void OnInitialized()
