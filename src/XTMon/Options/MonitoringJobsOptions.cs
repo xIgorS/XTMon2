@@ -31,6 +31,15 @@ public sealed class MonitoringJobsOptions
     public string JobMarkCancelledStoredProcedure { get; set; } = "monitoring.UspMonitoringJobMarkCancelled";
 
     [Required]
+    public string JobGetActiveStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetActive";
+
+    [Required]
+    public string JobCountActiveStoredProcedure { get; set; } = "monitoring.UspMonitoringJobCountActive";
+
+    [Required]
+    public string JobGetStuckStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetStuck";
+
+    [Required]
     public string JobGetByIdStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetById";
 
     [Required]
@@ -50,6 +59,9 @@ public sealed class MonitoringJobsOptions
 
     [Required]
     public string JobGetRuntimeByDmvStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetRuntimeByDmv";
+
+    [Required]
+    public string JobSetExecutionContextStoredProcedure { get; set; } = "monitoring.UspMonitoringJobSetExecutionContext";
 
     [Range(1, 3600)]
     public int CommandTimeoutSeconds { get; set; } = 30;

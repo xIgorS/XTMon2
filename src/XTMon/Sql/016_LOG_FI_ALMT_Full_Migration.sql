@@ -42,7 +42,11 @@ GO
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobExpireStale];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetLatestByCategory];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetLatestByKey];
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetActive];
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetStuck];
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobCountActive];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetById];
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobSetExecutionContext];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobRecoverOrphanedRunningByDmv];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetRuntimeByDmv];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobCancelActive];
@@ -56,6 +60,11 @@ DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobEnqueue];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobExpireStale];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobGetLatestByUserPnlDate];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobGetById];
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobGetStuck];
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobCountActive];
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobCancelActive];
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobMarkCancelled];
+DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobFailRunning];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobMarkFailed];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobMarkCompleted];
 DROP PROCEDURE IF EXISTS [monitoring].[UspJvJobSaveResult];
@@ -631,6 +640,75 @@ BEGIN
 END
 GO
 
+CREATE PROCEDURE [monitoring].[UspJvJobMarkCancelled]
+    @JobId BIGINT,
+    @ErrorMessage NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE [monitoring].[JvCalculationJobs]
+    SET
+        [Status] = 'Cancelled',
+        [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+        [CompletedAt] = NULL,
+        [ErrorMessage] = @ErrorMessage,
+        [LastHeartbeatAt] = SYSUTCDATETIME()
+    WHERE [JobId] = @JobId
+      AND [Status] IN ('Running', 'Queued');
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspJvJobCancelActive]
+    @ErrorMessage NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE [monitoring].[JvCalculationJobs]
+    SET
+        [Status] = 'Cancelled',
+        [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+        [CompletedAt] = NULL,
+        [ErrorMessage] = @ErrorMessage,
+        [LastHeartbeatAt] = SYSUTCDATETIME()
+    WHERE [Status] IN ('Queued', 'Running');
+
+    SELECT @@ROWCOUNT AS [CancelledCount];
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspJvJobCountActive]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT COUNT_BIG(*) AS [ActiveCount]
+    FROM [monitoring].[JvCalculationJobs]
+    WHERE [Status] IN ('Queued', 'Running');
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspJvJobGetStuck]
+    @ThresholdSeconds INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [JobId], [UserId], [PnlDate], [RequestType], [Status], [WorkerId],
+           [EnqueuedAt], [StartedAt], [LastHeartbeatAt], [CompletedAt], [FailedAt], [ErrorMessage],
+           CAST(NULL AS NVARCHAR(MAX)) AS [QueryCheck],
+           CAST(NULL AS NVARCHAR(MAX)) AS [QueryFix],
+           CAST(NULL AS NVARCHAR(MAX)) AS [GridColumnsJson],
+           CAST(NULL AS NVARCHAR(MAX)) AS [GridRowsJson],
+           CAST(NULL AS DATETIME2(3))  AS [SavedAt]
+    FROM [monitoring].[JvCalculationJobs]
+    WHERE [Status] = 'Running'
+      AND DATEDIFF(SECOND, [ActivityAt], SYSUTCDATETIME()) > @ThresholdSeconds
+    ORDER BY [ActivityAt];
+END
+GO
+
 CREATE PROCEDURE [monitoring].[UspJvJobGetById]
     @JobId BIGINT
 AS
@@ -723,6 +801,27 @@ BEGIN
     FROM [monitoring].[JvCalculationJobs] AS [jobs] WITH (READPAST, UPDLOCK, ROWLOCK)
     WHERE [jobs].[Status] = 'Running'
       AND [jobs].[ActivityAt] <= @Cutoff;
+
+        SELECT @@ROWCOUNT AS [ExpiredCount];
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspJvJobFailRunning]
+    @ErrorMessage NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE [monitoring].[JvCalculationJobs]
+    SET
+        [Status] = 'Failed',
+        [FailedAt] = SYSUTCDATETIME(),
+        [CompletedAt] = NULL,
+        [ErrorMessage] = @ErrorMessage,
+        [LastHeartbeatAt] = SYSUTCDATETIME()
+    WHERE [Status] = 'Running';
+
+    SELECT @@ROWCOUNT AS [FailedCount];
 END
 GO
 
@@ -1113,6 +1212,17 @@ BEGIN
 END
 GO
 
+CREATE PROCEDURE [monitoring].[UspMonitoringJobCountActive]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT COUNT_BIG(*) AS [ActiveCount]
+    FROM [monitoring].[MonitoringJobs]
+    WHERE [Status] IN ('Queued', 'Running');
+END
+GO
+
 CREATE PROCEDURE [monitoring].[UspMonitoringJobGetRuntimeByDmv]
     @JobId BIGINT = NULL
 AS
@@ -1259,6 +1369,44 @@ BEGIN
 END
 GO
 
+CREATE PROCEDURE [monitoring].[UspMonitoringJobGetStuck]
+    @ThresholdSeconds INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [WorkerId],
+           [ParametersJson], [ParameterSummary], [EnqueuedAt], [StartedAt], [LastHeartbeatAt],
+           [CompletedAt], [FailedAt], [ErrorMessage],
+           CAST(NULL AS NVARCHAR(MAX)) AS [ParsedQuery],
+           CAST(NULL AS NVARCHAR(MAX)) AS [GridColumnsJson],
+           CAST(NULL AS NVARCHAR(MAX)) AS [GridRowsJson],
+           CAST(NULL AS NVARCHAR(MAX)) AS [MetadataJson],
+           CAST(NULL AS DATETIME2(0))  AS [SavedAt]
+    FROM [monitoring].[MonitoringJobs]
+    WHERE [Status] = 'Running'
+      AND DATEDIFF(SECOND, [ActivityAt], SYSUTCDATETIME()) > @ThresholdSeconds
+    ORDER BY [ActivityAt];
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspMonitoringJobSetExecutionContext]
+    @JobId BIGINT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @Context VARBINARY(128) = 0x;
+
+    IF @JobId IS NOT NULL
+    BEGIN
+        SET @Context = CONVERT(VARBINARY(128), 0x58544D4F4E4A4F42) + CONVERT(BINARY(8), @JobId);
+    END
+
+    SET CONTEXT_INFO @Context;
+END
+GO
+
 CREATE PROCEDURE [monitoring].[UspMonitoringJobGetById]
     @JobId BIGINT
 AS
@@ -1290,6 +1438,40 @@ BEGIN
     LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results]
         ON [results].[KeyHash] = [jobs].[KeyHash]
     WHERE [jobs].[JobId] = @JobId;
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspMonitoringJobGetActive]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        [jobs].[JobId],
+        [jobs].[Category],
+        [jobs].[SubmenuKey],
+        [jobs].[DisplayName],
+        [jobs].[PnlDate],
+        [jobs].[Status],
+        [jobs].[WorkerId],
+        [jobs].[ParametersJson],
+        [jobs].[ParameterSummary],
+        [jobs].[EnqueuedAt],
+        [jobs].[StartedAt],
+        [jobs].[LastHeartbeatAt],
+        [jobs].[CompletedAt],
+        [jobs].[FailedAt],
+        [jobs].[ErrorMessage],
+        [results].[ParsedQuery],
+        [results].[GridColumnsJson],
+        [results].[GridRowsJson],
+        [results].[MetadataJson],
+        [results].[SavedAt]
+    FROM [monitoring].[MonitoringJobs] AS [jobs]
+    LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results]
+        ON [results].[KeyHash] = [jobs].[KeyHash]
+    WHERE [jobs].[Status] IN ('Queued', 'Running')
+    ORDER BY [jobs].[Category], [jobs].[EnqueuedAt], [jobs].[JobId];
 END
 GO
 

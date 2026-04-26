@@ -178,9 +178,14 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (jv.JobConnectionStringName, jv.JobSaveResultStoredProcedure),
             (jv.JobConnectionStringName, jv.JobMarkCompletedStoredProcedure),
             (jv.JobConnectionStringName, jv.JobMarkFailedStoredProcedure),
+            (jv.JobConnectionStringName, jv.JobMarkCancelledStoredProcedure),
+            (jv.JobConnectionStringName, jv.JobCancelActiveStoredProcedure),
+            (jv.JobConnectionStringName, jv.JobCountActiveStoredProcedure),
+            (jv.JobConnectionStringName, jv.JobGetStuckStoredProcedure),
             (jv.JobConnectionStringName, jv.JobGetByIdStoredProcedure),
             (jv.JobConnectionStringName, jv.JobGetLatestStoredProcedure),
             (jv.JobConnectionStringName, jv.JobExpireStaleStoredProcedure),
+            (jv.JobConnectionStringName, jv.JobFailRunningStoredProcedure),
 
             // Shared monitoring jobs
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobEnqueueStoredProcedure),
@@ -190,6 +195,9 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobMarkCompletedStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobMarkFailedStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobMarkCancelledStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetActiveStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobCountActiveStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetStuckStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetByIdStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetLatestStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetLatestByCategoryStoredProcedure),
@@ -197,6 +205,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobCancelActiveStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobRecoverOrphanedStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetRuntimeByDmvStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobSetExecutionContextStoredProcedure),
 
             // Data validation
             (batchStatus.ConnectionStringName, batchStatus.CheckBatchStatusStoredProcedure),

@@ -35,6 +35,9 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private JobDiagnosticsService JobDiagnosticsService { get; set; } = default!;
 
     [Inject]
+    private IEnumerable<IMonitoringJobProcessor> MonitoringJobProcessors { get; set; } = default!;
+
+    [Inject]
     private ILogger<SystemDiagnostics> Logger { get; set; } = default!;
 
     private readonly CancellationTokenSource disposeCts = new();
@@ -63,7 +66,9 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
     private bool processorHealthIsError;
     private bool ShowCleanupButtons => SystemDiagnosticsOptions.Value.ShowCleanupButtons;
     private bool ShowApplicationLogsViewer => ApplicationLogsOptions.Value.Enabled;
-    private MonitoringJobConcurrencyPolicy EffectiveMonitoringJobConcurrencyPolicy => BuildMonitoringJobConcurrencyPolicy(MonitoringJobsOptions.Value);
+    private MonitoringJobConcurrencyPolicy EffectiveMonitoringJobConcurrencyPolicy => BuildMonitoringJobConcurrencyPolicy(
+        MonitoringJobsOptions.Value,
+        MonitoringJobProcessors.Select(processor => processor.Identity));
 
     protected override void OnInitialized()
     {
@@ -347,47 +352,50 @@ public partial class SystemDiagnostics : ComponentBase, IAsyncDisposable
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private static MonitoringJobConcurrencyPolicy BuildMonitoringJobConcurrencyPolicy(MonitoringJobsOptions options)
+    private static MonitoringJobConcurrencyPolicy BuildMonitoringJobConcurrencyPolicy(
+        MonitoringJobsOptions options,
+        IEnumerable<MonitoringProcessorIdentity> processors)
     {
-        var configuredLimits = options.CategoryMaxConcurrentJobs;
-        var rows = new List<MonitoringJobCategoryConcurrencyRow>
-        {
-            BuildCategoryConcurrencyRow("Data Validation", MonitoringJobHelper.DataValidationCategory, configuredLimits, options.MaxConcurrentJobs),
-            BuildCategoryConcurrencyRow("Functional Rejection", MonitoringJobHelper.FunctionalRejectionCategory, configuredLimits, options.MaxConcurrentJobs)
-        };
+        var rows = processors
+            .Select(BuildProcessorConcurrencyRow)
+            .ToArray();
 
-        foreach (var configuredLimit in configuredLimits
-            .Where(limit => !string.Equals(limit.Key, MonitoringJobHelper.DataValidationCategory, StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(limit.Key, MonitoringJobHelper.FunctionalRejectionCategory, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(limit => limit.Key, StringComparer.OrdinalIgnoreCase))
-        {
-            rows.Add(BuildCategoryConcurrencyRow(configuredLimit.Key, configuredLimit.Key, configuredLimits, options.MaxConcurrentJobs));
-        }
+        var combinedLimit = rows.Sum(row => row.EffectiveLimit);
 
-        return new MonitoringJobConcurrencyPolicy(options.MaxConcurrentJobs, rows);
+        return new MonitoringJobConcurrencyPolicy(combinedLimit, options.MaxConcurrentJobs, rows);
     }
 
-    private static MonitoringJobCategoryConcurrencyRow BuildCategoryConcurrencyRow(
-        string displayName,
-        string categoryKey,
-        IReadOnlyDictionary<string, int> configuredLimits,
-        int globalLimit)
+    private static MonitoringJobProcessorConcurrencyRow BuildProcessorConcurrencyRow(MonitoringProcessorIdentity identity)
     {
-        if (configuredLimits.TryGetValue(categoryKey, out var effectiveLimit))
-        {
-            return new MonitoringJobCategoryConcurrencyRow(
-                displayName,
-                effectiveLimit,
-                $"Configured cap: up to {effectiveLimit} running job{(effectiveLimit == 1 ? string.Empty : "s")} from this menu at the same time.");
-        }
+        var categoryDisplayName = BuildCategoryDisplayName(identity.Category);
+        var scopeText = identity.IncludedSubmenuKeys.Count > 0
+            ? $"Scope: only {string.Join(", ", identity.IncludedSubmenuKeys)} jobs."
+            : identity.ExcludedSubmenuKeys.Count > 0
+                ? $"Scope: all {categoryDisplayName} jobs except {string.Join(", ", identity.ExcludedSubmenuKeys)}."
+                : $"Scope: all {categoryDisplayName} jobs.";
 
-        return new MonitoringJobCategoryConcurrencyRow(
-            displayName,
-            globalLimit,
-            $"No category-specific cap is configured, so this menu can use any free slot up to the global limit of {globalLimit}.");
+        return new MonitoringJobProcessorConcurrencyRow(
+            identity.Name,
+            identity.MaxConcurrentJobs,
+            $"{scopeText} Configured cap: up to {identity.MaxConcurrentJobs} running job{(identity.MaxConcurrentJobs == 1 ? string.Empty : "s")} for this processor.");
     }
 
-    private sealed record MonitoringJobConcurrencyPolicy(int GlobalLimit, IReadOnlyList<MonitoringJobCategoryConcurrencyRow> CategoryLimits);
+    private static string BuildCategoryDisplayName(string category)
+    {
+        if (string.Equals(category, MonitoringJobHelper.DataValidationCategory, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Data Validation";
+        }
 
-    private sealed record MonitoringJobCategoryConcurrencyRow(string DisplayName, int EffectiveLimit, string Description);
+        if (string.Equals(category, MonitoringJobHelper.FunctionalRejectionCategory, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Functional Rejection";
+        }
+
+        return category;
+    }
+
+    private sealed record MonitoringJobConcurrencyPolicy(int CombinedLimit, int DefaultLimit, IReadOnlyList<MonitoringJobProcessorConcurrencyRow> ProcessorLimits);
+
+    private sealed record MonitoringJobProcessorConcurrencyRow(string DisplayName, int EffectiveLimit, string Description);
 }

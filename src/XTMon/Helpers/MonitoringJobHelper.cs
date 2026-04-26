@@ -10,6 +10,7 @@ internal static class MonitoringJobHelper
     public const string BatchStatusSubmenuKey = "batch-status";
     public const string DailyBalanceSubmenuKey = "daily-balance";
     public const string PricingSubmenuKey = "pricing";
+    public static StringComparer SubmenuKeyComparer { get; } = StringComparer.OrdinalIgnoreCase;
     public static IReadOnlyList<string> AllCategories { get; } = [DataValidationCategory, FunctionalRejectionCategory];
     public const string QueuedStatus = "Queued";
     public const string RunningStatus = "Running";

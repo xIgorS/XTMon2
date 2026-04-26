@@ -150,9 +150,14 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.JobSaveResultStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobMarkCompletedStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobMarkFailedStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobMarkCancelledStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobCancelActiveStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobCountActiveStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobGetStuckStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetByIdStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestStoredProcedure) &&
-        !string.IsNullOrWhiteSpace(options.JobExpireStaleStoredProcedure),
+        !string.IsNullOrWhiteSpace(options.JobExpireStaleStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobFailRunningStoredProcedure),
         "JvCalculation options must define all required connection and stored procedure names.")
     .ValidateOnStart();
 builder.Services
@@ -168,6 +173,9 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.JobMarkCompletedStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobMarkFailedStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobMarkCancelledStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobGetActiveStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobCountActiveStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobGetStuckStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetByIdStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestByCategoryStoredProcedure) &&
@@ -175,6 +183,7 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.JobCancelActiveStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobRecoverOrphanedStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetRuntimeByDmvStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobSetExecutionContextStoredProcedure) &&
         options.CategoryMaxConcurrentJobs.All(limit =>
             !string.IsNullOrWhiteSpace(limit.Key) &&
             limit.Value >= 1 &&
@@ -509,10 +518,11 @@ builder.Services.AddSingleton<StartupJobRecoveryService>();
 builder.Services.AddHostedService(static serviceProvider => serviceProvider.GetRequiredService<StartupJobRecoveryService>());
 builder.Services.AddSingleton<JobDiagnosticsService>();
 builder.Services.AddHostedService<JvCalculationProcessingService>();
-builder.Services.AddHostedService<DataValidationMonitoringJobProcessingService>();
-builder.Services.AddHostedService<PricingMonitoringJobProcessingService>();
-builder.Services.AddHostedService<DailyBalanceMonitoringJobProcessingService>();
-builder.Services.AddHostedService<FunctionalRejectionMonitoringJobProcessingService>();
+builder.Services
+    .RegisterMonitoringProcessor<DataValidationMonitoringJobProcessingService>()
+    .RegisterMonitoringProcessor<PricingMonitoringJobProcessingService>()
+    .RegisterMonitoringProcessor<DailyBalanceMonitoringJobProcessingService>()
+    .RegisterMonitoringProcessor<FunctionalRejectionMonitoringJobProcessingService>();
 
 // Use default authentication scheme (Negotiate)
 builder.Services.AddAuthorization(options =>
@@ -571,3 +581,15 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+internal static class MonitoringProcessorServiceCollectionExtensions
+{
+    public static IServiceCollection RegisterMonitoringProcessor<T>(this IServiceCollection services)
+        where T : MonitoringJobProcessingService
+    {
+        services.AddSingleton<T>();
+        services.AddHostedService(static serviceProvider => serviceProvider.GetRequiredService<T>());
+        services.AddSingleton<IMonitoringJobProcessor>(static serviceProvider => serviceProvider.GetRequiredService<T>());
+        return services;
+    }
+}

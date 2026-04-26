@@ -499,22 +499,14 @@ public sealed class JvCalculationRepository : IJvCalculationRepository
     public async Task MarkJvJobCancelledAsync(long jobId, string errorMessage, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        const string commandName = "mark-jv-job-cancelled";
+        var commandName = _jvCalculationOptions.JobMarkCancelledStoredProcedure;
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-UPDATE [monitoring].[JvCalculationJobs]
-   SET [Status] = 'Cancelled',
-       [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
-       [CompletedAt] = NULL,
-       [ErrorMessage] = @ErrorMessage,
-       [LastHeartbeatAt] = SYSUTCDATETIME()
- WHERE [JobId] = @JobId
-   AND [Status] IN ('Running', 'Queued');";
-            command.CommandType = CommandType.Text;
+            command.CommandText = commandName;
+            command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt) { Value = jobId });
             command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
@@ -551,21 +543,14 @@ UPDATE [monitoring].[JvCalculationJobs]
     {
         var stopwatch = Stopwatch.StartNew();
         const string operationName = nameof(CancelActiveJvJobsAsync);
-        const string commandName = "bulk-cancel-active-jv-jobs";
+        var commandName = _jvCalculationOptions.JobCancelActiveStoredProcedure;
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-UPDATE [monitoring].[JvCalculationJobs]
-   SET [Status] = 'Cancelled',
-       [FailedAt] = CASE WHEN [StartedAt] IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
-       [CompletedAt] = NULL,
-       [ErrorMessage] = @ErrorMessage,
-       [LastHeartbeatAt] = SYSUTCDATETIME()
- WHERE [Status] IN ('Queued', 'Running');";
-            command.CommandType = CommandType.Text;
+            command.CommandText = commandName;
+            command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
             {
@@ -575,7 +560,8 @@ UPDATE [monitoring].[JvCalculationJobs]
             });
 
             await _connectionFactory.OpenAsync(connection, cancellationToken);
-            return await command.ExecuteNonQueryAsync(cancellationToken);
+            var count = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt32(count, System.Globalization.CultureInfo.InvariantCulture);
         }
         catch (SqlException ex)
         {
@@ -597,17 +583,14 @@ UPDATE [monitoring].[JvCalculationJobs]
     {
         var stopwatch = Stopwatch.StartNew();
         const string operationName = nameof(CountActiveJvJobsAsync);
-        const string commandName = "count-active-jv-jobs";
+        var commandName = _jvCalculationOptions.JobCountActiveStoredProcedure;
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-SELECT COUNT_BIG(*)
-FROM [monitoring].[JvCalculationJobs]
-WHERE [Status] IN ('Queued', 'Running');";
-            command.CommandType = CommandType.Text;
+            command.CommandText = commandName;
+            command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
 
             await _connectionFactory.OpenAsync(connection, cancellationToken);
@@ -634,26 +617,15 @@ WHERE [Status] IN ('Queued', 'Running');";
     {
         var stopwatch = Stopwatch.StartNew();
         const string operationName = nameof(GetStuckJvJobsAsync);
-        const string commandName = "get-stuck-jv-jobs";
+                var commandName = _jvCalculationOptions.JobGetStuckStoredProcedure;
         var thresholdSeconds = Math.Max(1, Convert.ToInt32(activityOlderThan.TotalSeconds, System.Globalization.CultureInfo.InvariantCulture));
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-SELECT [JobId], [UserId], [PnlDate], [RequestType], [Status], [WorkerId],
-       [EnqueuedAt], [StartedAt], [LastHeartbeatAt], [CompletedAt], [FailedAt], [ErrorMessage],
-       CAST(NULL AS NVARCHAR(MAX)) AS [QueryCheck],
-       CAST(NULL AS NVARCHAR(MAX)) AS [QueryFix],
-       CAST(NULL AS NVARCHAR(MAX)) AS [GridColumnsJson],
-       CAST(NULL AS NVARCHAR(MAX)) AS [GridRowsJson],
-       CAST(NULL AS DATETIME2(3))  AS [SavedAt]
-  FROM [monitoring].[JvCalculationJobs]
- WHERE [Status] = 'Running'
-   AND DATEDIFF(SECOND, [ActivityAt], SYSUTCDATETIME()) > @ThresholdSeconds
- ORDER BY [ActivityAt];";
-            command.CommandType = CommandType.Text;
+                        command.CommandText = commandName;
+                        command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@ThresholdSeconds", SqlDbType.Int) { Value = thresholdSeconds });
 
@@ -686,11 +658,13 @@ SELECT [JobId], [UserId], [PnlDate], [RequestType], [Status], [WorkerId],
 
     public async Task<int> ExpireStaleRunningJobsAsync(TimeSpan staleAfter, string errorMessage, CancellationToken cancellationToken)
     {
+        var commandName = _jvCalculationOptions.JobExpireStaleStoredProcedure;
+
         try
         {
             using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = _jvCalculationOptions.JobExpireStaleStoredProcedure;
+            command.CommandText = commandName;
             command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
 
@@ -707,7 +681,8 @@ SELECT [JobId], [UserId], [PnlDate], [RequestType], [Status], [WorkerId],
             });
 
             await _connectionFactory.OpenAsync(connection, cancellationToken);
-            return await command.ExecuteNonQueryAsync(cancellationToken);
+            var count = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt32(count, System.Globalization.CultureInfo.InvariantCulture);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -720,21 +695,14 @@ SELECT [JobId], [UserId], [PnlDate], [RequestType], [Status], [WorkerId],
     {
         var stopwatch = Stopwatch.StartNew();
         const string operationName = nameof(FailRunningJvJobsAsync);
-        const string commandName = "startup-running-jv-job-recovery";
+        var commandName = _jvCalculationOptions.JobFailRunningStoredProcedure;
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_jvCalculationOptions.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-UPDATE [monitoring].[JvCalculationJobs]
-   SET [Status] = 'Failed',
-       [FailedAt] = SYSUTCDATETIME(),
-       [CompletedAt] = NULL,
-       [ErrorMessage] = @ErrorMessage,
-       [LastHeartbeatAt] = SYSUTCDATETIME()
- WHERE [Status] = 'Running';";
-            command.CommandType = CommandType.Text;
+            command.CommandText = commandName;
+            command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _jvCalculationOptions.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, -1)
             {
@@ -744,7 +712,8 @@ UPDATE [monitoring].[JvCalculationJobs]
             });
 
             await _connectionFactory.OpenAsync(connection, cancellationToken);
-            return await command.ExecuteNonQueryAsync(cancellationToken);
+            var count = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt32(count, System.Globalization.CultureInfo.InvariantCulture);
         }
         catch (SqlException ex)
         {

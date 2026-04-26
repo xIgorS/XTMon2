@@ -226,37 +226,14 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
     public async Task<IReadOnlyList<MonitoringJobRecord>> GetActiveMonitoringJobsAsync(CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        const string commandName = "get-active-monitoring-jobs";
+        var commandName = _options.JobGetActiveStoredProcedure;
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-SELECT [JobId],
-       [Category],
-       [SubmenuKey],
-       [DisplayName],
-       [PnlDate],
-       [Status],
-       [WorkerId],
-       [ParametersJson],
-       [ParameterSummary],
-       [EnqueuedAt],
-       [StartedAt],
-       [LastHeartbeatAt],
-       [CompletedAt],
-       [FailedAt],
-       [ErrorMessage],
-       [ParsedQuery],
-       [GridColumnsJson],
-       [GridRowsJson],
-       [MetadataJson],
-       [SavedAt]
-FROM [monitoring].[MonitoringJobs]
-WHERE [Status] IN ('Queued', 'Running')
-ORDER BY [Category], [EnqueuedAt], [JobId];";
-            command.CommandType = CommandType.Text;
+            command.CommandText = commandName;
+            command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
 
             var jobs = new List<MonitoringJobRecord>();
@@ -524,17 +501,14 @@ ORDER BY [Category], [EnqueuedAt], [JobId];";
     {
         var stopwatch = Stopwatch.StartNew();
         const string operationName = nameof(CountActiveMonitoringJobsAsync);
-        const string commandName = "count-active-monitoring-jobs";
+        var commandName = _options.JobCountActiveStoredProcedure;
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-SELECT COUNT_BIG(*)
-FROM [monitoring].[MonitoringJobs]
-WHERE [Status] IN ('Queued', 'Running');";
-            command.CommandType = CommandType.Text;
+            command.CommandText = commandName;
+            command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
 
             await _connectionFactory.OpenAsync(connection, cancellationToken);
@@ -611,27 +585,15 @@ WHERE [Status] IN ('Queued', 'Running');";
     {
         var stopwatch = Stopwatch.StartNew();
         const string operationName = nameof(GetStuckMonitoringJobsAsync);
-        const string commandName = "get-stuck-monitoring-jobs";
+                var commandName = _options.JobGetStuckStoredProcedure;
         var thresholdSeconds = Math.Max(1, Convert.ToInt32(activityOlderThan.TotalSeconds, CultureInfo.InvariantCulture));
 
         try
         {
             using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
             using var command = connection.CreateCommand();
-            command.CommandText = @"
-SELECT [JobId], [Category], [SubmenuKey], [DisplayName], [PnlDate], [Status], [WorkerId],
-       [ParametersJson], [ParameterSummary], [EnqueuedAt], [StartedAt], [LastHeartbeatAt],
-       [CompletedAt], [FailedAt], [ErrorMessage],
-       CAST(NULL AS NVARCHAR(MAX)) AS [ParsedQuery],
-       CAST(NULL AS NVARCHAR(MAX)) AS [GridColumnsJson],
-       CAST(NULL AS NVARCHAR(MAX)) AS [GridRowsJson],
-       CAST(NULL AS NVARCHAR(MAX)) AS [MetadataJson],
-       CAST(NULL AS DATETIME2(0))  AS [SavedAt]
-  FROM [monitoring].[MonitoringJobs]
- WHERE [Status] = 'Running'
-   AND DATEDIFF(SECOND, [ActivityAt], SYSUTCDATETIME()) > @ThresholdSeconds
- ORDER BY [ActivityAt];";
-            command.CommandType = CommandType.Text;
+                        command.CommandText = commandName;
+                        command.CommandType = CommandType.StoredProcedure;
             command.CommandTimeout = _options.CommandTimeoutSeconds;
             command.Parameters.Add(new SqlParameter("@ThresholdSeconds", SqlDbType.Int) { Value = thresholdSeconds });
 

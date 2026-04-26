@@ -157,10 +157,17 @@ public class JobDiagnosticsServiceTests
     }
 
     [Fact]
-    public async Task GetMonitoringProcessorHealthReportAsync_FlagsUnderfilledProcessor()
+    public async Task GetMonitoringProcessorHealthReportAsync_SplitsQueuedRowsByProcessorScope()
     {
-        var activeRunning = MakeMonitoringJob(1L, "batch-status");
-        var queuedBacklog = MakeMonitoringJob(2L, "daily-balance") with
+        var queuedPricing = MakeMonitoringJob(1L, MonitoringJobHelper.PricingSubmenuKey) with
+        {
+            Status = MonitoringJobHelper.QueuedStatus,
+            WorkerId = null,
+            StartedAt = null,
+            LastHeartbeatAt = null,
+            EnqueuedAt = DateTime.UtcNow.AddSeconds(-30)
+        };
+        var queuedBatchStatus = MakeMonitoringJob(2L, MonitoringJobHelper.BatchStatusSubmenuKey) with
         {
             Status = MonitoringJobHelper.QueuedStatus,
             WorkerId = null,
@@ -172,10 +179,10 @@ public class JobDiagnosticsServiceTests
         var monitoringRepository = new Mock<IMonitoringJobRepository>();
         monitoringRepository
             .Setup(repository => repository.GetActiveMonitoringJobsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { activeRunning, queuedBacklog });
+            .ReturnsAsync(new[] { queuedPricing, queuedBatchStatus });
         monitoringRepository
             .Setup(repository => repository.GetRunningMonitoringJobIdsByDmvAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HashSet<long> { activeRunning.JobId });
+            .ReturnsAsync(new HashSet<long>());
 
         var service = CreateService(
             monitoringRepository.Object,
@@ -194,16 +201,61 @@ public class JobDiagnosticsServiceTests
 
         var report = await service.GetMonitoringProcessorHealthReportAsync(CancellationToken.None);
 
-        var dataValidationRow = Assert.Single(report.Rows, row => row.Category == MonitoringJobHelper.DataValidationCategory);
-        Assert.True(dataValidationRow.HasIssue);
-        Assert.Equal("Underfilled", dataValidationRow.Status);
-        Assert.Equal(2, dataValidationRow.ConfiguredWorkers);
-        Assert.Equal(1, dataValidationRow.LiveRuntimeJobs);
+        var pricingRow = Assert.Single(report.Rows, row => row.ProcessorKey == $"{MonitoringJobHelper.DataValidationCategory}:{MonitoringJobHelper.PricingSubmenuKey}");
+        var dataValidationRow = Assert.Single(report.Rows, row => row.ProcessorKey == MonitoringJobHelper.DataValidationCategory);
+
+        Assert.Equal(1, pricingRow.QueuedJobs);
+        Assert.Equal(0, pricingRow.RunningJobs);
         Assert.Equal(1, dataValidationRow.QueuedJobs);
     }
 
     [Fact]
-    public async Task GetMonitoringProcessorHealthReportAsync_WhenDmvFails_MarksRuntimeCheckUnavailable()
+    public async Task GetMonitoringProcessorHealthReportAsync_FlagsPricingProcessorUnderfilledWhenBacklogAgesPastGracePeriod()
+    {
+        var queuedPricing = MakeMonitoringJob(1L, MonitoringJobHelper.PricingSubmenuKey) with
+        {
+            Status = MonitoringJobHelper.QueuedStatus,
+            WorkerId = null,
+            StartedAt = null,
+            LastHeartbeatAt = null,
+            EnqueuedAt = DateTime.UtcNow.AddSeconds(-30)
+        };
+
+        var monitoringRepository = new Mock<IMonitoringJobRepository>();
+        monitoringRepository
+            .Setup(repository => repository.GetActiveMonitoringJobsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { queuedPricing });
+        monitoringRepository
+            .Setup(repository => repository.GetRunningMonitoringJobIdsByDmvAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<long>());
+
+        var service = CreateService(
+            monitoringRepository.Object,
+            Mock.Of<IJvCalculationRepository>(),
+            Mock.Of<IReplayFlowRepository>(),
+            monitoringOptions: new MonitoringJobsOptions
+            {
+                MaxConcurrentJobs = 3,
+                ProcessorIdleDelaySeconds = 5,
+                CategoryMaxConcurrentJobs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [MonitoringJobHelper.DataValidationCategory] = 3,
+                    [MonitoringJobHelper.FunctionalRejectionCategory] = 1
+                }
+            });
+
+        var report = await service.GetMonitoringProcessorHealthReportAsync(CancellationToken.None);
+
+        var pricingRow = Assert.Single(report.Rows, row => row.ProcessorKey == $"{MonitoringJobHelper.DataValidationCategory}:{MonitoringJobHelper.PricingSubmenuKey}");
+        Assert.Equal(1, pricingRow.ConfiguredWorkers);
+        Assert.Equal(0, pricingRow.LiveRuntimeJobs);
+        Assert.Equal(1, pricingRow.QueuedJobs);
+        Assert.True(pricingRow.HasIssue);
+        Assert.Equal("Underfilled", pricingRow.Status);
+    }
+
+    [Fact]
+    public async Task GetMonitoringProcessorHealthReportAsync_WhenDmvFails_MarksEveryRowUnavailable()
     {
         var monitoringRepository = new Mock<IMonitoringJobRepository>();
         monitoringRepository
@@ -221,17 +273,23 @@ public class JobDiagnosticsServiceTests
         var report = await service.GetMonitoringProcessorHealthReportAsync(CancellationToken.None);
 
         Assert.False(report.DmvAvailable);
-        Assert.All(report.Rows, row => Assert.True(row.IsRuntimeCheckUnavailable));
+        Assert.All(report.Rows, row =>
+        {
+            Assert.True(row.IsRuntimeCheckUnavailable);
+            Assert.Equal("DMV unavailable", row.Status);
+        });
     }
 
     private static JobDiagnosticsService CreateService(
         IMonitoringJobRepository monitoringRepository,
         IJvCalculationRepository jvRepository,
         IReplayFlowRepository replayRepository,
+        IReadOnlyCollection<IMonitoringJobProcessor>? processors = null,
         MonitoringJobsOptions? monitoringOptions = null,
         JvCalculationOptions? jvOptions = null,
         ReplayFlowsOptions? replayOptions = null)
     {
+        var effectiveMonitoringOptions = monitoringOptions ?? new MonitoringJobsOptions();
         var serviceProvider = new Mock<IServiceProvider>();
         serviceProvider
             .Setup(provider => provider.GetService(typeof(IMonitoringJobRepository)))
@@ -252,9 +310,59 @@ public class JobDiagnosticsServiceTests
         return new JobDiagnosticsService(
             scopeFactory.Object,
             NullLogger<JobDiagnosticsService>.Instance,
-            Microsoft.Extensions.Options.Options.Create(monitoringOptions ?? new MonitoringJobsOptions()),
+            processors ?? CreateMonitoringProcessors(effectiveMonitoringOptions),
+            Microsoft.Extensions.Options.Options.Create(effectiveMonitoringOptions),
             Microsoft.Extensions.Options.Options.Create(jvOptions ?? new JvCalculationOptions()),
             Microsoft.Extensions.Options.Options.Create(replayOptions ?? new ReplayFlowsOptions()));
+    }
+
+    private static IMonitoringJobProcessor[] CreateMonitoringProcessors(MonitoringJobsOptions options)
+    {
+        return
+        [
+            MakeProcessor(
+                "Data Validation",
+                MonitoringJobHelper.DataValidationCategory,
+                [],
+                [MonitoringJobHelper.PricingSubmenuKey, MonitoringJobHelper.DailyBalanceSubmenuKey],
+                GetConfiguredWorkerCount(options, MonitoringJobHelper.DataValidationCategory)),
+            MakeProcessor(
+                "Pricing",
+                MonitoringJobHelper.DataValidationCategory,
+                [MonitoringJobHelper.PricingSubmenuKey],
+                [],
+                1),
+            MakeProcessor(
+                "Daily Balance",
+                MonitoringJobHelper.DataValidationCategory,
+                [MonitoringJobHelper.DailyBalanceSubmenuKey],
+                [],
+                1),
+            MakeProcessor(
+                "Functional Rejection",
+                MonitoringJobHelper.FunctionalRejectionCategory,
+                [],
+                [],
+                GetConfiguredWorkerCount(options, MonitoringJobHelper.FunctionalRejectionCategory))
+        ];
+    }
+
+    private static IMonitoringJobProcessor MakeProcessor(
+        string name,
+        string category,
+        IReadOnlyList<string> includedSubmenuKeys,
+        IReadOnlyList<string> excludedSubmenuKeys,
+        int maxConcurrentJobs)
+    {
+        return new TestMonitoringJobProcessor(
+            new MonitoringProcessorIdentity(name, category, includedSubmenuKeys, excludedSubmenuKeys, maxConcurrentJobs));
+    }
+
+    private static int GetConfiguredWorkerCount(MonitoringJobsOptions options, string category)
+    {
+        return options.CategoryMaxConcurrentJobs.TryGetValue(category, out var configuredWorkers)
+            ? configuredWorkers
+            : options.MaxConcurrentJobs;
     }
 
     private static StuckReplayBatchRow MakeReplayRow(int ageSeconds)
@@ -297,4 +405,6 @@ public class JobDiagnosticsServiceTests
             MetadataJson: null,
             SavedAt: null);
     }
+
+    private sealed record TestMonitoringJobProcessor(MonitoringProcessorIdentity Identity) : IMonitoringJobProcessor;
 }

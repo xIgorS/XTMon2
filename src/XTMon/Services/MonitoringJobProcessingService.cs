@@ -9,7 +9,7 @@ using XTMon.Repositories;
 
 namespace XTMon.Services;
 
-public class MonitoringJobProcessingService : BackgroundService
+public class MonitoringJobProcessingService : BackgroundService, IMonitoringJobProcessor
 {
     private const long SlowPollStageThresholdMilliseconds = 1000;
     private const int TooManyArgumentsSqlErrorNumber = 8144;
@@ -33,6 +33,8 @@ public class MonitoringJobProcessingService : BackgroundService
     private readonly bool _hasClaimSubmenuKeyFilters;
     private readonly bool _isClaimScopedProcessor;
     private int _claimSubmenuKeyFallbackToLegacy;
+
+    public MonitoringProcessorIdentity Identity { get; }
 
     public MonitoringJobProcessingService(
         IServiceScopeFactory scopeFactory,
@@ -71,6 +73,7 @@ public class MonitoringJobProcessingService : BackgroundService
         _claimExcludedSubmenuKeys = BuildClaimSubmenuKeys(excludedSubmenuKeys);
         _hasClaimSubmenuKeyFilters = _claimIncludedSubmenuKeys.Length > 0 || _claimExcludedSubmenuKeys.Length > 0;
         _isClaimScopedProcessor = _claimExcludedCategories.Length > 0 || _claimIncludedSubmenuKeys.Length > 0 || _claimExcludedSubmenuKeys.Length > 0;
+        Identity = BuildProcessorIdentity(_processorName, ownedCategories, _claimIncludedSubmenuKeys, _claimExcludedSubmenuKeys, _maxConcurrentJobs);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -794,8 +797,48 @@ public class MonitoringJobProcessingService : BackgroundService
         return submenuKeys
             .Where(submenuKey => !string.IsNullOrWhiteSpace(submenuKey))
             .Select(submenuKey => submenuKey.Trim())
-            .Distinct(StringComparer.Ordinal)
+            .Distinct(MonitoringJobHelper.SubmenuKeyComparer)
             .ToArray();
+    }
+
+    private static MonitoringProcessorIdentity BuildProcessorIdentity(
+        string processorName,
+        IReadOnlyCollection<string>? ownedCategories,
+        IReadOnlyList<string> includedSubmenuKeys,
+        IReadOnlyList<string> excludedSubmenuKeys,
+        int maxConcurrentJobs)
+    {
+        var normalizedOwnedCategories = ownedCategories is null
+            ? []
+            : ownedCategories
+                .Where(category => !string.IsNullOrWhiteSpace(category))
+                .Select(category => category.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        if (normalizedOwnedCategories.Length > 1)
+        {
+            throw new InvalidOperationException("Monitoring processor diagnostics identity requires exactly one owned category.");
+        }
+
+        return new MonitoringProcessorIdentity(
+            BuildProcessorDisplayName(processorName),
+            normalizedOwnedCategories.SingleOrDefault() ?? string.Empty,
+            includedSubmenuKeys,
+            excludedSubmenuKeys,
+            maxConcurrentJobs);
+    }
+
+    private static string BuildProcessorDisplayName(string processorName)
+    {
+        const string suffix = " monitoring job processing service";
+
+        if (processorName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return processorName[..^suffix.Length];
+        }
+
+        return processorName;
     }
 
     private sealed record ActiveMonitoringJob(MonitoringJobRecord Job, Task Task);

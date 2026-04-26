@@ -1,17 +1,37 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using System.Data;
+using XTMon.Options;
 
 namespace XTMon.Infrastructure;
 
 public sealed class SqlConnectionFactory
 {
     private readonly IConfiguration _configuration;
+    private readonly string _monitoringJobDatabaseName;
+    private readonly string _monitoringJobSetExecutionContextStoredProcedure;
     private readonly SqlExecutionContextAccessor _sqlExecutionContextAccessor;
 
-    public SqlConnectionFactory(IConfiguration configuration, SqlExecutionContextAccessor sqlExecutionContextAccessor)
+    public SqlConnectionFactory(
+        IConfiguration configuration,
+        SqlExecutionContextAccessor sqlExecutionContextAccessor,
+        IOptions<MonitoringJobsOptions> monitoringJobsOptions)
     {
         _configuration = configuration;
         _sqlExecutionContextAccessor = sqlExecutionContextAccessor;
+
+        var monitoringJobOptions = monitoringJobsOptions.Value;
+        _monitoringJobSetExecutionContextStoredProcedure = monitoringJobOptions.JobSetExecutionContextStoredProcedure;
+
+        var monitoringJobConnectionString = configuration.GetConnectionString(monitoringJobOptions.JobConnectionStringName);
+        if (string.IsNullOrWhiteSpace(monitoringJobConnectionString))
+        {
+            throw new InvalidOperationException($"Connection string '{monitoringJobOptions.JobConnectionStringName}' is not configured.");
+        }
+
+        var connectionStringBuilder = new SqlConnectionStringBuilder(monitoringJobConnectionString);
+        _monitoringJobDatabaseName = connectionStringBuilder.InitialCatalog;
     }
 
     public SqlConnection CreateConnection()
@@ -38,23 +58,21 @@ public sealed class SqlConnectionFactory
 
     private async Task ApplyExecutionContextAsync(SqlConnection connection, CancellationToken cancellationToken)
     {
-        using var command = connection.CreateCommand();
-        command.CommandTimeout = 5;
-
-        var context = _sqlExecutionContextAccessor.CurrentContext;
-        if (context is null)
+        if (!string.Equals(connection.Database, _monitoringJobDatabaseName, StringComparison.OrdinalIgnoreCase))
         {
-            command.CommandText = @"
-DECLARE @Context VARBINARY(128) = 0x;
-SET CONTEXT_INFO @Context;";
-            await command.ExecuteNonQueryAsync(cancellationToken);
             return;
         }
 
-        command.CommandText = @"
-DECLARE @Context VARBINARY(128) = 0x58544D4F4E4A4F42 + CONVERT(BINARY(8), @JobId);
-SET CONTEXT_INFO @Context;";
-        command.Parameters.Add(new SqlParameter("@JobId", System.Data.SqlDbType.BigInt) { Value = context.JobId });
+        using var command = connection.CreateCommand();
+        command.CommandText = _monitoringJobSetExecutionContextStoredProcedure;
+        command.CommandType = CommandType.StoredProcedure;
+        command.CommandTimeout = 5;
+
+        var context = _sqlExecutionContextAccessor.CurrentContext;
+        command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.BigInt)
+        {
+            Value = context is null ? DBNull.Value : context.JobId
+        });
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

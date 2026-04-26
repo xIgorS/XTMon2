@@ -43,6 +43,18 @@ public sealed class JvCalculationOptions
     public string JobMarkFailedStoredProcedure { get; set; } = "monitoring.UspJvJobMarkFailed";
 
     [Required]
+    public string JobMarkCancelledStoredProcedure { get; set; } = "monitoring.UspJvJobMarkCancelled";
+
+    [Required]
+    public string JobCancelActiveStoredProcedure { get; set; } = "monitoring.UspJvJobCancelActive";
+
+    [Required]
+    public string JobCountActiveStoredProcedure { get; set; } = "monitoring.UspJvJobCountActive";
+
+    [Required]
+    public string JobGetStuckStoredProcedure { get; set; } = "monitoring.UspJvJobGetStuck";
+
+    [Required]
     public string JobGetByIdStoredProcedure { get; set; } = "monitoring.UspJvJobGetById";
 
     [Required]
@@ -50,6 +62,9 @@ public sealed class JvCalculationOptions
 
     [Required]
     public string JobExpireStaleStoredProcedure { get; set; } = "monitoring.UspJvJobExpireStale";
+
+    [Required]
+    public string JobFailRunningStoredProcedure { get; set; } = "monitoring.UspJvJobFailRunning";
 
     [Range(1, 3600)]
     public int CommandTimeoutSeconds { get; set; } = 30;

@@ -17,16 +17,19 @@ public sealed class JobDiagnosticsService
     private readonly MonitoringJobsOptions _monitoringOptions;
     private readonly JvCalculationOptions _jvOptions;
     private readonly ReplayFlowsOptions _replayOptions;
+    private readonly IReadOnlyList<IMonitoringJobProcessor> _processors;
 
     public JobDiagnosticsService(
         IServiceScopeFactory scopeFactory,
         ILogger<JobDiagnosticsService> logger,
+        IEnumerable<IMonitoringJobProcessor> processors,
         IOptions<MonitoringJobsOptions> monitoringOptions,
         IOptions<JvCalculationOptions> jvOptions,
         IOptions<ReplayFlowsOptions> replayOptions)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _processors = processors.ToArray();
         _monitoringOptions = monitoringOptions.Value;
         _jvOptions = jvOptions.Value;
         _replayOptions = replayOptions.Value;
@@ -91,10 +94,13 @@ public sealed class JobDiagnosticsService
             dmvAvailable = false;
         }
 
-        var rows = MonitoringJobHelper.AllCategories
-            .Select(category => BuildMonitoringProcessorHealthRow(
-                category,
-                activeJobs.Where(job => string.Equals(job.Category, category, StringComparison.OrdinalIgnoreCase)).ToArray(),
+        var rows = _processors
+            .Select(processor => processor.Identity)
+            .OrderBy(identity => identity.Category, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(identity => identity.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(identity => BuildMonitoringProcessorHealthRow(
+                identity,
+                MatchingActiveJobs(activeJobs, identity),
                 liveRuntimeJobIds,
                 dmvAvailable,
                 queueBacklogGracePeriod,
@@ -141,17 +147,37 @@ public sealed class JobDiagnosticsService
         return TimeSpan.FromSeconds(Math.Max(idleDelaySeconds * 3, 15));
     }
 
-    private MonitoringProcessorHealthRow BuildMonitoringProcessorHealthRow(
-        string category,
+    private static MonitoringJobRecord[] MatchingActiveJobs(
+        IReadOnlyCollection<MonitoringJobRecord> activeJobs,
+        MonitoringProcessorIdentity identity)
+    {
+        IEnumerable<MonitoringJobRecord> matchingJobs = activeJobs
+            .Where(job => string.Equals(job.Category, identity.Category, StringComparison.OrdinalIgnoreCase));
+
+        if (identity.IncludedSubmenuKeys.Count > 0)
+        {
+            var includedSubmenuKeys = identity.IncludedSubmenuKeys.ToHashSet(MonitoringJobHelper.SubmenuKeyComparer);
+            matchingJobs = matchingJobs.Where(job => includedSubmenuKeys.Contains(job.SubmenuKey));
+        }
+
+        if (identity.ExcludedSubmenuKeys.Count > 0)
+        {
+            var excludedSubmenuKeys = identity.ExcludedSubmenuKeys.ToHashSet(MonitoringJobHelper.SubmenuKeyComparer);
+            matchingJobs = matchingJobs.Where(job => !excludedSubmenuKeys.Contains(job.SubmenuKey));
+        }
+
+        return matchingJobs.ToArray();
+    }
+
+    private static MonitoringProcessorHealthRow BuildMonitoringProcessorHealthRow(
+        MonitoringProcessorIdentity identity,
         IReadOnlyCollection<MonitoringJobRecord> activeJobs,
         IReadOnlySet<long> liveRuntimeJobIds,
         bool dmvAvailable,
         TimeSpan queueBacklogGracePeriod,
         DateTime nowUtc)
     {
-        var configuredWorkers = _monitoringOptions.CategoryMaxConcurrentJobs.TryGetValue(category, out var categoryLimit)
-            ? categoryLimit
-            : _monitoringOptions.MaxConcurrentJobs;
+        var configuredWorkers = identity.MaxConcurrentJobs;
         var queuedJobs = activeJobs
             .Where(job => MonitoringJobHelper.IsQueuedStatus(job.Status))
             .OrderBy(job => job.EnqueuedAt)
@@ -185,8 +211,11 @@ public sealed class JobDiagnosticsService
                         : "Live runtime matches the currently needed worker count.";
 
         return new MonitoringProcessorHealthRow(
-            MonitoringJobHelper.GetCategoryDisplayName(category),
-            category,
+            BuildProcessorKey(identity),
+            identity.Name,
+            identity.Category,
+            identity.IncludedSubmenuKeys,
+            identity.ExcludedSubmenuKeys,
             configuredWorkers,
             queuedJobs.Length,
             runningJobs.Length,
@@ -196,5 +225,15 @@ public sealed class JobDiagnosticsService
             !dmvAvailable,
             status,
             detail);
+    }
+
+    private static string BuildProcessorKey(MonitoringProcessorIdentity identity)
+    {
+        if (identity.IncludedSubmenuKeys.Count == 0)
+        {
+            return identity.Category;
+        }
+
+        return $"{identity.Category}:{string.Join("+", identity.IncludedSubmenuKeys.OrderBy(submenuKey => submenuKey, MonitoringJobHelper.SubmenuKeyComparer))}";
     }
 }

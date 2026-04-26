@@ -12,8 +12,11 @@ public sealed record MonitoringProcessorHealthReport(
 }
 
 public sealed record MonitoringProcessorHealthRow(
+    string ProcessorKey,
     string DisplayName,
     string Category,
+    IReadOnlyList<string> IncludedSubmenuKeys,
+    IReadOnlyList<string> ExcludedSubmenuKeys,
     int ConfiguredWorkers,
     int QueuedJobs,
     int RunningJobs,
