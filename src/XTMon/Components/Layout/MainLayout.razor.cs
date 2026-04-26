@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Http;
 using XTMon.Services;
 
 namespace XTMon.Components.Layout;
@@ -6,13 +7,18 @@ namespace XTMon.Components.Layout;
 public partial class MainLayout : LayoutComponentBase, IDisposable
 {
 	private readonly StartupDiagnosticsGateController _gateController = new();
+	private string? _authenticatedUserName;
 
 	[Inject]
 	private StartupDiagnosticsState StartupDiagnosticsState { get; set; } = default!;
 
+	[Inject]
+	private IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
+
 	protected override void OnInitialized()
 	{
 		_gateController.Initialize(StartupDiagnosticsState.HasCompleted);
+		_authenticatedUserName = ResolveAuthenticatedUserName();
 
 		StartupDiagnosticsState.StatusChanged += OnDiagnosticsStatusChanged;
 	}
@@ -193,5 +199,28 @@ public partial class MainLayout : LayoutComponentBase, IDisposable
 		}
 
 		return "Startup diagnostics have not completed yet.";
+	}
+
+	private string GetAuthenticatedUserLabel()
+	{
+		return string.IsNullOrWhiteSpace(_authenticatedUserName)
+			? "Authenticated user"
+			: _authenticatedUserName;
+	}
+
+	private string? ResolveAuthenticatedUserName()
+	{
+		try
+		{
+			return HttpContextAccessor.HttpContext?.User?.Identity?.Name;
+		}
+		catch (ObjectDisposedException)
+		{
+			return null;
+		}
+		catch (InvalidOperationException)
+		{
+			return null;
+		}
 	}
 }

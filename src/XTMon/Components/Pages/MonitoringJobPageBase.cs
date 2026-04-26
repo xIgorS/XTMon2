@@ -249,6 +249,7 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
             if (latestJob is null)
             {
                 ClearLoadedState();
+                await StartPollingIfNeededAsync();
                 return;
             }
 
@@ -370,7 +371,7 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
     {
         await StopPollingAsync();
 
-        if (!activeJobId.HasValue || !IsJobActive)
+        if (!CanPollForLatestJobDiscovery() && (!activeJobId.HasValue || !IsJobActive))
         {
             return;
         }
@@ -391,13 +392,12 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
         {
             while (await session.Timer.WaitForNextTickAsync(session.CancellationSource.Token))
             {
-                var shouldContinuePolling = await RefreshActiveJobAsync(session.CancellationSource.Token);
+                var shouldContinuePolling = await RefreshPollingStateAsync(session.CancellationSource.Token);
+                await RequestStateHasChangedAsync();
                 if (!shouldContinuePolling)
                 {
                     break;
                 }
-
-                await RequestStateHasChangedAsync();
             }
         }
         catch (OperationCanceledException)
@@ -430,5 +430,42 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
 
         ApplyJob(job);
         return IsJobActive;
+    }
+
+    private bool CanPollForLatestJobDiscovery()
+    {
+        return selectedPnlDate.HasValue && CanRestoreLatestJob();
+    }
+
+    private async Task<bool> RefreshPollingStateAsync(CancellationToken cancellationToken)
+    {
+        if (activeJobId.HasValue)
+        {
+            var shouldContinueActivePolling = await RefreshActiveJobAsync(cancellationToken);
+            if (shouldContinueActivePolling)
+            {
+                return true;
+            }
+        }
+
+        if (!CanPollForLatestJobDiscovery())
+        {
+            return false;
+        }
+
+        var latestJob = await MonitoringJobRepository.GetLatestMonitoringJobAsync(
+            MonitoringCategory,
+            MonitoringSubmenuKey,
+            selectedPnlDate!.Value,
+            cancellationToken);
+
+        if (latestJob is null)
+        {
+            ClearLoadedState();
+            return true;
+        }
+
+        ApplyJob(latestJob);
+        return true;
     }
 }

@@ -533,6 +533,12 @@ public partial class FunctionalRejectionRunner : PnlDateAwarePageBase<Functional
         return MonitoringDisplayHelper.GetMonitoringJobDuration(job);
     }
 
+    private string GetItemHref(BatchRunRow row)
+    {
+        var pnlDate = selectedPnlDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return FunctionalRejectionUrlHelper.BuildHref(row.Item, pnlDate);
+    }
+
     private static string GetSubmissionText(BatchRunRow row)
     {
         return string.IsNullOrWhiteSpace(row.LastSubmissionMessage)

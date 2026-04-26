@@ -60,9 +60,6 @@ public sealed class MonitoringJobsOptions
     [Required]
     public string JobGetRuntimeByDmvStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetRuntimeByDmv";
 
-    [Required]
-    public string JobSetExecutionContextStoredProcedure { get; set; } = "monitoring.UspMonitoringJobSetExecutionContext";
-
     [Range(1, 3600)]
     public int CommandTimeoutSeconds { get; set; } = 30;
 

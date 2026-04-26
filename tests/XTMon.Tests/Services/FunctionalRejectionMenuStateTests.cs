@@ -84,6 +84,35 @@ public class FunctionalRejectionMenuStateTests
         repository.Verify(value => value.GetMenuItemsAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task RefreshAsync_WhenDisposedDuringInflightRefresh_DoesNotThrow()
+    {
+        var refreshStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowRefreshToComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var repository = new Mock<IFunctionalRejectionRepository>();
+        repository
+            .Setup(value => value.GetMenuItemsAsync(It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                refreshStarted.SetResult();
+                await allowRefreshToComplete.Task;
+                return Array.Empty<FunctionalRejectionMenuItem>();
+            });
+
+        var state = new FunctionalRejectionMenuState(
+            repository.Object,
+            NullLogger<FunctionalRejectionMenuState>.Instance);
+
+        var refreshTask = state.RefreshAsync(CancellationToken.None);
+        await refreshStarted.Task;
+
+        state.Dispose();
+        allowRefreshToComplete.SetResult();
+
+        await refreshTask;
+    }
+
     private static FunctionalRejectionMenuItem CreateItem(string code, int businessDataTypeId, string sourceSystemName, string dbConnection)
     {
         return new FunctionalRejectionMenuItem(code, businessDataTypeId, sourceSystemName, dbConnection);

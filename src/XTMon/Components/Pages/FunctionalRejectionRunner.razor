@@ -175,10 +175,12 @@
                                            disabled="@isSubmitting" />
                                 </td>
                                 <td class="db-grid__cell db-grid__cell--text">
-                                    <div class="flex flex-col gap-1">
-                                        <span class="font-semibold text-heading">@row.Item.SourceSystemBusinessDataTypeCode</span>
-                                        <span class="text-xs text-body-secondary">Business data type: @row.Item.BusinessDataTypeId</span>
-                                    </div>
+                                    <a class="group flex flex-col gap-1 rounded-md px-1 py-1 -mx-1 -my-1 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                                       href="@GetItemHref(row)"
+                                       title="Open @row.Item.SourceSystemBusinessDataTypeCode">
+                                        <span class="font-semibold text-heading group-hover:underline">@row.Item.SourceSystemBusinessDataTypeCode</span>
+                                        <span class="text-xs text-body-secondary group-hover:text-heading">Business data type: @row.Item.BusinessDataTypeId</span>
+                                    </a>
                                 </td>
                                 <td class="db-grid__cell db-grid__cell--text">@row.Item.SourceSystemName</td>
                                 <td class="db-grid__cell db-grid__cell--text">@row.Item.DbConnection</td>

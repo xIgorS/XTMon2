@@ -83,6 +83,7 @@ builder.Services.Configure<IISOptions>(options =>
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddHttpContextAccessor();
 
 builder.Services
     .AddOptions<MonitoringOptions>()
@@ -183,7 +184,6 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.JobCancelActiveStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobRecoverOrphanedStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetRuntimeByDmvStoredProcedure) &&
-        !string.IsNullOrWhiteSpace(options.JobSetExecutionContextStoredProcedure) &&
         options.CategoryMaxConcurrentJobs.All(limit =>
             !string.IsNullOrWhiteSpace(limit.Key) &&
             limit.Value >= 1 &&

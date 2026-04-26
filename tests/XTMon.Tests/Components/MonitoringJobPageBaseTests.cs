@@ -100,6 +100,48 @@ public class MonitoringJobPageBaseTests
         await disposeTask;
     }
 
+    [Fact]
+    public async Task Polling_WhenJobTransitionsToCancelled_RequestsStateChangeBeforeStopping()
+    {
+        var repository = new Mock<IMonitoringJobRepository>();
+        repository.Setup(repo => repo.GetMonitoringJobByIdAsync(44L, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateCancelledJob(44L));
+
+        var page = CreatePage(repository.Object);
+        page.SetActiveJobForTest(44L, "Running");
+
+        await page.StartPollingForTestAsync();
+        await page.StateChangedTask.WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.Equal(1, page.StateChangeRequestCount);
+        Assert.Equal(MonitoringJobHelper.CancelledStatus, page.ActiveJobStatusForTest);
+        Assert.False(page.IsJobActiveForTest);
+    }
+
+    [Fact]
+    public async Task Polling_WhenPageStartsIdle_DiscoversExternallyStartedJob()
+    {
+        var repository = new Mock<IMonitoringJobRepository>();
+        repository.Setup(repo => repo.GetLatestMonitoringJobAsync(
+                MonitoringJobHelper.DataValidationCategory,
+                "test-monitoring-job",
+                TestDate,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateRunningJob(45L));
+
+        var page = CreatePage(repository.Object);
+        page.SetSelectedPnlDateForTest(TestDate);
+
+        await page.StartPollingForTestAsync();
+        await page.StateChangedTask.WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.Equal(45L, page.ActiveJobIdForTest);
+        Assert.Equal(MonitoringJobHelper.RunningStatus, page.ActiveJobStatusForTest);
+        Assert.True(page.IsJobActiveForTest);
+
+        await page.StopPollingForTestAsync();
+    }
+
     private static TestMonitoringJobPage CreatePage(IMonitoringJobRepository repository)
     {
         var page = new TestMonitoringJobPage();
@@ -138,8 +180,32 @@ public class MonitoringJobPageBaseTests
         MetadataJson: null,
         SavedAt: null);
 
+    private static MonitoringJobRecord CreateCancelledJob(long jobId) => new(
+        JobId: jobId,
+        Category: MonitoringJobHelper.DataValidationCategory,
+        SubmenuKey: "test-monitoring-job",
+        DisplayName: "Test Monitoring Job",
+        PnlDate: TestDate,
+        Status: MonitoringJobHelper.CancelledStatus,
+        WorkerId: null,
+        ParametersJson: null,
+        ParameterSummary: null,
+        EnqueuedAt: DateTime.UtcNow,
+        StartedAt: DateTime.UtcNow,
+        LastHeartbeatAt: null,
+        CompletedAt: null,
+        FailedAt: DateTime.UtcNow,
+        ErrorMessage: BackgroundJobCancellationService.MonitoringJobCanceledMessage,
+        ParsedQuery: null,
+        GridColumnsJson: null,
+        GridRowsJson: null,
+        MetadataJson: null,
+        SavedAt: null);
+
     private sealed class TestMonitoringJobPage : MonitoringJobPageBase<TestMonitoringJobPage>
     {
+        private readonly TaskCompletionSource<bool> stateChangedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         protected override string MonitoringSubmenuKey => "test-monitoring-job";
 
         protected override string MonitoringJobName => "Test Monitoring Job";
@@ -180,7 +246,24 @@ public class MonitoringJobPageBaseTests
 
         public Task StopPollingForTestAsync() => StopPollingAsync();
 
-        protected override Task RequestStateHasChangedAsync() => Task.CompletedTask;
+        public void SetSelectedPnlDateForTest(DateOnly? pnlDate) => selectedPnlDate = pnlDate;
+
+        public int StateChangeRequestCount { get; private set; }
+
+        public Task StateChangedTask => stateChangedTcs.Task;
+
+        public long? ActiveJobIdForTest => activeJobId;
+
+        public string? ActiveJobStatusForTest => activeJobStatus;
+
+        public bool IsJobActiveForTest => IsJobActive;
+
+        protected override Task RequestStateHasChangedAsync()
+        {
+            StateChangeRequestCount++;
+            stateChangedTcs.TrySetResult(true);
+            return Task.CompletedTask;
+        }
 
         protected override void ApplyJobCore(MonitoringJobRecord job)
         {

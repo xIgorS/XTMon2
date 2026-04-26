@@ -424,16 +424,12 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
             return;
         }
 
-        var queryParameters = new Dictionary<string, string?>
-        {
-            ["code"] = SourceSystemBusinessDataTypeCode,
-            ["businessDatatypeId"] = BusinessDataTypeId?.ToString(CultureInfo.InvariantCulture),
-            ["sourceSystemName"] = SourceSystemName,
-            ["dbConnection"] = DbConnection,
-            ["pnlDate"] = nextPnlDate
-        };
-
-        var targetUri = QueryHelpers.AddQueryString("functional-rejection", queryParameters);
+        var targetUri = FunctionalRejectionUrlHelper.BuildHref(
+            SourceSystemBusinessDataTypeCode,
+            BusinessDataTypeId,
+            SourceSystemName,
+            DbConnection,
+            nextPnlDate);
         NavigationManager.NavigateTo(targetUri, replace: true);
     }
 

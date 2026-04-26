@@ -152,10 +152,12 @@
                                        disabled="@isSubmitting" />
                             </td>
                             <td class="db-grid__cell db-grid__cell--text">
-                                <div class="flex flex-col gap-1">
-                                    <span class="font-semibold text-heading">@row.Definition.DisplayName</span>
-                                    <span class="text-xs text-body-secondary">@row.Definition.Route</span>
-                                </div>
+                                <a class="group flex flex-col gap-1 rounded-md px-1 py-1 -mx-1 -my-1 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                                   href="@row.Definition.Route"
+                                   title="Open @row.Definition.DisplayName">
+                                    <span class="font-semibold text-heading group-hover:underline">@row.Definition.DisplayName</span>
+                                    <span class="text-xs text-body-secondary group-hover:text-heading">@row.Definition.Route</span>
+                                </a>
                             </td>
                             <td class="db-grid__cell db-grid__cell--text">
                                 <span class="submenu-status-badge @GetStatusBadgeClass(row.LatestJob)">@GetStatusLabel(row.LatestJob)</span>

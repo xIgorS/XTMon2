@@ -15,6 +15,7 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
     private readonly CancellationTokenSource disposeCts = new();
     private PeriodicTimer? alertsPollTimer;
     private CancellationTokenSource? alertsPollCts;
+    private bool isDisposed;
 
     [Inject]
     private FunctionalRejectionMenuState FunctionalRejectionMenuState { get; set; } = default!;
@@ -46,11 +47,23 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
         await LoadMenuItemsAsync();
         await RefreshAlertsAsync();
+
+        if (isDisposed)
+        {
+            return;
+        }
+
         RestartAlertsPollingIfNeeded();
     }
 
     public void Dispose()
     {
+        if (isDisposed)
+        {
+            return;
+        }
+
+        isDisposed = true;
         NavigationManager.LocationChanged -= OnLocationChanged;
         FunctionalRejectionNavAlertState.StatusesChanged -= OnStatusesChanged;
         PnlDateState.OnDateChanged -= OnPnlDateChanged;
@@ -61,46 +74,86 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
     private async Task LoadMenuItemsAsync()
     {
+        if (!TryGetDisposeToken(out var cancellationToken))
+        {
+            return;
+        }
+
         isLoading = true;
         loadError = null;
         loadWarning = null;
 
         try
         {
-            await FunctionalRejectionMenuState.RefreshAsync(disposeCts.Token);
+            await FunctionalRejectionMenuState.RefreshAsync(cancellationToken);
+
+            if (isDisposed)
+            {
+                return;
+            }
+
             menuItems.Clear();
             menuItems.AddRange(FunctionalRejectionMenuState.MenuItems);
             loadError = FunctionalRejectionMenuState.ErrorMessage;
             loadWarning = FunctionalRejectionMenuState.WarningMessage;
         }
-        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (ObjectDisposedException) when (isDisposed || cancellationToken.IsCancellationRequested)
         {
             return;
         }
         finally
         {
-            isLoading = false;
+            if (!isDisposed)
+            {
+                isLoading = false;
+            }
         }
     }
 
     private async Task RefreshAlertsAsync()
     {
+        if (!TryGetDisposeToken(out var cancellationToken))
+        {
+            return;
+        }
+
         try
         {
-            await FunctionalRejectionNavAlertState.RefreshAsync(disposeCts.Token);
+            await FunctionalRejectionNavAlertState.RefreshAsync(cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (ObjectDisposedException) when (isDisposed || cancellationToken.IsCancellationRequested)
         {
         }
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
+        if (isDisposed)
+        {
+            return;
+        }
+
         _ = InvokeAsync(async () =>
         {
+            if (isDisposed)
+            {
+                return;
+            }
+
             await RefreshAlertsAsync();
             RestartAlertsPollingIfNeeded();
-            StateHasChanged();
+
+            if (!isDisposed)
+            {
+                StateHasChanged();
+            }
         });
     }
 
@@ -111,11 +164,25 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
     private void OnPnlDateChanged()
     {
+        if (isDisposed)
+        {
+            return;
+        }
+
         _ = InvokeAsync(async () =>
         {
+            if (isDisposed)
+            {
+                return;
+            }
+
             await RefreshAlertsAsync();
             RestartAlertsPollingIfNeeded();
-            StateHasChanged();
+
+            if (!isDisposed)
+            {
+                StateHasChanged();
+            }
         });
     }
 
@@ -123,13 +190,22 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
     {
         StopAlertsPolling();
 
-        if (!IsOpen)
+        if (!IsOpen || !TryGetDisposeToken(out var disposeToken))
         {
             return;
         }
 
         var pollIntervalSeconds = Math.Max(1, MonitoringJobsOptions.Value.NavAlertPollIntervalSeconds);
-        alertsPollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeCts.Token);
+
+        try
+        {
+            alertsPollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeToken);
+        }
+        catch (ObjectDisposedException) when (isDisposed)
+        {
+            return;
+        }
+
         alertsPollTimer = new PeriodicTimer(TimeSpan.FromSeconds(pollIntervalSeconds));
         _ = PollAlertsAsync(alertsPollTimer, alertsPollCts.Token);
     }
@@ -154,12 +230,39 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
 
     private void StopAlertsPolling()
     {
-        alertsPollCts?.Cancel();
+        try
+        {
+            alertsPollCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
         alertsPollCts?.Dispose();
         alertsPollCts = null;
 
         alertsPollTimer?.Dispose();
         alertsPollTimer = null;
+    }
+
+    private bool TryGetDisposeToken(out CancellationToken cancellationToken)
+    {
+        if (isDisposed)
+        {
+            cancellationToken = default;
+            return false;
+        }
+
+        try
+        {
+            cancellationToken = disposeCts.Token;
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            cancellationToken = default;
+            return false;
+        }
     }
 
     private DataValidationNavRunState GetItemRunState(FunctionalRejectionMenuItem item)
@@ -202,16 +305,7 @@ public partial class FunctionalRejectionNav : ComponentBase, IDisposable
         var query = QueryHelpers.ParseQuery(uri.Query);
         query.TryGetValue("pnlDate", out var pnlDate);
 
-        return QueryHelpers.AddQueryString(
-            "functional-rejection",
-            new Dictionary<string, string?>
-            {
-                ["code"] = item.SourceSystemBusinessDataTypeCode,
-                ["businessDatatypeId"] = item.BusinessDataTypeId.ToString(CultureInfo.InvariantCulture),
-                ["sourceSystemName"] = item.SourceSystemName,
-                ["dbConnection"] = item.DbConnection,
-                ["pnlDate"] = pnlDate.ToString()
-            });
+        return FunctionalRejectionUrlHelper.BuildHref(item, pnlDate.ToString());
     }
 
     private string GetSubmenuLinkClass(FunctionalRejectionMenuItem item)

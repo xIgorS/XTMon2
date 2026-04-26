@@ -122,6 +122,137 @@ Open: **https://localhost:7010**
 
 > In Visual Studio, select **https-prod** from the launch profile dropdown in the toolbar.
 
+## Heavy Rollback Validation
+
+Use this workflow only in Development against `STAGING_FI_ALMT`. It validates that the dev-only Pricing and Daily Balance rollback harness keeps cancellation rollback visible for at least two minutes.
+
+### Harness Scripts
+
+- Deploy the harness with `src/XTMon/Sql/020_STAGING_FI_ALMT_PricingDailyBalance_HeavyRollbackSimulation_Deployment.sql`
+- Remove the harness with `src/XTMon/Sql/021_STAGING_FI_ALMT_PricingDailyBalance_HeavyRollbackSimulation_Rollback.sql`
+
+The validated live configuration is:
+
+- `DelayLiteral = '00:02:00'`
+- `RowsToTouch = 50000`
+- `UpdatePasses = 96`
+- `StressPayload varchar(max)` writes enabled in both injected stored procedure branches
+
+### Validated Procedure
+
+1. Apply the deployment script in `STAGING_FI_ALMT`.
+2. Start XTMon in Development mode on `https://localhost:7009`.
+3. Open **Run Data Validation** and queue **Daily Balance** plus **Pricing** together when you need synchronized start times.
+4. Wait until **Pricing** has been running for at least two minutes.
+5. Open **System Diagnostics** and use **Cancel All Background Jobs**.
+6. Check rollback visibility immediately after cancellation with both request and transaction DMVs.
+7. Recheck the same session IDs after the two-minute post-cancel mark.
+8. Confirm both harness tables are back at their seeded values.
+9. Apply the rollback script when the test window is finished.
+
+### Rollback DMV Check
+
+Use request DMVs to catch actively running rollback work, but rely on transaction DMVs as the source of truth because `sys.dm_exec_requests` can clear before rollback is fully finished.
+
+```sql
+SELECT
+   r.session_id,
+   r.status,
+   r.command,
+   r.wait_type,
+   r.percent_complete,
+   r.open_transaction_count,
+   CASE
+      WHEN txt.text LIKE '%PricingRollbackHarness%' THEN 'Pricing'
+      WHEN txt.text LIKE '%DailyBalanceRollbackHarness%' THEN 'DailyBalance'
+      ELSE 'Other'
+   END AS SimulationKey
+FROM sys.dm_exec_requests AS r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) AS txt
+WHERE DB_NAME(r.database_id) = 'STAGING_FI_ALMT'
+  AND (txt.text LIKE '%PricingRollbackHarness%'
+      OR txt.text LIKE '%DailyBalanceRollbackHarness%');
+
+SELECT
+   st.session_id,
+   at.transaction_id,
+   at.transaction_begin_time,
+   dt.database_transaction_begin_time,
+   dt.database_transaction_state,
+   dt.database_transaction_log_bytes_reserved,
+   dt.database_transaction_log_bytes_used,
+   dt.database_transaction_log_record_count
+FROM sys.dm_tran_session_transactions AS st
+INNER JOIN sys.dm_tran_active_transactions AS at ON at.transaction_id = st.transaction_id
+INNER JOIN sys.dm_tran_database_transactions AS dt ON dt.transaction_id = st.transaction_id
+WHERE st.session_id IN (
+   SELECT r.session_id
+   FROM sys.dm_exec_requests AS r
+   CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) AS txt
+   WHERE DB_NAME(r.database_id) = 'STAGING_FI_ALMT'
+     AND (txt.text LIKE '%PricingRollbackHarness%'
+         OR txt.text LIKE '%DailyBalanceRollbackHarness%')
+);
+```
+
+### Seed-State Verification
+
+After rollback completes, both harness tables should return `ChangedRows = 0`.
+
+```sql
+SELECT
+   'Pricing' AS SimulationKey,
+   COUNT_BIG(*) AS ChangedRows
+FROM STAGING_FI_ALMT.monitoring.PricingRollbackHarness
+WHERE FlipBit <> 0
+   OR TouchStamp IS NOT NULL
+   OR StressPayload IS NOT NULL
+   OR Payload <> REPLICATE('C', 2000)
+   OR Payload2 <> REPLICATE('D', 2000)
+UNION ALL
+SELECT
+   'DailyBalance' AS SimulationKey,
+   COUNT_BIG(*) AS ChangedRows
+FROM STAGING_FI_ALMT.monitoring.DailyBalanceRollbackHarness
+WHERE FlipBit <> 0
+   OR TouchStamp IS NOT NULL
+   OR StressPayload IS NOT NULL
+   OR Payload <> REPLICATE('A', 2000)
+   OR Payload2 <> REPLICATE('B', 2000);
+```
+
+Validated live on 2026-04-26:
+
+- Daily Balance rollback remained visible in transaction DMVs more than two minutes after cancellation.
+- Pricing rollback remained visible in transaction DMVs more than two minutes after cancellation, even after its request row had already disappeared from `sys.dm_exec_requests`.
+
+## Processor Health Runtime Change
+
+No database rollout is required for execution-context stamping.
+
+XTMon now stamps the current monitoring job marker with inline SQL inside `SqlConnectionFactory` immediately after opening each SQL connection. That keeps **System Diagnostics > Processor Health** accurate without requiring `monitoring.UspMonitoringJobSetExecutionContext` to exist in every application database.
+
+`src/XTMon/Sql/022_AllDatabases_MonitoringJob_ExecutionContext_Deployment.sql` is retained only as a no-op release marker for this change set.
+
+## Functional Rejection Slowdown Harness
+
+Use this only in Development when you need a sustained Functional Rejection worker to prove the fifth processor slot alongside Data Validation, Pricing, and Daily Balance.
+
+### Harness Scripts
+
+- Deploy or enable the wrapper with `src/XTMon/Sql/023_FunctionalRejection_Slowdown_Deployment.sql`
+- Remove the wrapper proc and delay config objects with `src/XTMon/Sql/024_FunctionalRejection_Slowdown_Rollback.sql`
+
+The wrapper proc is `monitoring.UspXtgMonitoringTechnicalRejectXtMonDelay`. It:
+
+- reads `monitoring.XtMonFunctionalRejectionDelayConfig`
+- delays only when `IsEnabled = 1`
+- then forwards the call to the original `monitoring.UspXtgMonitoringTechnicalReject`
+
+XTMon does not point to this wrapper by default. To enable the slowdown harness, temporarily override `FunctionalRejection:TechnicalRejectStoredProcedure` in `src/XTMon/appsettings.Development.json` to `monitoring.UspXtgMonitoringTechnicalRejectXtMonDelay`, then remove that override and run `src/XTMon/Sql/024_FunctionalRejection_Slowdown_Rollback.sql` when the test window is finished.
+
+The validated test configuration was a two-minute delay in both `STAGING_FI_ALMT` and `DTM_FI`, which is enough to keep the single Functional Rejection worker occupied while the other four monitoring slots are active.
+
 ## Monitoring Job Concurrency
 
 Shared monitoring jobs use two levels of concurrency control from `MonitoringJobs` in `src/XTMon/appsettings.json`:

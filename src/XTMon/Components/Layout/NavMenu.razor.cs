@@ -11,6 +11,7 @@ public partial class NavMenu : ComponentBase, IDisposable
 	private readonly CancellationTokenSource _disposeCts = new();
 	private PeriodicTimer? _alertsPollTimer;
 	private CancellationTokenSource? _alertsPollCts;
+	private bool _isDisposed;
 
 	[Inject]
 	private NavigationManager NavigationManager { get; set; } = default!;
@@ -49,6 +50,12 @@ public partial class NavMenu : ComponentBase, IDisposable
 	protected override async Task OnInitializedAsync()
 	{
 		await RefreshAllNavAlertsAsync();
+
+		if (_isDisposed)
+		{
+			return;
+		}
+
 		StartAlertsPolling();
 	}
 
@@ -62,6 +69,12 @@ public partial class NavMenu : ComponentBase, IDisposable
 
 	public void Dispose()
 	{
+		if (_isDisposed)
+		{
+			return;
+		}
+
+		_isDisposed = true;
 		NavigationManager.LocationChanged -= OnLocationChanged;
 		PnlDateState.OnDateChanged -= OnPnlDateChanged;
 		DataValidationNavAlertState.StatusesChanged -= OnDataValidationStatusesChanged;
@@ -75,19 +88,47 @@ public partial class NavMenu : ComponentBase, IDisposable
 
 	private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
 	{
+		if (_isDisposed)
+		{
+			return;
+		}
+
 		_ = InvokeAsync(async () =>
 		{
+			if (_isDisposed)
+			{
+				return;
+			}
+
 			await RefreshAllNavAlertsAsync();
-			StateHasChanged();
+
+			if (!_isDisposed)
+			{
+				StateHasChanged();
+			}
 		});
 	}
 
 	private void OnPnlDateChanged()
 	{
+		if (_isDisposed)
+		{
+			return;
+		}
+
 		_ = InvokeAsync(async () =>
 		{
+			if (_isDisposed)
+			{
+				return;
+			}
+
 			await RefreshAllNavAlertsAsync();
-			StateHasChanged();
+
+			if (!_isDisposed)
+			{
+				StateHasChanged();
+			}
 		});
 	}
 
@@ -113,28 +154,39 @@ public partial class NavMenu : ComponentBase, IDisposable
 
 	private async Task RefreshAllNavAlertsAsync()
 	{
+		if (!TryGetDisposeToken(out var disposeToken))
+		{
+			return;
+		}
+
 		var tasks = new[]
 		{
-			RefreshNavAlertSafelyAsync("data-validation", DataValidationNavAlertState.RefreshAsync),
-			RefreshNavAlertSafelyAsync("jv-calculation",  JvCalculationNavAlertState.RefreshAsync),
-			RefreshNavAlertSafelyAsync("replay-flows",    ReplayFlowsNavAlertState.RefreshAsync)
+			RefreshNavAlertSafelyAsync("data-validation", DataValidationNavAlertState.RefreshAsync, disposeToken),
+			RefreshNavAlertSafelyAsync("jv-calculation",  JvCalculationNavAlertState.RefreshAsync, disposeToken),
+			RefreshNavAlertSafelyAsync("replay-flows",    ReplayFlowsNavAlertState.RefreshAsync, disposeToken)
 		};
 
 		await Task.WhenAll(tasks);
 	}
 
-	private async Task RefreshNavAlertSafelyAsync(string label, Func<CancellationToken, Task> refresh)
+	private async Task RefreshNavAlertSafelyAsync(string label, Func<CancellationToken, Task> refresh, CancellationToken cancellationToken)
 	{
 		try
 		{
-			await refresh(_disposeCts.Token);
+			await refresh(cancellationToken);
 		}
-		catch (OperationCanceledException)
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+		}
+		catch (ObjectDisposedException) when (_isDisposed || cancellationToken.IsCancellationRequested)
 		{
 		}
 		catch (Exception ex)
 		{
-			Logger.LogWarning(ex, "Unable to refresh {NavAlert} nav alerts.", label);
+			if (!_isDisposed)
+			{
+				Logger.LogWarning(ex, "Unable to refresh {NavAlert} nav alerts.", label);
+			}
 		}
 	}
 
@@ -142,8 +194,22 @@ public partial class NavMenu : ComponentBase, IDisposable
 	{
 		StopAlertsPolling();
 
+		if (!TryGetDisposeToken(out var disposeToken))
+		{
+			return;
+		}
+
 		var pollIntervalSeconds = Math.Max(1, MonitoringJobsOptions.Value.NavAlertPollIntervalSeconds);
-		_alertsPollCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
+
+		try
+		{
+			_alertsPollCts = CancellationTokenSource.CreateLinkedTokenSource(disposeToken);
+		}
+		catch (ObjectDisposedException) when (_isDisposed)
+		{
+			return;
+		}
+
 		_alertsPollTimer = new PeriodicTimer(TimeSpan.FromSeconds(pollIntervalSeconds));
 		_ = PollAlertsAsync(_alertsPollTimer, _alertsPollCts.Token);
 	}
@@ -168,12 +234,39 @@ public partial class NavMenu : ComponentBase, IDisposable
 
 	private void StopAlertsPolling()
 	{
-		_alertsPollCts?.Cancel();
+		try
+		{
+			_alertsPollCts?.Cancel();
+		}
+		catch (ObjectDisposedException)
+		{
+		}
+
 		_alertsPollCts?.Dispose();
 		_alertsPollCts = null;
 
 		_alertsPollTimer?.Dispose();
 		_alertsPollTimer = null;
+	}
+
+	private bool TryGetDisposeToken(out CancellationToken cancellationToken)
+	{
+		if (_isDisposed)
+		{
+			cancellationToken = default;
+			return false;
+		}
+
+		try
+		{
+			cancellationToken = _disposeCts.Token;
+			return true;
+		}
+		catch (ObjectDisposedException)
+		{
+			cancellationToken = default;
+			return false;
+		}
 	}
 
 	private DataValidationNavRunState GetDataValidationRunState(string route)

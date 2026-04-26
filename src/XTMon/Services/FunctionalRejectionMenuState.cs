@@ -18,6 +18,7 @@ public sealed class FunctionalRejectionMenuState : IDisposable
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private IReadOnlyList<FunctionalRejectionMenuItem> _menuItems = Array.Empty<FunctionalRejectionMenuItem>();
     private DateTimeOffset? _nextRefreshAllowedAtUtc;
+    private bool _disposed;
 
     public FunctionalRejectionMenuState(
         IFunctionalRejectionRepository repository,
@@ -35,15 +36,29 @@ public sealed class FunctionalRejectionMenuState : IDisposable
 
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         if (IsSqlBackoffActive())
         {
             ApplyUnavailableState(hasCachedItems: _menuItems.Count > 0, isSqlFailure: true);
             return;
         }
 
-        await _refreshLock.WaitAsync(cancellationToken);
+        var lockAcquired = false;
+
         try
         {
+            await _refreshLock.WaitAsync(cancellationToken);
+            lockAcquired = true;
+
+            if (_disposed)
+            {
+                return;
+            }
+
             if (IsSqlBackoffActive())
             {
                 ApplyUnavailableState(hasCachedItems: _menuItems.Count > 0, isSqlFailure: true);
@@ -59,6 +74,10 @@ public sealed class FunctionalRejectionMenuState : IDisposable
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch (ObjectDisposedException) when (_disposed || cancellationToken.IsCancellationRequested)
+        {
+            return;
         }
         catch (SqlException ex) when (SqlDataHelper.IsSqlTimeout(ex) || SqlDataHelper.IsSqlConnectionFailure(ex) || SqlDataHelper.IsSqlDeadlock(ex))
         {
@@ -76,12 +95,22 @@ public sealed class FunctionalRejectionMenuState : IDisposable
         }
         finally
         {
-            _refreshLock.Release();
+            if (lockAcquired)
+            {
+                try
+                {
+                    _refreshLock.Release();
+                }
+                catch (ObjectDisposedException) when (_disposed || cancellationToken.IsCancellationRequested)
+                {
+                }
+            }
         }
     }
 
     public void Dispose()
     {
+        _disposed = true;
         _refreshLock.Dispose();
     }
 
