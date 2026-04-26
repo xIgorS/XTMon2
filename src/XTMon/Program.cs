@@ -38,6 +38,10 @@ builder.Host.UseSerilog((context, services, loggerConfiguration) =>
 {
     var loggingConnectionStringName = context.Configuration["StoredProcedureLogging:ConnectionStringName"] ?? "LogFiAlmt";
     var storedProcedureName = context.Configuration["StoredProcedureLogging:StoredProcedure"] ?? "monitoring.UspInsertAPSActionsLog";
+    var loggingEnabled = !bool.TryParse(context.Configuration["StoredProcedureLogging:Enabled"], out var enabled) || enabled;
+    var minimumLevel = Enum.TryParse<LogEventLevel>(context.Configuration["StoredProcedureLogging:MinimumLevel"], ignoreCase: true, out var configuredMinimumLevel)
+        ? configuredMinimumLevel
+        : LogEventLevel.Information;
     var commandTimeoutSeconds = int.TryParse(context.Configuration["StoredProcedureLogging:CommandTimeoutSeconds"], out var timeout)
         ? Math.Max(1, timeout)
         : 5;
@@ -48,11 +52,11 @@ builder.Host.UseSerilog((context, services, loggerConfiguration) =>
         .ReadFrom.Services(services)
         .Enrich.FromLogContext();
 
-    if (!string.IsNullOrWhiteSpace(loggingConnectionString) && !string.IsNullOrWhiteSpace(storedProcedureName))
+    if (loggingEnabled && !string.IsNullOrWhiteSpace(loggingConnectionString) && !string.IsNullOrWhiteSpace(storedProcedureName))
     {
         loggerConfiguration.WriteTo.Async(a => a.Sink(
             new StoredProcedureLogSink(loggingConnectionString, storedProcedureName, commandTimeoutSeconds),
-            restrictedToMinimumLevel: LogEventLevel.Warning));
+            restrictedToMinimumLevel: minimumLevel));
     }
 });
 

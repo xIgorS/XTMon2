@@ -14,8 +14,10 @@ namespace XTMon.Components.Pages;
 public partial class ApplicationLogs : ComponentBase, IAsyncDisposable
 {
     private const string LoadErrorMessage = "Unable to load application logs right now. Please try again.";
+    private const string TimeInputFormat = "HH:mm";
+    private static readonly string[] AcceptedTimeInputFormats = [TimeInputFormat, "HH:mm:ss"];
     private static readonly IReadOnlyList<string> AvailableLevels = ["Verbose", "Debug", "Information", "Warning", "Error", "Fatal"];
-    private static readonly IReadOnlySet<string> DefaultLevels = new HashSet<string>(new[] { "Warning", "Error", "Fatal" }, StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlySet<string> DefaultLevels = new HashSet<string>(AvailableLevels, StringComparer.OrdinalIgnoreCase);
 
     [Inject]
     private IApplicationLogsRepository Repository { get; set; } = default!;
@@ -34,8 +36,10 @@ public partial class ApplicationLogs : ComponentBase, IAsyncDisposable
     private bool isLoading;
     private string? errorMessage;
     private DateTimeOffset? lastRefreshed;
-    private DateTime? fromInput;
-    private DateTime? toInput;
+    private DateOnly? fromDateInput;
+    private TimeOnly fromTimeInput;
+    private DateOnly? toDateInput;
+    private TimeOnly toTimeInput;
     private string? messageContains;
     private int topN;
 
@@ -43,8 +47,10 @@ public partial class ApplicationLogs : ComponentBase, IAsyncDisposable
     private int MaxTopN => ApplicationLogsOptions.Value.MaxTopN;
     private string ProcedureName => ApplicationLogsOptions.Value.GetApplicationLogsStoredProcedure;
     private string FullyQualifiedProcedureName => JvCalculationHelper.BuildFullyQualifiedProcedureName(ApplicationLogsOptions.Value.ConnectionStringName, ProcedureName);
+    private string FromTimeInputValue => FormatTimeInput(fromTimeInput);
     private string LastRefreshedText => lastRefreshed?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? "Not loaded";
     private string ResultSummaryText => rows.Count == 1 ? "1 row returned" : $"{rows.Count} rows returned";
+    private string ToTimeInputValue => FormatTimeInput(toTimeInput);
 
     protected override async Task OnInitializedAsync()
     {
@@ -136,6 +142,26 @@ public partial class ApplicationLogs : ComponentBase, IAsyncDisposable
         }
     }
 
+    private void OnFromDateChanged(DateOnly date)
+    {
+        fromDateInput = date;
+    }
+
+    private void OnToDateChanged(DateOnly date)
+    {
+        toDateInput = date;
+    }
+
+    private void OnFromTimeChanged(ChangeEventArgs args)
+    {
+        fromTimeInput = ParseTimeInputValue(args.Value, fromTimeInput);
+    }
+
+    private void OnToTimeChanged(ChangeEventArgs args)
+    {
+        toTimeInput = ParseTimeInputValue(args.Value, toTimeInput);
+    }
+
     private bool IsRowExpanded(int id) => expandedRowIds.Contains(id);
 
     private bool IsLevelSelected(string level) => selectedLevels.Contains(level);
@@ -216,8 +242,7 @@ public partial class ApplicationLogs : ComponentBase, IAsyncDisposable
         selectedLevels = new HashSet<string>(DefaultLevels, StringComparer.OrdinalIgnoreCase);
         topN = ApplicationLogsOptions.Value.DefaultTopN;
         messageContains = null;
-        fromInput = defaults.From;
-        toInput = defaults.To;
+        ApplyTimeRangeInputs(defaults.From, defaults.To);
         errorMessage = null;
         expandedRowIds.Clear();
     }
@@ -227,10 +252,11 @@ public partial class ApplicationLogs : ComponentBase, IAsyncDisposable
         query = default!;
 
         topN = ApplicationLogFilterHelper.ClampTopN(topN, ApplicationLogsOptions.Value.DefaultTopN, ApplicationLogsOptions.Value.MaxTopN);
+        var fromInput = CombineDateAndTime(fromDateInput, fromTimeInput);
+        var toInput = CombineDateAndTime(toDateInput, toTimeInput);
         var timeRange = ApplicationLogFilterHelper.ResolveTimeRange(fromInput, toInput, ApplicationLogsOptions.Value.DefaultLookbackMinutes, DateTime.UtcNow);
 
-        fromInput = timeRange.From;
-        toInput = timeRange.To;
+        ApplyTimeRangeInputs(timeRange.From, timeRange.To);
 
         query = new ApplicationLogQuery(
             topN,
@@ -240,6 +266,48 @@ public partial class ApplicationLogs : ComponentBase, IAsyncDisposable
             string.IsNullOrWhiteSpace(messageContains) ? null : messageContains.Trim());
 
         return true;
+    }
+
+    private void ApplyTimeRangeInputs(DateTime from, DateTime to)
+    {
+        fromDateInput = DateOnly.FromDateTime(from);
+        fromTimeInput = TimeOnly.FromDateTime(from);
+        toDateInput = DateOnly.FromDateTime(to);
+        toTimeInput = TimeOnly.FromDateTime(to);
+    }
+
+    private static DateTime? CombineDateAndTime(DateOnly? date, TimeOnly timeInput)
+    {
+        if (!date.HasValue)
+        {
+            return null;
+        }
+
+        return date.Value.ToDateTime(timeInput);
+    }
+
+    private static TimeOnly ParseTimeInputValue(object? value, TimeOnly fallback)
+    {
+        switch (value)
+        {
+            case TimeOnly timeOnly:
+                return timeOnly;
+            case DateTime dateTime:
+                return TimeOnly.FromDateTime(dateTime);
+            case DateTimeOffset dateTimeOffset:
+                return TimeOnly.FromDateTime(dateTimeOffset.LocalDateTime);
+            case string timeText when TimeOnly.TryParseExact(timeText, AcceptedTimeInputFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedExact):
+                return parsedExact;
+            case string timeText when TimeOnly.TryParse(timeText, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed):
+                return parsed;
+            default:
+                return fallback;
+        }
+    }
+
+    private static string FormatTimeInput(TimeOnly value)
+    {
+        return value.ToString(TimeInputFormat, CultureInfo.InvariantCulture);
     }
 
     private void CancelActiveRefresh()

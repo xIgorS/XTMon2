@@ -26,23 +26,55 @@
         <div class="surface space-y-4">
             <div class="grid gap-4 xl:grid-cols-[repeat(4,minmax(0,1fr))]">
                 <div class="flex flex-col gap-1.5">
-                    <label class="stat-label" for="applicationLogsFrom">From</label>
-                    <input id="applicationLogsFrom"
-                           class="application-logs-input"
-                           type="datetime-local"
-                              @bind-value="fromInput"
-                              @bind-value:format="yyyy-MM-ddTHH:mm"
-                           disabled="@isLoading" />
+                    <div class="application-logs-date-time-field">
+                        <div class="flex flex-col gap-1.5">
+                            <label class="stat-label" for="applicationLogsFromDate">From date</label>
+                            <div class="application-logs-date-picker">
+                                <DatePickerInput InputId="applicationLogsFromDate"
+                                                 Value="fromDateInput"
+                                                 ValueChanged="OnFromDateChanged"
+                                                 IsDisabled="@isLoading"
+                                                 AriaLabel="Application logs from date calendar" />
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col gap-1.5">
+                            <label class="stat-label" for="applicationLogsFromTime">From time</label>
+                            <input id="applicationLogsFromTime"
+                                   class="application-logs-input application-logs-input--time"
+                                   type="time"
+                                   step="60"
+                                value="@FromTimeInputValue"
+                                @oninput="OnFromTimeChanged"
+                                   disabled="@isLoading" />
+                        </div>
+                    </div>
                 </div>
 
                 <div class="flex flex-col gap-1.5">
-                    <label class="stat-label" for="applicationLogsTo">To</label>
-                    <input id="applicationLogsTo"
-                           class="application-logs-input"
-                           type="datetime-local"
-                              @bind-value="toInput"
-                              @bind-value:format="yyyy-MM-ddTHH:mm"
-                           disabled="@isLoading" />
+                    <div class="application-logs-date-time-field">
+                        <div class="flex flex-col gap-1.5">
+                            <label class="stat-label" for="applicationLogsToDate">To date</label>
+                            <div class="application-logs-date-picker">
+                                <DatePickerInput InputId="applicationLogsToDate"
+                                                 Value="toDateInput"
+                                                 ValueChanged="OnToDateChanged"
+                                                 IsDisabled="@isLoading"
+                                                 AriaLabel="Application logs to date calendar" />
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col gap-1.5">
+                            <label class="stat-label" for="applicationLogsToTime">To time</label>
+                            <input id="applicationLogsToTime"
+                                   class="application-logs-input application-logs-input--time"
+                                   type="time"
+                                   step="60"
+                                value="@ToTimeInputValue"
+                                @oninput="OnToTimeChanged"
+                                   disabled="@isLoading" />
+                        </div>
+                    </div>
                 </div>
 
                 <div class="flex flex-col gap-1.5 xl:col-span-2">
@@ -99,6 +131,7 @@
             </div>
 
             <p class="muted text-xs">Filters and displayed timestamps use the stored log timestamp value without any timezone conversion.</p>
+            <p class="muted text-xs">Rows appear only for events that meet the configured stored-procedure logging minimum level.</p>
         </div>
 
         <div class="surface">
