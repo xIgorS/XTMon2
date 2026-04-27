@@ -1,6 +1,6 @@
 @page "/functional-rejection"
 @rendermode InteractiveServer
-@inherits MonitoringJobPageBase<FunctionalRejection>
+@inherits MonitoringTableJobPageBase<FunctionalRejection>
 
 <PageTitle>Functional Rejection</PageTitle>
 
@@ -153,6 +153,7 @@
                 <div class="flex items-center justify-between gap-3">
                     <p class="stat-label">Functional Rejection result</p>
                 </div>
+                <MonitoringResultBanner Truncated="@truncated" PersistedRowCount="@persistedRowCount" TotalRowCount="@totalRowCount" HasPersistedJob="@hasPersistedJob" ExportUrl="@BuildExportUrl()" />
                 <div class="db-grid__wrap">
                     <table class="db-grid">
                         <thead>

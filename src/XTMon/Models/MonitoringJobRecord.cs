@@ -20,4 +20,5 @@ public sealed record MonitoringJobRecord(
     string? GridColumnsJson,
     string? GridRowsJson,
     string? MetadataJson,
-    DateTime? SavedAt);
+    DateTime? SavedAt,
+    long? PersistedResultJobId = null);

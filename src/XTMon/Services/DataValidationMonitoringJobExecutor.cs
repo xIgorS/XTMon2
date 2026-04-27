@@ -24,6 +24,7 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
 
     public async Task<MonitoringJobResultPayload> ExecuteAsync(MonitoringJobRecord job, CancellationToken cancellationToken)
     {
+        var monitoringJobsOptions = _serviceProvider.GetRequiredService<IOptions<MonitoringJobsOptions>>();
         var payload = await (job.SubmenuKey switch
         {
             "referential-data" => ExecuteResultAsync<IReferentialDataRepository, ReferentialDataResult>(repository => repository.GetReferentialDataAsync(job.PnlDate, cancellationToken)),
@@ -56,10 +57,29 @@ public sealed class DataValidationMonitoringJobExecutor : IMonitoringJobExecutor
             _ => throw new InvalidOperationException($"Unsupported data validation submenu '{job.SubmenuKey}'.")
         });
 
+        var preview = payload.Table;
+        var totalRowCount = 0;
+        if (payload.Table is not null)
+        {
+            preview = MonitoringJobHelper.TruncateRows(
+                payload.Table,
+                monitoringJobsOptions.Value.MaxPersistedRows,
+                out totalRowCount,
+                out _);
+        }
+
+        var metadataJson = MonitoringJobHelper.BuildPersistMetadataJson(
+            totalRowCount,
+            preview?.Rows.Count ?? 0,
+            DataValidationNavAlertHelper.BuildMetadataJson(job.SubmenuKey, payload.Table));
+
         return new MonitoringJobResultPayload(
             payload.ParsedQuery,
-            payload.Table,
-            DataValidationNavAlertHelper.BuildMetadataJson(job.SubmenuKey, payload.Table));
+            preview,
+            metadataJson,
+            payload.Table is null
+                ? null
+                : MonitoringJobHelper.BuildFullResultCsvGzip(payload.Table, cancellationToken));
     }
 
     private async Task<MonitoringJobResultPayload> ExecuteDailyBalanceAsync(MonitoringJobRecord job, CancellationToken cancellationToken)

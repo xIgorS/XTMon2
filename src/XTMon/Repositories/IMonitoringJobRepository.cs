@@ -21,6 +21,7 @@ public interface IMonitoringJobRepository
     Task<MonitoringJobRecord?> GetLatestMonitoringJobAsync(string category, string submenuKey, DateOnly pnlDate, CancellationToken cancellationToken);
     Task<IReadOnlyList<MonitoringJobRecord>> GetLatestMonitoringJobsByCategoryAsync(string category, DateOnly pnlDate, CancellationToken cancellationToken);
     Task SaveMonitoringJobResultAsync(long jobId, MonitoringJobResultPayload payload, CancellationToken cancellationToken);
+    Task StreamFullResultCsvAsync(long monitoringJobId, Stream destination, CancellationToken cancellationToken);
     Task MarkMonitoringJobCompletedAsync(long jobId, CancellationToken cancellationToken);
     Task MarkMonitoringJobFailedAsync(long jobId, string errorMessage, CancellationToken cancellationToken);
     Task MarkMonitoringJobCancelledAsync(long jobId, string errorMessage, CancellationToken cancellationToken);

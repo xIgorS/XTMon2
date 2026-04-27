@@ -201,6 +201,7 @@
             <div class="flex items-center justify-between gap-3">
                 <p class="stat-label">Daily Balance result</p>
             </div>
+            <MonitoringResultBanner Truncated="@truncated" PersistedRowCount="@persistedRowCount" TotalRowCount="@totalRowCount" HasPersistedJob="@hasPersistedJob" ExportUrl="@BuildExportUrl()" />
             <div class="db-grid__wrap">
                 <table class="db-grid">
                     <thead>

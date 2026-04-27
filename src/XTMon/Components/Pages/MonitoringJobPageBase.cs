@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using XTMon.Helpers;
 using XTMon.Infrastructure;
@@ -75,6 +76,12 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
 
     protected bool IsJobActive => MonitoringJobHelper.IsActiveStatus(activeJobStatus);
 
+    protected string Category => MonitoringCategory;
+
+    protected string SubmenuKey => MonitoringSubmenuKey;
+
+    protected DateOnly? CurrentSelectedPnlDate => selectedPnlDate;
+
     protected virtual string MonitoringCategory => MonitoringJobHelper.DataValidationCategory;
 
     protected virtual string MissingPnlDateValidationMessage => "PNL DATE is required.";
@@ -112,6 +119,23 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
         parametersJson = null;
         parameterSummary = null;
         return true;
+    }
+
+    protected string? BuildExportUrl()
+    {
+        if (!selectedPnlDate.HasValue)
+        {
+            return null;
+        }
+
+        return QueryHelpers.AddQueryString(
+            "/api/monitoring/export.csv",
+            new Dictionary<string, string?>
+            {
+                ["category"] = MonitoringCategory,
+                ["submenuKey"] = MonitoringSubmenuKey,
+                ["pnlDate"] = selectedPnlDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            });
     }
 
     protected virtual void OnBeforeRun()

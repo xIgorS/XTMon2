@@ -1,9 +1,8 @@
 using System.Globalization;
-using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
-using Microsoft.JSInterop;
 using XTMon.Helpers;
 using XTMon.Infrastructure;
 using XTMon.Models;
@@ -13,27 +12,17 @@ using XTMon.Services;
 
 namespace XTMon.Components.Pages;
 
-public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejection>
+public partial class FunctionalRejection : MonitoringTableJobPageBase<FunctionalRejection>
 {
     private const string GridDateFormat = "dd-MM-yyyy";
     private const string GridDateTimeFormat = "dd-MM-yyyy HH:mm:ss";
     private const string LoadErrorMessage = "Unable to load Functional Rejection right now. Please try again.";
-
-    protected override string MonitoringCategory => MonitoringJobHelper.FunctionalRejectionCategory;
-    protected override bool ShouldRestoreAfterPnlDateSelected => false;
-    protected override bool ShouldRestoreOnGlobalPnlDateChanged => string.IsNullOrWhiteSpace(PnlDate);
-    protected override string MonitoringSubmenuKey => BuildCurrentSubmenuKey();
-    protected override string MonitoringJobName => SourceSystemBusinessDataTypeCode ?? "Functional Rejection";
-    protected override string DefaultLoadErrorMessage => LoadErrorMessage;
 
     [Inject]
     private IFunctionalRejectionRepository Repository { get; set; } = default!;
 
     [Inject]
     private IOptions<FunctionalRejectionOptions> FunctionalRejectionOptions { get; set; } = default!;
-
-    [Inject]
-    private IJSRuntime JsRuntime { get; set; } = default!;
 
     [Inject]
     private NavigationManager NavigationManager { get; set; } = default!;
@@ -62,17 +51,16 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
     public string? PnlDate { get; set; }
 
     private string? selectionError;
-    private string parsedQuery = string.Empty;
-    private string? copyMessage;
-    private bool copySucceeded;
-    private bool showQuery;
-    private TechnicalRejectResult? result;
     private string? lastAutoLoadKey;
-    private DateTime? activeJobEnqueuedAt;
-    private DateTime? activeJobStartedAt;
-    private DateTime? activeJobCompletedAt;
-    private string? savedParameterSummary;
     private IReadOnlyList<FunctionalRejectionMenuItem>? menuItemsForValidation;
+    private IReadOnlyList<TechnicalRejectColumn> technicalRejectColumns = Array.Empty<TechnicalRejectColumn>();
+
+    protected override string MonitoringCategory => MonitoringJobHelper.FunctionalRejectionCategory;
+    protected override bool ShouldRestoreAfterPnlDateSelected => false;
+    protected override bool ShouldRestoreOnGlobalPnlDateChanged => string.IsNullOrWhiteSpace(PnlDate);
+    protected override string MonitoringSubmenuKey => BuildCurrentSubmenuKey();
+    protected override string MonitoringJobName => SourceSystemBusinessDataTypeCode ?? "Functional Rejection";
+    protected override string DefaultLoadErrorMessage => LoadErrorMessage;
 
     private bool HasValidSelection =>
         BusinessDataTypeId.HasValue &&
@@ -87,7 +75,6 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
     private string FullyQualifiedProcedureName => TryResolveDetailConnectionStringName(out var connectionStringName)
         ? JvCalculationHelper.BuildFullyQualifiedProcedureName(connectionStringName, ProcedureName)
         : "-";
-    private string QueryDisplayText => string.IsNullOrWhiteSpace(parsedQuery) ? string.Empty : parsedQuery;
     private string SelectedCodeText => string.IsNullOrWhiteSpace(SourceSystemBusinessDataTypeCode)
         ? "-"
         : SourceSystemBusinessDataTypeCode;
@@ -100,10 +87,7 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
     private string JobStatusText => string.IsNullOrWhiteSpace(activeJobStatus) ? "-" : activeJobStatus;
     private string SavedParameterSummaryText => string.IsNullOrWhiteSpace(savedParameterSummary) ? "Current submenu selection" : savedParameterSummary;
 
-    protected override DateOnly? GetCurrentPnlDateFromState()
-    {
-        return ResolveSelectedPnlDate();
-    }
+    protected override DateOnly? GetCurrentPnlDateFromState() => ResolveSelectedPnlDate();
 
     protected override bool CanRestoreLatestJob() => HasValidSelection;
 
@@ -122,11 +106,6 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
             selectionError = "Choose a Functional Rejection submenu item from the navigation menu.";
             runError = null;
             validationError = null;
-            hasRun = false;
-            result = null;
-            parsedQuery = string.Empty;
-            lastAutoLoadKey = null;
-            savedParameterSummary = null;
             await StopPollingAsync();
             ClearLoadedState();
             return;
@@ -172,27 +151,6 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
         return true;
     }
 
-    private async Task LoadDirectResultAsync(DateOnly pnlDate, int businessDataTypeId, CancellationToken cancellationToken)
-    {
-        var directResult = await Repository.GetTechnicalRejectAsync(
-            pnlDate,
-            businessDataTypeId,
-            DbConnection ?? string.Empty,
-            SourceSystemName ?? string.Empty,
-            cancellationToken);
-
-        activeJobId = null;
-        activeJobStatus = null;
-        activeJobEnqueuedAt = null;
-        activeJobStartedAt = null;
-        activeJobCompletedAt = null;
-        savedParameterSummary = MonitoringJobHelper.BuildFunctionalRejectionParameterSummary(BuildCurrentParameters());
-        parsedQuery = directResult.ParsedQuery;
-        result = directResult;
-        lastRunAt = DateTime.Now;
-        runError = null;
-    }
-
     protected override bool TryPrepareRun(out string? parametersJson, out string? parameterSummary)
     {
         if (!CanRun)
@@ -207,12 +165,6 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
         parametersJson = MonitoringJobHelper.SerializeParameters(parameters);
         parameterSummary = MonitoringJobHelper.BuildFunctionalRejectionParameterSummary(parameters);
         return true;
-    }
-
-    protected override void OnBeforeRun()
-    {
-        copyMessage = null;
-        showQuery = false;
     }
 
     protected override void LogRunFailure(Exception exception)
@@ -236,6 +188,56 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
         }
 
         return false;
+    }
+
+    protected override void OnAfterApplyTableJob(MonitoringJobRecord job)
+    {
+        if (result is null)
+        {
+            technicalRejectColumns = Array.Empty<TechnicalRejectColumn>();
+            return;
+        }
+
+        var columns = MonitoringJobHelper.DeserializeTechnicalRejectColumns(job.MetadataJson);
+        technicalRejectColumns = columns.Count == result.Columns.Count
+            ? columns
+            : result.Columns.Select(static columnName => new TechnicalRejectColumn(columnName, string.Empty)).ToArray();
+    }
+
+    protected override void OnAfterClearLoadedState()
+    {
+        technicalRejectColumns = Array.Empty<TechnicalRejectColumn>();
+        lastAutoLoadKey = null;
+    }
+
+    protected override void OnAfterRunFailed()
+    {
+        technicalRejectColumns = Array.Empty<TechnicalRejectColumn>();
+    }
+
+    private async Task LoadDirectResultAsync(DateOnly pnlDate, int businessDataTypeId, CancellationToken cancellationToken)
+    {
+        var directResult = await Repository.GetTechnicalRejectAsync(
+            pnlDate,
+            businessDataTypeId,
+            DbConnection ?? string.Empty,
+            SourceSystemName ?? string.Empty,
+            cancellationToken);
+
+        activeJobId = null;
+        activeJobStatus = null;
+        savedParameterSummary = MonitoringJobHelper.BuildFunctionalRejectionParameterSummary(BuildCurrentParameters());
+        parsedQuery = directResult.ParsedQuery;
+        technicalRejectColumns = directResult.Columns;
+        result = new MonitoringTableResult(
+            directResult.Columns.Select(static column => column.Name).ToArray(),
+            directResult.Rows);
+        persistedRowCount = result.Rows.Count;
+        totalRowCount = result.Rows.Count;
+        truncated = false;
+        hasPersistedJob = false;
+        lastRunAt = DateTime.Now;
+        runError = null;
     }
 
     private async Task EnsureLoadedForCurrentSelectionAsync(bool force)
@@ -268,43 +270,6 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
         lastAutoLoadKey = requestKey;
         await RestoreLatestJobAsync();
     }
-
-    protected override void ApplyJobCore(MonitoringJobRecord job)
-    {
-        activeJobEnqueuedAt = job.EnqueuedAt;
-        activeJobStartedAt = job.StartedAt;
-        activeJobCompletedAt = job.CompletedAt;
-        savedParameterSummary = job.ParameterSummary;
-
-        var table = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
-        var columns = MonitoringJobHelper.DeserializeTechnicalRejectColumns(job.MetadataJson);
-        if (table is null)
-        {
-            result = null;
-        }
-        else
-        {
-            var effectiveColumns = columns.Count == table.Columns.Count
-                ? columns
-                : table.Columns.Select(static columnName => new TechnicalRejectColumn(columnName, string.Empty)).ToArray();
-            result = new TechnicalRejectResult(job.ParsedQuery ?? string.Empty, effectiveColumns, table.Rows);
-        }
-
-        parsedQuery = job.ParsedQuery ?? string.Empty;
-    }
-
-    protected override void ClearLoadedStateCore()
-    {
-        activeJobEnqueuedAt = null;
-        activeJobStartedAt = null;
-        activeJobCompletedAt = null;
-        savedParameterSummary = null;
-        lastAutoLoadKey = null;
-        parsedQuery = string.Empty;
-        result = null;
-    }
-
-    protected override bool HasLoadedResult() => result is not null;
 
     private async Task<bool> ValidateCurrentSelectionAsync(CancellationToken cancellationToken)
     {
@@ -367,39 +332,6 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
         return menuItemsForValidation;
     }
 
-    private void ToggleQueryVisibility()
-    {
-        if (string.IsNullOrWhiteSpace(parsedQuery))
-        {
-            return;
-        }
-
-        showQuery = !showQuery;
-    }
-
-    private async Task CopySqlToClipboardAsync()
-    {
-        if (string.IsNullOrWhiteSpace(parsedQuery))
-        {
-            copyMessage = "No SQL statement available to copy.";
-            copySucceeded = false;
-            return;
-        }
-
-        try
-        {
-            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", parsedQuery);
-            copyMessage = "SQL copied to clipboard.";
-            copySucceeded = true;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Unable to copy Functional Rejection SQL statement to clipboard.");
-            copyMessage = "Failed to copy SQL to clipboard.";
-            copySucceeded = false;
-        }
-    }
-
     private DateOnly? ResolveSelectedPnlDate()
     {
         if (DateOnly.TryParseExact(PnlDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var routeDate))
@@ -458,10 +390,14 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
             return Array.Empty<GridColumn>();
         }
 
-        var columns = new List<GridColumn>(result.Columns.Count);
-        for (var i = 0; i < result.Columns.Count; i++)
+        var effectiveColumns = technicalRejectColumns.Count == result.Columns.Count
+            ? technicalRejectColumns
+            : result.Columns.Select(static columnName => new TechnicalRejectColumn(columnName, string.Empty)).ToArray();
+
+        var columns = new List<GridColumn>(effectiveColumns.Count);
+        for (var i = 0; i < effectiveColumns.Count; i++)
         {
-            var column = result.Columns[i];
+            var column = effectiveColumns[i];
             columns.Add(new GridColumn(
                 column.Name,
                 column.TypeName,
@@ -477,16 +413,6 @@ public partial class FunctionalRejection : MonitoringJobPageBase<FunctionalRejec
         return string.IsNullOrWhiteSpace(column.TypeName)
             ? column.Name
             : $"{column.Name} ({column.TypeName})";
-    }
-
-    private string ResolveDetailConnectionStringName()
-    {
-        if (TryResolveDetailConnectionStringName(out var connectionStringName))
-        {
-            return connectionStringName;
-        }
-
-        throw new InvalidOperationException($"Unsupported Functional Rejection dbconnexion value '{DbConnection}'.");
     }
 
     private bool TryResolveDetailConnectionStringName(out string connectionStringName)

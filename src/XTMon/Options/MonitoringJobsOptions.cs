@@ -49,6 +49,9 @@ public sealed class MonitoringJobsOptions
     public string JobGetLatestByCategoryStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetLatestByCategory";
 
     [Required]
+    public string JobGetFullResultCsvStoredProcedure { get; set; } = "monitoring.UspMonitoringJobGetFullResultCsv";
+
+    [Required]
     public string JobExpireStaleStoredProcedure { get; set; } = "monitoring.UspMonitoringJobExpireStale";
 
     [Required]
@@ -71,6 +74,9 @@ public sealed class MonitoringJobsOptions
 
     [Range(1, 16)]
     public int MaxConcurrentJobs { get; set; } = 3;
+
+    [Range(0, 1_000_000)]
+    public int MaxPersistedRows { get; set; } = 100;
 
     public Dictionary<string, int> CategoryMaxConcurrentJobs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

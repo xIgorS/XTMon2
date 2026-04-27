@@ -107,6 +107,7 @@ FROM [RequiredTables];
         (N'monitoring', N'UspMonitoringJobGetById'),
         (N'monitoring', N'UspMonitoringJobGetLatestByKey'),
         (N'monitoring', N'UspMonitoringJobGetLatestByCategory'),
+        (N'monitoring', N'UspMonitoringJobGetFullResultCsv'),
         (N'monitoring', N'UspMonitoringJobExpireStale'),
         (N'monitoring', N'UspMonitoringJobSetExecutionContext'),
         (N'monitoring', N'UspSystemDiagnosticsCleanLogging'),
@@ -244,6 +245,37 @@ SELECT
                     AND [col].[scale] = 3
         ) THEN NULL ELSE N'Expected datetime2(3) column.' END;
 
+    INSERT INTO @Results ([CheckGroup], [CheckName], [Passed], [Details])
+    SELECT
+        N'Column',
+        N'[monitoring].[MonitoringLatestResults].[FullResultCsvGzip] datatype',
+        CASE WHEN EXISTS
+        (
+            SELECT 1
+            FROM [sys].[columns] AS [col]
+            INNER JOIN [sys].[tables] AS [tbl] ON [tbl].[object_id] = [col].[object_id]
+            INNER JOIN [sys].[schemas] AS [sch] ON [sch].[schema_id] = [tbl].[schema_id]
+            INNER JOIN [sys].[types] AS [typ] ON [typ].[user_type_id] = [col].[user_type_id]
+            WHERE [sch].[name] = N'monitoring'
+                AND [tbl].[name] = N'MonitoringLatestResults'
+                AND [col].[name] = N'FullResultCsvGzip'
+                AND [typ].[name] = N'varbinary'
+                AND [col].[max_length] = -1
+        ) THEN 1 ELSE 0 END,
+        CASE WHEN EXISTS
+        (
+            SELECT 1
+            FROM [sys].[columns] AS [col]
+            INNER JOIN [sys].[tables] AS [tbl] ON [tbl].[object_id] = [col].[object_id]
+            INNER JOIN [sys].[schemas] AS [sch] ON [sch].[schema_id] = [tbl].[schema_id]
+            INNER JOIN [sys].[types] AS [typ] ON [typ].[user_type_id] = [col].[user_type_id]
+            WHERE [sch].[name] = N'monitoring'
+                AND [tbl].[name] = N'MonitoringLatestResults'
+                AND [col].[name] = N'FullResultCsvGzip'
+                AND [typ].[name] = N'varbinary'
+                AND [col].[max_length] = -1
+        ) THEN NULL ELSE N'Expected varbinary(max) column.' END;
+
 INSERT INTO @Results ([CheckGroup], [CheckName], [Passed], [Details])
 SELECT
     N'Constraint',
@@ -285,6 +317,8 @@ SELECT
         (N'monitoring', N'UspJvJobGetLatestByUserPnlDate', 3),
         (N'monitoring', N'UspJvJobTakeNext', 1),
         (N'monitoring', N'UspMonitoringJobCancelActive', 1),
+        (N'monitoring', N'UspMonitoringJobGetFullResultCsv', 1),
+        (N'monitoring', N'UspMonitoringJobSaveResult', 6),
         (N'monitoring', N'UspMonitoringJobTakeNext', 4),
         (N'monitoring', N'UspSystemDiagnosticsCleanHistory', 4)
     ) AS [p]([SchemaName], [ObjectName], [ExpectedCount])
@@ -312,6 +346,8 @@ OUTER APPLY
         (N'monitoring', N'UspGetApplicationLogs', N'@ToTimeStamp'),
         (N'monitoring', N'UspGetApplicationLogs', N'@LevelsCsv'),
         (N'monitoring', N'UspGetApplicationLogs', N'@MessageContains'),
+        (N'monitoring', N'UspMonitoringJobGetFullResultCsv', N'@MonitoringJobId'),
+        (N'monitoring', N'UspMonitoringJobSaveResult', N'@FullResultCsvGzip'),
         (N'monitoring', N'UspMonitoringJobTakeNext', N'@IncludedSubmenuKeysCsv'),
         (N'monitoring', N'UspMonitoringJobTakeNext', N'@ExcludedSubmenuKeysCsv'),
         (N'monitoring', N'UspJvJobGetLatestByUserPnlDate', N'@UserId'),

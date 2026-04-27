@@ -93,6 +93,16 @@ internal static class SqlDataHelper
         return Convert.ToDateTime(reader.GetValue(ordinal.Value), CultureInfo.InvariantCulture);
     }
 
+    public static long? ReadNullableInt64(IDataRecord reader, int? ordinal)
+    {
+        if (!ordinal.HasValue || reader.IsDBNull(ordinal.Value))
+        {
+            return null;
+        }
+
+        return Convert.ToInt64(reader.GetValue(ordinal.Value), CultureInfo.InvariantCulture);
+    }
+
     public static int? FindOrdinal(IDataRecord reader, string columnName)
     {
         for (var i = 0; i < reader.FieldCount; i++)

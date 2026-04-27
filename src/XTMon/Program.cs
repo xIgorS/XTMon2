@@ -180,6 +180,7 @@ builder.Services
         !string.IsNullOrWhiteSpace(options.JobGetByIdStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobGetLatestByCategoryStoredProcedure) &&
+        !string.IsNullOrWhiteSpace(options.JobGetFullResultCsvStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobExpireStaleStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobCancelActiveStoredProcedure) &&
         !string.IsNullOrWhiteSpace(options.JobRecoverOrphanedStoredProcedure) &&
@@ -577,6 +578,8 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapGet("/api/monitoring/export.csv", MonitoringExportEndpoint.HandleAsync)
+    .RequireAuthorization("UamRestricted");
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

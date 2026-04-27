@@ -201,6 +201,7 @@ public sealed class DeploymentCheckService : IDeploymentCheckService
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetByIdStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetLatestStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetLatestByCategoryStoredProcedure),
+            (monitoringJobs.JobConnectionStringName, monitoringJobs.JobGetFullResultCsvStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobExpireStaleStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobCancelActiveStoredProcedure),
             (monitoringJobs.JobConnectionStringName, monitoringJobs.JobRecoverOrphanedStoredProcedure),

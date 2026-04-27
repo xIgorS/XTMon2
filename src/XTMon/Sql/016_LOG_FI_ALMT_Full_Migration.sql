@@ -40,6 +40,7 @@ END
 GO
 
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobExpireStale];
+DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetFullResultCsv];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetLatestByCategory];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetLatestByKey];
 DROP PROCEDURE IF EXISTS [monitoring].[UspMonitoringJobGetActive];
@@ -860,6 +861,7 @@ CREATE TABLE [monitoring].[MonitoringLatestResults]
     [GridColumnsJson] NVARCHAR(MAX) NULL,
     [GridRowsJson] NVARCHAR(MAX) NULL,
     [MetadataJson] NVARCHAR(MAX) NULL,
+    [FullResultCsvGzip] VARBINARY(MAX) NULL,
     [SavedAt] DATETIME2(0) NOT NULL,
     CONSTRAINT [PK_MonitoringLatestResults] PRIMARY KEY CLUSTERED ([LatestResultId]),
     CONSTRAINT [FK_MonitoringLatestResults_MonitoringJobs] FOREIGN KEY ([LastJobId])
@@ -1066,6 +1068,7 @@ BEGIN
         [results].[GridColumnsJson],
         [results].[GridRowsJson],
         [results].[MetadataJson],
+        [results].[LastJobId] AS [PersistedResultJobId],
         [results].[SavedAt]
     FROM @Selected AS [selected]
     INNER JOIN [monitoring].[MonitoringJobs] AS [jobs] ON [jobs].[JobId] = [selected].[JobId]
@@ -1094,7 +1097,8 @@ CREATE PROCEDURE [monitoring].[UspMonitoringJobSaveResult]
     @ParsedQuery NVARCHAR(MAX) = NULL,
     @GridColumnsJson NVARCHAR(MAX) = NULL,
     @GridRowsJson NVARCHAR(MAX) = NULL,
-    @MetadataJson NVARCHAR(MAX) = NULL
+    @MetadataJson NVARCHAR(MAX) = NULL,
+    @FullResultCsvGzip VARBINARY(MAX) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -1134,10 +1138,25 @@ BEGIN
             [GridColumnsJson] = @GridColumnsJson,
             [GridRowsJson] = @GridRowsJson,
             [MetadataJson] = @MetadataJson,
+            [FullResultCsvGzip] = @FullResultCsvGzip,
             [SavedAt] = SYSUTCDATETIME()
     WHEN NOT MATCHED THEN
-        INSERT ([Category], [SubmenuKey], [PnlDate], [KeyHash], [LastJobId], [ParsedQuery], [GridColumnsJson], [GridRowsJson], [MetadataJson], [SavedAt])
-        VALUES (@Category, @SubmenuKey, @PnlDate, @KeyHash, @JobId, @ParsedQuery, @GridColumnsJson, @GridRowsJson, @MetadataJson, SYSUTCDATETIME());
+        INSERT ([Category], [SubmenuKey], [PnlDate], [KeyHash], [LastJobId], [ParsedQuery], [GridColumnsJson], [GridRowsJson], [MetadataJson], [FullResultCsvGzip], [SavedAt])
+        VALUES (@Category, @SubmenuKey, @PnlDate, @KeyHash, @JobId, @ParsedQuery, @GridColumnsJson, @GridRowsJson, @MetadataJson, @FullResultCsvGzip, SYSUTCDATETIME());
+END
+GO
+
+CREATE PROCEDURE [monitoring].[UspMonitoringJobGetFullResultCsv]
+    @MonitoringJobId BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+
+    SELECT TOP (1)
+        [FullResultCsvGzip]
+    FROM [monitoring].[MonitoringLatestResults]
+    WHERE [LastJobId] = @MonitoringJobId;
 END
 GO
 
@@ -1433,6 +1452,7 @@ BEGIN
         [results].[GridColumnsJson],
         [results].[GridRowsJson],
         [results].[MetadataJson],
+        [results].[LastJobId] AS [PersistedResultJobId],
         [results].[SavedAt]
     FROM [monitoring].[MonitoringJobs] AS [jobs]
     LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results]
@@ -1466,6 +1486,7 @@ BEGIN
         [results].[GridColumnsJson],
         [results].[GridRowsJson],
         [results].[MetadataJson],
+        [results].[LastJobId] AS [PersistedResultJobId],
         [results].[SavedAt]
     FROM [monitoring].[MonitoringJobs] AS [jobs]
     LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results]
@@ -1505,6 +1526,7 @@ BEGIN
         [results].[GridColumnsJson],
         [results].[GridRowsJson],
         [results].[MetadataJson],
+        [results].[LastJobId] AS [PersistedResultJobId],
         [results].[SavedAt]
     FROM [monitoring].[MonitoringJobs] AS [jobs]
     LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results]
@@ -1565,6 +1587,7 @@ BEGIN
         NULL AS [GridColumnsJson],
         NULL AS [GridRowsJson],
         [results].[MetadataJson],
+        [results].[LastJobId] AS [PersistedResultJobId],
         [results].[SavedAt]
     FROM [LatestJobs] AS [jobs]
     LEFT JOIN [monitoring].[MonitoringLatestResults] AS [results] WITH (NOLOCK)

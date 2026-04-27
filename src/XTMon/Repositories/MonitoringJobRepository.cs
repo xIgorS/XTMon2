@@ -1,6 +1,7 @@
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO.Compression;
 using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
@@ -370,6 +371,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             command.Parameters.Add(new SqlParameter("@GridColumnsJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(columnsJson) ? DBNull.Value : columnsJson });
             command.Parameters.Add(new SqlParameter("@GridRowsJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(rowsJson) ? DBNull.Value : rowsJson });
             command.Parameters.Add(new SqlParameter("@MetadataJson", SqlDbType.NVarChar, -1) { Value = string.IsNullOrWhiteSpace(payload.MetadataJson) ? DBNull.Value : payload.MetadataJson });
+            command.Parameters.Add(new SqlParameter("@FullResultCsvGzip", SqlDbType.VarBinary, -1) { Value = (object?)payload.FullResultCsvGzip ?? DBNull.Value });
 
             await _connectionFactory.OpenAsync(connection, cancellationToken);
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -388,6 +390,54 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         finally
         {
             LogOperationDuration(nameof(SaveMonitoringJobResultAsync), _options.JobSaveResultStoredProcedure, stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    public async Task StreamFullResultCsvAsync(long monitoringJobId, Stream destination, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection(_options.JobConnectionStringName);
+            using var command = connection.CreateCommand();
+            command.CommandText = _options.JobGetFullResultCsvStoredProcedure;
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = _options.CommandTimeoutSeconds;
+            command.Parameters.Add(new SqlParameter("@MonitoringJobId", SqlDbType.BigInt) { Value = monitoringJobId });
+
+            await _connectionFactory.OpenAsync(connection, cancellationToken);
+            using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken) || reader.IsDBNull(0))
+            {
+                throw new MonitoringJobFullResultNotFoundException(monitoringJobId);
+            }
+
+            using var blobStream = reader.GetStream(0);
+            using var gzipStream = new GZipStream(blobStream, CompressionMode.Decompress);
+            await gzipStream.CopyToAsync(destination, cancellationToken);
+        }
+        catch (MonitoringJobFullResultNotFoundException)
+        {
+            throw;
+        }
+        catch (SqlException ex)
+        {
+            LogSqlException(ex, nameof(StreamFullResultCsvAsync), _options.JobGetFullResultCsvStoredProcedure, stopwatch.ElapsedMilliseconds,
+                $"MonitoringJobId={monitoringJobId}");
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(AppLogEvents.RepositoryMonitoringProcedureFailed, ex,
+                "Monitoring full-result CSV stream failed for JobId {JobId}.",
+                monitoringJobId);
+            throw;
+        }
+        finally
+        {
+            LogOperationDuration(nameof(StreamFullResultCsvAsync), _options.JobGetFullResultCsvStoredProcedure, stopwatch.ElapsedMilliseconds);
         }
     }
 
@@ -872,6 +922,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
         var gridRowsJson = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "GridRowsJson"));
         var metadataJson = SqlDataHelper.ReadNullableString(reader, SqlDataHelper.FindOrdinal(reader, "MetadataJson"));
         var savedAt = SqlDataHelper.ReadNullableDateTime(reader, SqlDataHelper.FindOrdinal(reader, "SavedAt"));
+        var persistedResultJobId = SqlDataHelper.ReadNullableInt64(reader, SqlDataHelper.FindOrdinal(reader, "PersistedResultJobId"));
 
         return new MonitoringJobRecord(
             jobId,
@@ -893,6 +944,7 @@ public sealed class MonitoringJobRepository : IMonitoringJobRepository
             gridColumnsJson,
             gridRowsJson,
             metadataJson,
-            savedAt);
+            savedAt,
+            persistedResultJobId);
     }
 }

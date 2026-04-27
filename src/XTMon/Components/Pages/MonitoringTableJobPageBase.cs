@@ -16,6 +16,10 @@ public abstract class MonitoringTableJobPageBase<TPage> : MonitoringJobPageBase<
     protected MonitoringTableResult? result;
     protected bool showQuery;
     protected string? savedParameterSummary;
+    protected int totalRowCount;
+    protected int persistedRowCount;
+    protected bool truncated;
+    protected bool hasPersistedJob;
 
     protected string QueryDisplayText => string.IsNullOrWhiteSpace(parsedQuery) ? string.Empty : parsedQuery;
 
@@ -29,6 +33,7 @@ public abstract class MonitoringTableJobPageBase<TPage> : MonitoringJobPageBase<
     {
         parsedQuery = string.Empty;
         result = null;
+        OnAfterRunFailed();
     }
 
     protected override void ApplyJobCore(MonitoringJobRecord job)
@@ -36,6 +41,21 @@ public abstract class MonitoringTableJobPageBase<TPage> : MonitoringJobPageBase<
         savedParameterSummary = job.ParameterSummary;
         parsedQuery = job.ParsedQuery ?? string.Empty;
         result = JvCalculationHelper.DeserializeMonitoringTable(job.GridColumnsJson, job.GridRowsJson);
+        hasPersistedJob = job.SavedAt.HasValue;
+
+        if (MonitoringJobHelper.TryReadPersistMetadata(job.MetadataJson, out var total, out var persisted, out var isTruncated))
+        {
+            totalRowCount = total;
+            persistedRowCount = persisted;
+            truncated = isTruncated;
+        }
+        else
+        {
+            persistedRowCount = result?.Rows.Count ?? 0;
+            totalRowCount = persistedRowCount;
+            truncated = false;
+        }
+
         OnAfterApplyTableJob(job);
     }
 
@@ -44,6 +64,10 @@ public abstract class MonitoringTableJobPageBase<TPage> : MonitoringJobPageBase<
         savedParameterSummary = null;
         parsedQuery = string.Empty;
         result = null;
+        totalRowCount = 0;
+        persistedRowCount = 0;
+        truncated = false;
+        hasPersistedJob = false;
         OnAfterClearLoadedState();
     }
 
@@ -54,6 +78,10 @@ public abstract class MonitoringTableJobPageBase<TPage> : MonitoringJobPageBase<
     }
 
     protected virtual void OnAfterClearLoadedState()
+    {
+    }
+
+    protected virtual void OnAfterRunFailed()
     {
     }
 
