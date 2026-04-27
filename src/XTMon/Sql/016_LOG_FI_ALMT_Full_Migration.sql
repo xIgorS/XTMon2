@@ -76,11 +76,7 @@ DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanHistory];
 DROP PROCEDURE IF EXISTS [monitoring].[UspSystemDiagnosticsCleanLogging];
 DROP PROCEDURE IF EXISTS [monitoring].[UspGetApplicationLogs];
 DROP PROCEDURE IF EXISTS [monitoring].[UspInsertAPSActionsLog];
-DROP PROCEDURE IF EXISTS [monitoring].[UspGetDBBackups];
-DROP PROCEDURE IF EXISTS [monitoring].[UspGetDBbackups];
-DROP PROCEDURE IF EXISTS [monitoring].[UspGetDbSizePlusDisk];
-DROP PROCEDURE IF EXISTS [monitoring].[UspGetDBSizePlusDisk];
-DROP PROCEDURE IF EXISTS [monitoring].[spGetDbSizeStats];
+
 DROP PROCEDURE IF EXISTS [administration].[UspGetStuckReplayBatches];
 DROP PROCEDURE IF EXISTS [administration].[UspFailRunningReplayBatches];
 DROP PROCEDURE IF EXISTS [administration].[UspFailStaleReplayBatches];
@@ -90,11 +86,9 @@ DROP TABLE IF EXISTS [monitoring].[MonitoringLatestResults];
 DROP TABLE IF EXISTS [monitoring].[MonitoringJobs];
 DROP TABLE IF EXISTS [monitoring].[JvCalculationJobResults];
 DROP TABLE IF EXISTS [monitoring].[JvCalculationJobs];
-DROP TABLE IF EXISTS [monitoring].[DBSizePlusDisk];
-DROP TABLE IF EXISTS [monitoring].[DBandBackup];
+
 DROP TABLE IF EXISTS [monitoring].[APSActionsLogs];
-DROP TABLE IF EXISTS [administration].[ReplayFlows];
-DROP TABLE IF EXISTS [administration].[Flows];
+
 GO
 
 SET ANSI_NULLS ON
@@ -102,39 +96,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE TABLE [administration].[Flows](
-    [FlowId] [bigint] NULL,
-    [FlowIdDerivedFrom] [bigint] NULL,
-    [BusinessDataTypeId] [smallint] NULL,
-    [FeedSourceId] [smallint] NULL,
-    [PnlDate] [date] NOT NULL,
-    [ReportingDate] [date] NULL,
-    [FileName] [varchar](500) NULL,
-    [ArrivalDate] [datetime] NULL,
-    [PackageGuid] [uniqueidentifier] NULL,
-    [CurrentStep] [varchar](50) NULL,
-    [IsFailed] [bit] NULL,
-    [TypeOfCalculation] [varchar](50) NULL
-) ON [PRIMARY]
-GO
 
-CREATE TABLE [administration].[ReplayFlows](
-    [FlowId] [bigint] NULL,
-    [FlowIdDerivedFrom] [bigint] NULL,
-    [PnlDate] [date] NOT NULL,
-    [PackageGuid] [uniqueidentifier] NULL,
-    [WithBackdated] [bit] NOT NULL,
-    [SkipCoreProcess] [bit] NOT NULL,
-    [DropTableTmp] [bit] NOT NULL,
-    [CreatedBy] [varchar](100) NOT NULL,
-    [DateCreated] [datetime] NOT NULL,
-    [DateStarted] [datetime] NULL,
-    [DateSubmitted] [datetime] NULL,
-    [DateCompleted] [datetime] NULL,
-    [ReplayStatus] [varchar](50) NULL,
-        [ProcessStatus] [varchar](50) CONSTRAINT [DF_ReplayFlows_ProcessStatus] DEFAULT ('Not Started') NULL
-) ON [PRIMARY]
-GO
 
 CREATE TABLE [monitoring].[APSActionsLogs](
     [Id] [int] IDENTITY(1,1) NOT NULL,
@@ -153,142 +115,7 @@ CREATE NONCLUSTERED INDEX [IX_APSActionsLogs_TimeStamp_Level]
     INCLUDE ([Level]);
 GO
 
-CREATE TABLE [monitoring].[DBandBackup](
-    [LastUpdated] [datetime] NULL,
-    [Metier] [varchar](4) NOT NULL,
-    [InstanceName] [varchar](100) NULL,
-    [DBName] [varchar](100) NULL,
-    [SpaceAllocatedMB] [decimal](38, 2) NULL,
-    [SpaceUsedMB] [decimal](38, 2) NULL,
-    [RecoveryModel] [nvarchar](60) NULL,
-    [LastFullBackup] [datetime] NULL,
-    [LastDifferentialBackup] [datetime] NULL
-) ON [PRIMARY]
-GO
 
-CREATE TABLE [monitoring].[DBSizePlusDisk](
-    [ExtTime] [datetime2](0) NULL,
-    [InstanceName] [nvarchar](128) NULL,
-    [DatabaseName] [nvarchar](128) NULL,
-    [LogicalFileName] [nvarchar](128) NULL,
-    [FileGroup] [nvarchar](128) NULL,
-    [PhysicalFileName] [nvarchar](512) NULL,
-    [FileType] [nvarchar](10) NULL,
-    [AllocatedSpaceMB] [decimal](18, 6) NULL,
-    [UsedSpaceMB] [decimal](18, 0) NULL,
-    [FreeSpaceMB] [decimal](18, 0) NULL,
-    [UsedPercent] [int] NULL,
-    [MaxSizeMB] [decimal](18, 0) NULL,
-    [AutogrowSize] [nvarchar](50) NULL,
-    [TotalDriveMB] [decimal](18, 0) NULL,
-    [FreeDriveMB] [decimal](18, 0) NULL,
-    [FreeDrivePercent] [decimal](5, 2) NULL
-) ON [PRIMARY]
-GO
-
-CREATE PROCEDURE [monitoring].[UspGetDBBackups]
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    SELECT
-        [LastUpdated],
-        [Metier],
-        [InstanceName],
-        [DBName],
-        [SpaceAllocatedMB],
-        [SpaceUsedMB],
-        [RecoveryModel],
-        [LastFullBackup],
-        [LastDifferentialBackup]
-    FROM [LOG_FI_ALMT].[monitoring].[DBandBackup];
-END
-GO
-
-CREATE PROCEDURE [monitoring].[UspGetDbSizePlusDisk]
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    DECLARE @MaxExtTime DATETIME = (SELECT MAX([ExtTime]) FROM [monitoring].[DBSizePlusDisk]);
-
-    SELECT
-        [DatabaseName],
-        [FileGroup],
-        CAST([AllocatedSpaceMB] AS INT) AS [AllocatedDBSpaceMB],
-        [UsedSpaceMB] AS [UsedDBSpaceMB],
-        [FreeSpaceMB] AS [FreeDBSpaceMB],
-        [MaxSizeMB],
-        CASE WHEN [AutogrowSize] IS NULL THEN 0 ELSE 1 END AS [AutogrowEnabled],
-        [FreeDriveMB]
-    INTO #DBSize
-    FROM [monitoring].[DBSizePlusDisk]
-    WHERE [FileGroup] LIKE 'DATAFACT%'
-      AND [ExtTime] = @MaxExtTime;
-
-    DECLARE @PartSizeMB INT = 20248881;
-
-    SELECT
-        @MaxExtTime AS [LastUpdated],
-        [DatabaseName],
-        [FileGroup],
-        [AllocatedSpaceMB],
-        [UsedSpaceMB],
-        [FreeSpaceMB],
-        [Autogrow],
-        [FreeDriveMB],
-        @PartSizeMB AS [PartSizeMB],
-        [TotalFreeSpaceMB],
-        CASE
-            WHEN [TotalFreeSpaceMB] < @PartSizeMB THEN 'CRITICAL'
-            WHEN [TotalFreeSpaceMB] >= @PartSizeMB AND [TotalFreeSpaceMB] < [PartSizeMBx2] THEN 'WARNING'
-            ELSE 'OK'
-        END AS [AlertLevel]
-    FROM (
-        SELECT
-            [DatabaseName],
-            [FileGroup],
-            SUM([AllocatedDBSpaceMB]) AS [AllocatedSpaceMB],
-            SUM([UsedDBSpaceMB]) AS [UsedSpaceMB],
-            SUM([FreeDBSpaceMB]) AS [FreeSpaceMB],
-            CASE WHEN SUM([AutogrowEnabled]) > 0 THEN 'YES' ELSE 'NO' END AS [Autogrow],
-            MAX([FreeDriveMB]) AS [FreeDriveMB],
-            CASE
-                WHEN SUM([AutogrowEnabled]) > 0 THEN SUM([FreeDBSpaceMB]) + MAX([FreeDriveMB])
-                ELSE SUM([FreeDBSpaceMB])
-            END AS [TotalFreeSpaceMB],
-            @PartSizeMB * 2 AS [PartSizeMBx2]
-        FROM #DBSize
-        GROUP BY [DatabaseName], [FileGroup]
-    ) AS [summary];
-END
-GO
-
-CREATE PROCEDURE [monitoring].[spGetDbSizeStats]
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    SELECT
-        [ExtTime],
-        [InstanceName],
-        [DatabaseName],
-        [LogicalFileName],
-        [FileGroup],
-        [PhysicalFileName],
-        [FileType],
-        [AllocatedSpaceMB],
-        [UsedSpaceMB],
-        [FreeSpaceMB],
-        [UsedPercent],
-        [MaxSizeMB],
-        [AutogrowSize],
-        [TotalDriveMB],
-        [FreeDriveMB],
-        [FreeDrivePercent]
-    FROM [monitoring].[DBSizePlusDisk];
-END
-GO
 
 CREATE PROCEDURE [monitoring].[UspInsertAPSActionsLog]
     @TimeStamp DATETIME2(3),
