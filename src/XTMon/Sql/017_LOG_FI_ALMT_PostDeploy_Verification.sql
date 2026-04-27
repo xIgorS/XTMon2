@@ -46,11 +46,7 @@ FROM [RequiredSchemas];
 (
     SELECT [SchemaName], [ObjectName]
     FROM (VALUES
-        (N'administration', N'Flows'),
-        (N'administration', N'ReplayFlows'),
-        (N'monitoring', N'APSActionsLogs'),
-        (N'monitoring', N'DBandBackup'),
-        (N'monitoring', N'DBSizePlusDisk'),
+       
         (N'monitoring', N'JvCalculationJobs'),
         (N'monitoring', N'JvCalculationJobResults'),
         (N'monitoring', N'MonitoringJobs'),
@@ -72,9 +68,7 @@ FROM [RequiredTables];
         (N'administration', N'UspFailRunningReplayBatches'),
         (N'administration', N'UspFailStaleReplayBatches'),
         (N'administration', N'UspGetStuckReplayBatches'),
-        (N'monitoring', N'spGetDbSizeStats'),
-        (N'monitoring', N'UspGetDBBackups'),
-        (N'monitoring', N'UspGetDbSizePlusDisk'),
+       
         (N'monitoring', N'UspGetApplicationLogs'),
         (N'monitoring', N'UspInsertAPSActionsLog'),
         (N'monitoring', N'UspJvJobEnqueue'),
