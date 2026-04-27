@@ -28,6 +28,7 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
     private string? loadErrorMessage;
     private string? runErrorMessage;
     private PollSession? pollSession;
+    private MonitoringJobRecord? currentJobRecord;
 
     [Inject]
     protected IMonitoringJobRepository MonitoringJobRepository { get; set; } = default!;
@@ -75,6 +76,12 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
         : "-";
 
     protected bool IsJobActive => MonitoringJobHelper.IsActiveStatus(activeJobStatus);
+
+    protected DataValidationNavRunState CurrentRunState => currentJobRecord is null
+        ? DataValidationNavRunState.NotRun
+        : string.Equals(MonitoringCategory, MonitoringJobHelper.FunctionalRejectionCategory, StringComparison.OrdinalIgnoreCase)
+            ? FunctionalRejectionNavAlertHelper.GetRunState(currentJobRecord)
+            : DataValidationNavAlertHelper.GetRunState(currentJobRecord);
 
     protected string Category => MonitoringCategory;
 
@@ -325,6 +332,7 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
 
     private void ApplyJob(MonitoringJobRecord job)
     {
+        currentJobRecord = job;
         activeJobId = job.JobId;
         activeJobStatus = job.Status;
         ApplyJobCore(job);
@@ -345,6 +353,7 @@ public abstract class MonitoringJobPageBase<TPage> : ComponentBase, IAsyncDispos
 
     protected void ClearLoadedState()
     {
+        currentJobRecord = null;
         activeJobId = null;
         activeJobStatus = null;
         hasRun = false;

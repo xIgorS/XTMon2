@@ -1,0 +1,119 @@
+@using XTMon.Helpers
+
+<div class="@ContainerClass" role="status" aria-live="polite">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex items-start gap-3">
+            <span class="@IndicatorClass" aria-hidden="true"></span>
+            <div class="min-w-0">
+                <p class="@EyebrowClass">Current Status</p>
+                <div class="mt-1 flex flex-wrap items-center gap-2">
+                    <p class="@TitleClass">@StatusTitle</p>
+                    @if (HasSelectedPnlDate)
+                    {
+                        <span class="pill">PNL @SelectedPnlDateText</span>
+                    }
+                </div>
+                <p class="@DescriptionClass">@StatusDescription</p>
+            </div>
+        </div>
+
+        @if (HasLastRun)
+        {
+            <div class="rounded-xl border border-black/5 bg-white/70 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                <p class="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted">Latest Activity</p>
+                <p class="mt-1 text-sm font-semibold text-heading">@LastRunText</p>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string LastRunText { get; set; } = "-";
+
+    [Parameter]
+    public string SelectedPnlDateText { get; set; } = "-";
+
+    [Parameter]
+    public DataValidationNavRunState RunState { get; set; }
+
+    private bool HasLastRun => !string.IsNullOrWhiteSpace(LastRunText) && LastRunText != "-";
+
+    private bool HasSelectedPnlDate => !string.IsNullOrWhiteSpace(SelectedPnlDateText) && SelectedPnlDateText != "-";
+
+    private bool IsRunning => RunState == DataValidationNavRunState.Running;
+
+    private bool IsCompleted => RunState == DataValidationNavRunState.Succeeded;
+
+    private bool IsAlert => RunState == DataValidationNavRunState.Alert;
+
+    private bool IsFailed => RunState == DataValidationNavRunState.Failed;
+
+    private bool IsCancelled => RunState == DataValidationNavRunState.Cancelled;
+
+    private string ContainerClass => IsCompleted
+        ? "rounded-2xl border border-emerald-300/70 bg-emerald-50/80 px-4 py-3 shadow-sm dark:border-emerald-400/30 dark:bg-emerald-500/10"
+        : IsAlert || IsFailed || IsCancelled
+            ? "rounded-2xl border border-rose-300/70 bg-rose-50/80 px-4 py-3 shadow-sm dark:border-rose-400/30 dark:bg-rose-500/10"
+            : IsRunning
+                ? "rounded-2xl border border-amber-300/70 bg-amber-50/80 px-4 py-3 shadow-sm dark:border-amber-400/30 dark:bg-amber-500/10"
+                : "rounded-2xl border border-blue-300/70 bg-blue-50/80 px-4 py-3 shadow-sm dark:border-blue-400/30 dark:bg-blue-500/10";
+
+    private string IndicatorClass => IsCompleted
+        ? "mt-1 inline-flex h-3.5 w-3.5 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15 dark:bg-emerald-400 dark:ring-emerald-400/20"
+        : IsAlert || IsFailed || IsCancelled
+            ? "mt-1 inline-flex h-3.5 w-3.5 shrink-0 rounded-full bg-rose-500 ring-4 ring-rose-500/15 dark:bg-rose-400 dark:ring-rose-400/20"
+            : IsRunning
+                ? "mt-1 inline-flex h-3.5 w-3.5 shrink-0 rounded-full bg-amber-500 ring-4 ring-amber-500/15 dark:bg-amber-400 dark:ring-amber-400/20"
+                : "mt-1 inline-flex h-3.5 w-3.5 shrink-0 rounded-full bg-blue-500 ring-4 ring-blue-500/15 dark:bg-blue-400 dark:ring-blue-400/20";
+
+    private string EyebrowClass => IsCompleted
+        ? "text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300"
+        : IsAlert || IsFailed || IsCancelled
+            ? "text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-rose-700 dark:text-rose-300"
+            : IsRunning
+                ? "text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300"
+                : "text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-blue-700 dark:text-blue-300";
+
+    private string TitleClass => IsCompleted
+        ? "text-base font-semibold text-emerald-950 dark:text-emerald-100"
+        : IsAlert || IsFailed || IsCancelled
+            ? "text-base font-semibold text-rose-950 dark:text-rose-100"
+            : IsRunning
+                ? "text-base font-semibold text-amber-950 dark:text-amber-100"
+                : "text-base font-semibold text-blue-950 dark:text-blue-100";
+
+    private string DescriptionClass => IsCompleted
+        ? "mt-1 text-sm text-emerald-900/80 dark:text-emerald-100/80"
+        : IsAlert || IsFailed || IsCancelled
+            ? "mt-1 text-sm text-rose-900/80 dark:text-rose-100/80"
+            : IsRunning
+                ? "mt-1 text-sm text-amber-900/80 dark:text-amber-100/80"
+                : "mt-1 text-sm text-blue-900/80 dark:text-blue-100/80";
+
+    private string StatusTitle => IsCompleted
+        ? "Completed"
+        : IsAlert
+            ? "Completed With Issues"
+        : IsFailed
+            ? "Failed"
+            : IsCancelled
+                ? "Cancelled"
+                : IsRunning
+            ? "Running"
+            : "Not Run Yet";
+
+    private string StatusDescription => IsCompleted
+        ? "The latest saved result for this page completed successfully."
+        : IsAlert
+            ? "The latest saved result completed with alerts, matching the warning state shown in the navigation menu."
+        : IsFailed
+            ? "The latest background job failed. Review the error details below or rerun the check."
+            : IsCancelled
+                ? "The latest background job was cancelled before completion."
+        : IsRunning
+            ? "A background job is currently processing the selected PNL DATE."
+            : HasSelectedPnlDate
+                ? "No saved result is available yet for the selected PNL DATE."
+                : "Select a PNL DATE to restore the latest saved result.";
+}
